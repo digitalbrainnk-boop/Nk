@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Mon agent</title>
   <link rel="stylesheet" href="style.css" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icon.svg" />
+  <meta name="theme-color" content="#1f7a5a" />
 </head>
 <body>
   <div id="login" class="login hidden">
@@ -101,12 +104,16 @@
           <p class="muted">Connexion comme WhatsApp Web : scanne le QR avec ton téléphone (Réglages → Appareils connectés).</p>
           <div id="wa-status"></div>
           <img id="wa-qr" class="qr hidden" alt="QR code WhatsApp" />
+          <div id="wa-code" class="pairing hidden"></div>
           <label class="check"><input type="checkbox" id="whatsapp_learning_only" /> Mode observation : l'agent apprend mais ne répond pas</label>
           <div class="btns">
-            <button id="wa-start" class="primary">Connecter</button>
+            <button id="wa-start" class="primary">Connecter (QR code)</button>
             <button id="wa-stop">Mettre en pause</button>
             <button id="wa-logout" class="danger">Déconnecter l'appareil</button>
           </div>
+          <h3>L'agent tourne sur ce téléphone ? Connecte-toi par code</h3>
+          <p class="muted">Entre ton numéro WhatsApp avec l'indicatif (ex : 2250700000000). Un code s'affichera : dans WhatsApp → Appareils connectés → Connecter un appareil → <b>Associer avec le numéro de téléphone</b>, puis tape le code.</p>
+          <div class="pair"><input id="wa-phone" inputmode="tel" placeholder="2250700000000" /><button id="wa-pair">Recevoir un code</button></div>
           <p class="warn">⚠️ Cette connexion utilise une méthode non officielle. WhatsApp peut bannir les numéros qui envoient des messages automatiques en masse. Pour un usage très intensif, préfère WhatsApp Business Cloud ci-dessous.</p>
         </div>
 

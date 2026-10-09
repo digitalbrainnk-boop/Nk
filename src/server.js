@@ -243,7 +243,7 @@ app.get("/api/channels", (req, res) => {
   });
 });
 app.post("/api/channels/whatsapp/start", wrap(async (req, res) => {
-  await startWhatsApp();
+  await startWhatsApp(req.body?.phone ? { phone: req.body.phone } : { phone: null });
   res.json({ ok: true });
 }));
 app.post("/api/channels/whatsapp/stop", wrap(async (req, res) => {

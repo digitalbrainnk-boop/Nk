@@ -401,6 +401,8 @@ async function loadChannels() {
     ${wa.learned ? `<p class="muted">${wa.learned} exemples appris depuis ton historique.</p>` : ""}${wa.error ? `<p class="error">${esc(wa.error)}</p>` : ""}`;
   $("#wa-qr").classList.toggle("hidden", !wa.qr);
   if (wa.qr) $("#wa-qr").src = wa.qr;
+  $("#wa-code").classList.toggle("hidden", !wa.pairingCode);
+  $("#wa-code").textContent = wa.pairingCode || "";
   const tg = ch.telegram;
   $("#tg-status").innerHTML = `<span class="status ${tg.status === "connecté" ? "ok" : ""}">${esc(tg.status)}</span> ${esc(tg.bot || "")} ${tg.error ? `<p class="error">${esc(tg.error)}</p>` : ""}`;
   const m = ch.meta;
@@ -421,6 +423,14 @@ async function loadChannels() {
   );
 }
 $("#wa-start").addEventListener("click", () => api("/api/channels/whatsapp/start", { method: "POST" }).then(loadChannels).catch((e) => toast(e.message)));
+$("#wa-pair").addEventListener("click", () => {
+  const phone = $("#wa-phone").value.replace(/\D/g, "");
+  if (phone.length < 8) return toast("Entre ton numéro complet avec l'indicatif du pays");
+  api("/api/channels/whatsapp/start", { method: "POST", body: { phone } })
+    .then(() => toast("Patiente quelques secondes, le code va s'afficher…"))
+    .then(loadChannels)
+    .catch((e) => toast(e.message));
+});
 $("#wa-stop").addEventListener("click", () => api("/api/channels/whatsapp/stop", { method: "POST", body: {} }).then(loadChannels));
 $("#wa-logout").addEventListener("click", () => {
   if (confirm("Déconnecter l'agent de ton WhatsApp ?")) api("/api/channels/whatsapp/stop", { method: "POST", body: { logout: true } }).then(loadChannels);

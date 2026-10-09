@@ -119,3 +119,5 @@ code { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: 1
   .side { display: none; }
   .bubble { max-width: 88%; }
 }
+.pairing { font: 700 32px/1.2 ui-monospace, monospace; letter-spacing: 4px; text-align: center; padding: 14px; margin: 10px 0; border: 2px dashed var(--accent); border-radius: 12px; }
+.card h3 { font-size: 15px; margin: 16px 0 4px; }

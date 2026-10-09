@@ -26,7 +26,10 @@ import { emit } from "../events.js";
 const AUTH_DIR = path.join(DATA_DIR, "wa-auth");
 const logger = pino({ level: "silent" });
 let sock = null;
-let state = { status: "déconnecté", qr: null, me: null, error: null, learned: 0 };
+let state = { status: "déconnecté", qr: null, pairingCode: null, me: null, error: null, learned: 0 };
+// Numéro pour la connexion par code (utile quand l'agent tourne sur le
+// téléphone lui-même : impossible de scanner son propre écran).
+let pairingPhone = null;
 let stopping = false;
 let retries = 0;
 let generation = 0;
@@ -139,7 +142,8 @@ function onHistory({ messages }) {
   if (added) setState({ learned: state.learned + added });
 }
 
-export async function startWhatsApp() {
+export async function startWhatsApp({ phone } = {}) {
+  if (phone !== undefined) pairingPhone = String(phone).replace(/\D/g, "") || null;
   stopping = false;
   const gen = ++generation;
   const old = sock;
@@ -150,7 +154,7 @@ export async function startWhatsApp() {
   setSettings({ whatsapp_enabled: true });
   const { state: auth, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
   const { version } = await fetchLatestBaileysVersion().catch(() => ({ version: undefined }));
-  setState({ status: "connexion…", error: null });
+  setState({ status: "connexion…", error: null, pairingCode: null });
   if (gen !== generation) return;
   const me = makeWASocket({
     version,
@@ -165,10 +169,25 @@ export async function startWhatsApp() {
   me.ev.on("creds.update", saveCreds);
   me.ev.on("connection.update", async (u) => {
     if (gen !== generation) return;
-    if (u.qr) setState({ status: "scanne le QR code", qr: await QRCode.toDataURL(u.qr) });
+    if (u.qr) {
+      if (pairingPhone && !auth.creds.registered) {
+        // WhatsApp est prêt : on demande un code à 8 caractères au lieu du QR.
+        if (!state.pairingCode) {
+          try {
+            const code = await me.requestPairingCode(pairingPhone);
+            setState({ status: "tape le code dans WhatsApp", qr: null, pairingCode: code.match(/.{1,4}/g).join("-") });
+          } catch (e) {
+            setState({ status: "erreur", error: `Code impossible : ${e.message}` });
+          }
+        }
+      } else {
+        setState({ status: "scanne le QR code", pairingCode: null, qr: await QRCode.toDataURL(u.qr) });
+      }
+    }
     if (u.connection === "open") {
       retries = 0;
-      setState({ status: "connecté", qr: null, error: null, me: sock.user?.id?.split(":")[0] || sock.user?.id });
+      pairingPhone = null;
+      setState({ status: "connecté", qr: null, pairingCode: null, error: null, me: sock.user?.id?.split(":")[0] || sock.user?.id });
     }
     if (u.connection === "close") {
       const code = u.lastDisconnect?.error?.output?.statusCode;
@@ -198,7 +217,7 @@ export async function stopWhatsApp({ logout = false } = {}) {
   } catch {}
   if (logout) fs.rmSync(AUTH_DIR, { recursive: true, force: true });
   sock = null;
-  setState({ status: "déconnecté", qr: null, me: null });
+  setState({ status: "déconnecté", qr: null, pairingCode: null, me: null });
 }
 
 export function whatsappStatus() {

@@ -1,0 +1,49 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# Installe et lance l'agent sur Android (application Termux).
+# Dans Termux, colle :
+#   curl -fsSL https://raw.githubusercontent.com/digitalbrainnk-boop/Nk/claude/ai-agent-multichannel-0snabq/installer-android.sh | bash
+set -e
+BRANCHE="claude/ai-agent-multichannel-0snabq"
+DOSSIER="$HOME/Nk"
+
+echo "=== Installation de l'agent IA (3 à 10 minutes) ==="
+pkg update -y -o Dpkg::Options::="--force-confnew"
+pkg install -y nodejs-lts git || pkg install -y nodejs git
+
+if [ -d "$DOSSIER/.git" ]; then
+  echo "Mise à jour du projet..."
+  git -C "$DOSSIER" pull --ff-only
+else
+  git clone -b "$BRANCHE" https://github.com/digitalbrainnk-boop/Nk.git "$DOSSIER"
+fi
+cd "$DOSSIER"
+npm install --no-audit --no-fund
+
+[ -f .env ] || cp .env.example .env
+if ! grep -qE '^ANTHROPIC_API_KEY=.+' .env; then
+  echo
+  echo "Colle ta clé Claude (sk-ant-..., créée sur console.anthropic.com) puis Entrée :"
+  read -r KEY < /dev/tty
+  sed -i "s|^ANTHROPIC_API_KEY=.*|ANTHROPIC_API_KEY=$KEY|" .env
+fi
+if ! grep -qE '^ADMIN_PASSWORD=.+' .env; then
+  echo
+  echo "Choisis un mot de passe pour ton tableau de bord (lettres et chiffres) puis Entrée :"
+  read -r MDP < /dev/tty
+  sed -i "s|^ADMIN_PASSWORD=.*|ADMIN_PASSWORD=$MDP|" .env
+fi
+
+# Raccourci : il suffira ensuite de taper "agent" dans Termux.
+cat > "$PREFIX/bin/agent" <<'EOS'
+#!/data/data/com.termux/files/usr/bin/bash
+cd "$HOME/Nk"
+termux-wake-lock 2>/dev/null || true
+echo "Mot de passe : $(grep -E '^ADMIN_PASSWORD=' .env | cut -d= -f2-)"
+echo "Ouvre Chrome sur http://localhost:3000  (laisse Termux ouvert)"
+(sleep 6; termux-open-url http://localhost:3000 2>/dev/null) &
+npm start
+EOS
+chmod +x "$PREFIX/bin/agent"
+
+echo
+echo "=== Installé ! Pour lancer l'agent maintenant et les prochaines fois, tape : agent ==="

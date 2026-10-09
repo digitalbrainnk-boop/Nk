@@ -30,6 +30,19 @@ Ouvre http://localhost:3000. Le mot de passe s'affiche dans le terminal (ou déf
 
 Clé Claude : https://console.anthropic.com → API Keys. Elle peut aussi être collée dans **Réglages**.
 
+### Sur Android (sans ordinateur)
+
+1. Installe **Termux** depuis F-Droid : https://f-droid.org/packages/com.termux/ (pas la version du Play Store).
+2. Ouvre Termux et colle cette ligne, puis Entrée :
+   ```
+   curl -fsSL https://raw.githubusercontent.com/digitalbrainnk-boop/Nk/claude/ai-agent-multichannel-0snabq/installer-android.sh | bash
+   ```
+3. Réponds aux questions (clé Claude, mot de passe). Ensuite, pour lancer l'agent, tape simplement `agent` dans Termux.
+4. Dans Chrome, ouvre http://localhost:3000. Menu ⋮ → *Ajouter à l'écran d'accueil* pour avoir l'icône comme une application.
+5. WhatsApp : dans Canaux, utilise **« Recevoir un code »** (pas le QR, impossible de scanner son propre écran).
+
+Limites : Termux doit rester ouvert et le téléphone allumé (idéalement en charge) ; Facebook/Instagram demandent une adresse internet publique, donc un hébergement en ligne.
+
 ## Premiers pas (dans cet ordre)
 
 1. **Mon activité** : ton nom, ta description, et des fiches (tarifs, délais, étapes, paiement, FAQ).
