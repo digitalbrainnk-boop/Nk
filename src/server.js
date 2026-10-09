@@ -1,5 +1,6 @@
 // Serveur web : tableau de bord + API + webhooks.
 import crypto from "node:crypto";
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import express from "express";
@@ -36,11 +37,20 @@ const app = express();
 app.set("trust proxy", true);
 
 // ---------- Authentification du tableau de bord ----------
-let password = process.env.ADMIN_PASSWORD || getSettings().admin_password;
+let password = (process.env.ADMIN_PASSWORD || getSettings().admin_password || "").trim();
 if (!password) {
-  password = crypto.randomBytes(6).toString("base64url");
+  password = String(crypto.randomInt(100000, 1000000)); // 6 chiffres, facile à taper
   setSettings({ admin_password: password });
 }
+// Le mot de passe est aussi écrit dans un fichier bien visible du dossier du projet.
+const passwordFile = path.join(here, "..", "MOT-DE-PASSE.txt");
+try {
+  fs.writeFileSync(
+    passwordFile,
+    `Mot de passe du tableau de bord : ${password}\r\n\r\nAdresse : http://localhost:${process.env.PORT || 3000}\r\n` +
+      `Pour le changer : ouvre le fichier .env et écris ADMIN_PASSWORD=ton_mot_de_passe\r\n`,
+  );
+} catch {}
 const secret = process.env.SESSION_SECRET || crypto.createHash("sha256").update("nk:" + password).digest("hex");
 const sessionToken = crypto.createHmac("sha256", secret).update("admin").digest("hex");
 
@@ -55,7 +65,7 @@ app.use(metaRouter);
 app.use(express.json({ limit: "2mb" }));
 
 app.post("/api/login", (req, res) => {
-  const given = String(req.body?.password || "");
+  const given = String(req.body?.password || "").trim();
   const ok =
     given.length === password.length && crypto.timingSafeEqual(Buffer.from(given), Buffer.from(password));
   if (!ok) return res.status(401).json({ error: "Mot de passe incorrect" });
@@ -251,7 +261,8 @@ app.use(express.static(path.join(here, "..", "public")));
 const port = Number(process.env.PORT || 3000);
 app.listen(port, () => {
   console.log(`\n✅ Agent démarré : http://localhost:${port}`);
-  if (!process.env.ADMIN_PASSWORD) console.log(`🔑 Mot de passe du tableau de bord : ${password}`);
+  console.log(`\n🔑 MOT DE PASSE : ${password}`);
+  console.log(`   (il est aussi écrit dans le fichier MOT-DE-PASSE.txt du dossier du projet)\n`);
   if (!process.env.ANTHROPIC_API_KEY && !getSettings().anthropic_api_key) {
     console.log("⚠️  Ajoute ta clé ANTHROPIC_API_KEY (fichier .env ou Réglages du tableau de bord).");
   }
