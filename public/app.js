@@ -228,6 +228,7 @@ function listen() {
       if (ev.contact_id === currentId) openContactSoft(currentId);
       if (ev.contact_id === testContactId) loadTest();
     }
+    if (ev.type === "error") toast(`⚠️ ${ev.message}`);
     if (ev.type === "thinking") {
       if (ev.contact_id === currentId) $("#thinking")?.classList.toggle("hidden", !ev.on);
       if (ev.contact_id === testContactId) $("#test-thinking").classList.toggle("hidden", !ev.on);

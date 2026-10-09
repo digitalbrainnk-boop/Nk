@@ -15,7 +15,7 @@ import {
   updateMessage,
   upsertContact,
 } from "./db.js";
-import { generateReply } from "./agent.js";
+import { friendlyError, generateReply } from "./agent.js";
 import { transcribe } from "./media.js";
 import { emit } from "./events.js";
 
@@ -142,9 +142,11 @@ export function schedule(contactId, delaySeconds) {
     setTimeout(() => {
       timers.delete(contactId);
       processContact(contactId).catch((e) => {
-        console.error(`Erreur agent (contact ${contactId}) :`, e);
-        updateContact(contactId, { needs_human: 1, needs_human_reason: `Erreur : ${e.message}` });
+        const message = friendlyError(e);
+        console.error(`⚠️  Erreur agent (contact ${contactId}) : ${message}`);
+        updateContact(contactId, { needs_human: 1, needs_human_reason: `Erreur : ${message}` });
         emit("contact", { contact_id: contactId });
+        emit("error", { contact_id: contactId, message });
       });
     }, wait * 1000),
   );

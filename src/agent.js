@@ -223,6 +223,27 @@ ${formatExamples(examples)}
   return out;
 }
 
+/** Traduit une erreur de l'API Claude en message clair pour le tableau de bord. */
+export function friendlyError(e) {
+  if (e instanceof Anthropic.AuthenticationError) {
+    return "Clé Claude invalide : vérifie-la dans Réglages (console.anthropic.com → API Keys).";
+  }
+  if (e instanceof Anthropic.PermissionDeniedError) {
+    return "Ta clé Claude n'a pas accès à ce modèle : choisis-en un autre dans Réglages.";
+  }
+  if (e instanceof Anthropic.NotFoundError) return "Modèle introuvable : choisis-en un autre dans Réglages.";
+  if (e instanceof Anthropic.RateLimitError) return "Trop de demandes à Claude en même temps : réessaie dans une minute.";
+  if (e instanceof Anthropic.BadRequestError && /credit balance/i.test(e.message)) {
+    return "Crédit Claude épuisé : recharge sur console.anthropic.com → Settings → Billing → Buy credits.";
+  }
+  if (e instanceof Anthropic.APIConnectionError) return "Pas de connexion à Claude : vérifie internet.";
+  if (e instanceof Anthropic.InternalServerError) return "Claude est momentanément indisponible : réessaie dans quelques minutes.";
+  if (!getSettings().anthropic_api_key && !process.env.ANTHROPIC_API_KEY && /api key|apiKey|authToken/i.test(e.message)) {
+    return "Aucune clé Claude : ajoute-la dans Réglages.";
+  }
+  return e.message;
+}
+
 /** Analyse un lot d'échanges réels et rédige le profil de style + des fiches. */
 export async function buildStyleProfile(ownerName) {
   const s = getSettings();
