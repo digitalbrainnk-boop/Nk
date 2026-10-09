@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mon agent</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="login" class="login hidden">
+    <form id="login-form" class="card">
+      <h1>Mon agent IA</h1>
+      <p class="muted">Entre le mot de passe affiché au démarrage du serveur.</p>
+      <input type="password" id="login-pass" placeholder="Mot de passe" autofocus />
+      <button class="primary">Entrer</button>
+      <p id="login-error" class="error"></p>
+    </form>
+  </div>
+
+  <div id="app" class="hidden">
+    <nav class="tabs">
+      <span class="brand">🎵 Mon agent</span>
+      <button data-tab="conversations" class="active">Conversations <span id="badge" class="badge hidden"></span></button>
+      <button data-tab="test">Tester</button>
+      <button data-tab="learn">Apprentissage</button>
+      <button data-tab="business">Mon activité</button>
+      <button data-tab="channels">Canaux</button>
+      <button data-tab="settings">Réglages</button>
+    </nav>
+
+    <!-- Conversations -->
+    <section id="tab-conversations" class="tab">
+      <div class="split">
+        <aside class="list">
+          <input id="search" placeholder="Rechercher…" />
+          <div id="contacts"></div>
+        </aside>
+        <main class="thread" id="thread">
+          <div class="empty">Choisis une conversation.</div>
+        </main>
+      </div>
+    </section>
+
+    <!-- Bac à sable -->
+    <section id="tab-test" class="tab hidden">
+      <div class="card narrow">
+        <h2>Parle à ton agent comme si tu étais un client</h2>
+        <p class="muted">Rien n'est envoyé sur tes vrais comptes. Change le nom pour simuler un nouveau client.</p>
+        <div class="row"><label>Nom du client</label><input id="test-name" value="Client test" /></div>
+        <div id="test-thread" class="bubbles"></div>
+        <div id="test-thinking" class="thinking hidden">en train d'écrire…</div>
+        <form id="test-form" class="composer">
+          <input id="test-input" placeholder="Bonjour, c'est combien une chanson pour l'anniversaire de ma femme ?" />
+          <button class="primary">Envoyer</button>
+        </form>
+        <button id="test-reset" class="ghost small">Effacer cette conversation de test</button>
+      </div>
+    </section>
+
+    <!-- Apprentissage -->
+    <section id="tab-learn" class="tab hidden">
+      <div class="card narrow">
+        <h2>1. Importer tes conversations WhatsApp</h2>
+        <p class="muted">Sur ton téléphone : ouvre une discussion avec un client → ⋮ / nom du contact → <b>Exporter la discussion</b> → <b>Sans médias</b>. Envoie-toi le fichier puis dépose-le ici (.txt ou .zip). Tu peux en mettre plusieurs d'un coup — plus il y en a, mieux l'agent t'imite.</p>
+        <input type="file" id="learn-files" multiple accept=".txt,.zip" />
+        <div id="learn-preview"></div>
+        <h2>2. Ce que l'agent a appris</h2>
+        <div id="learn-stats" class="muted"></div>
+        <p class="muted">L'agent apprend aussi en continu : quand tu réponds toi-même à un client, ou quand tu corriges un brouillon.</p>
+        <h2>3. Ton profil d'écriture</h2>
+        <p class="muted">L'IA analyse tes échanges et rédige un portrait de ta façon d'écrire. Tu peux le retoucher.</p>
+        <button id="learn-profile" class="primary">Analyser ma façon d'écrire</button>
+        <textarea id="style-profile" rows="16" placeholder="Le profil apparaîtra ici…"></textarea>
+        <button id="save-profile">Enregistrer le profil</button>
+        <div id="learn-facts"></div>
+      </div>
+    </section>
+
+    <!-- Activité / connaissances -->
+    <section id="tab-business" class="tab hidden">
+      <div class="card narrow">
+        <h2>Qui es-tu ?</h2>
+        <div class="row"><label>Ton prénom / nom (comme tes clients te connaissent)</label><input id="owner_name" /></div>
+        <div class="row"><label>Ton activité</label>
+          <textarea id="business_description" rows="5" placeholder="Je compose des chansons personnalisées (anniversaire, mariage, déclaration…). Livraison en MP3 sur WhatsApp…"></textarea></div>
+        <div class="row"><label>Consignes particulières</label>
+          <textarea id="extra_rules" rows="4" placeholder="Ex : toujours demander un acompte de 50 %. Ne jamais accepter moins de 48 h de délai…"></textarea></div>
+        <button id="save-business" class="primary">Enregistrer</button>
+        <h2>Fiches de connaissances</h2>
+        <p class="muted">Tarifs, délais, étapes de commande, moyens de paiement, FAQ… L'agent ne promettra jamais rien qui n'est pas écrit ici ou dans tes conversations.</p>
+        <div id="knowledge"></div>
+        <button id="add-knowledge">+ Ajouter une fiche</button>
+      </div>
+    </section>
+
+    <!-- Canaux -->
+    <section id="tab-channels" class="tab hidden">
+      <div class="grid">
+        <div class="card">
+          <h2>WhatsApp (ton numéro)</h2>
+          <p class="muted">Connexion comme WhatsApp Web : scanne le QR avec ton téléphone (Réglages → Appareils connectés).</p>
+          <div id="wa-status"></div>
+          <img id="wa-qr" class="qr hidden" alt="QR code WhatsApp" />
+          <label class="check"><input type="checkbox" id="whatsapp_learning_only" /> Mode observation : l'agent apprend mais ne répond pas</label>
+          <div class="btns">
+            <button id="wa-start" class="primary">Connecter</button>
+            <button id="wa-stop">Mettre en pause</button>
+            <button id="wa-logout" class="danger">Déconnecter l'appareil</button>
+          </div>
+          <p class="warn">⚠️ Cette connexion utilise une méthode non officielle. WhatsApp peut bannir les numéros qui envoient des messages automatiques en masse. Pour un usage très intensif, préfère WhatsApp Business Cloud ci-dessous.</p>
+        </div>
+
+        <div class="card">
+          <h2>Telegram</h2>
+          <p class="muted">Crée un bot avec <b>@BotFather</b> (/newbot), colle le jeton ici. Tes clients écrivent à ton bot.</p>
+          <div id="tg-status"></div>
+          <div class="row"><label>Jeton du bot</label><input id="telegram_token" /></div>
+          <div class="row"><label>Ton chat ID (pour recevoir les alertes « besoin de toi »)</label><input id="owner_telegram_chat_id" placeholder="optionnel" /></div>
+          <button class="primary save-settings" data-keys="telegram_token,owner_telegram_chat_id">Enregistrer</button>
+        </div>
+
+        <div class="card">
+          <h2>Facebook, Messenger & Instagram</h2>
+          <p class="muted">Nécessite une app sur developers.facebook.com reliée à ta Page (voir le guide dans le README).</p>
+          <div id="meta-status"></div>
+          <div class="row"><label>Jeton d'accès de la Page</label><input id="facebook_page_token" /></div>
+          <div class="row"><label>Clé secrète de l'app</label><input id="facebook_app_secret" /></div>
+          <div class="row"><label>Jeton de vérification (invente un mot)</label><input id="facebook_verify_token" /></div>
+          <label class="check"><input type="checkbox" id="facebook_reply_comments" /> Répondre aux commentaires de la Page</label>
+          <button class="primary save-settings" data-keys="facebook_page_token,facebook_app_secret,facebook_verify_token,facebook_reply_comments">Enregistrer</button>
+        </div>
+
+        <div class="card">
+          <h2>WhatsApp Business (API officielle)</h2>
+          <p class="muted">Alternative officielle (numéro dédié via Meta). Même webhook que Facebook.</p>
+          <div class="row"><label>Jeton d'accès</label><input id="wa_cloud_token" /></div>
+          <div class="row"><label>Phone number ID</label><input id="wa_cloud_phone_number_id" /></div>
+          <button class="primary save-settings" data-keys="wa_cloud_token,wa_cloud_phone_number_id">Enregistrer</button>
+        </div>
+
+        <div class="card">
+          <h2>Mode de réponse par canal</h2>
+          <p class="muted"><b>Brouillon</b> : l'agent prépare, tu valides en un clic (idéal pour commencer). <b>Auto</b> : il répond seul. <b>Off</b> : il ne fait rien.</p>
+          <div id="modes"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Réglages -->
+    <section id="tab-settings" class="tab hidden">
+      <div class="card narrow">
+        <h2>Intelligence</h2>
+        <div class="row"><label>Clé API Anthropic (Claude)</label><input id="anthropic_api_key" placeholder="sk-ant-…" /></div>
+        <div class="row"><label>Modèle</label>
+          <select id="model">
+            <option value="claude-opus-5-5">Claude Opus 5.5 (recommandé)</option>
+            <option value="claude-sonnet-5-5">Claude Sonnet 5.5 (moins cher)</option>
+            <option value="claude-haiku-5-5">Claude Haiku 5.5 (très économique)</option>
+          </select></div>
+        <div class="row"><label>Niveau de réflexion</label>
+          <select id="effort"><option value="low">Rapide</option><option value="medium">Normal</option><option value="high">Approfondi</option></select></div>
+        <h2>Comportement humain</h2>
+        <div class="row"><label>Attendre que le client ait fini d'écrire (secondes)</label><input type="number" id="debounce_seconds" /></div>
+        <div class="row"><label>Délai avant de répondre : min / max (secondes)</label>
+          <div class="pair"><input type="number" id="min_reply_delay_seconds" /><input type="number" id="max_reply_delay_seconds" /></div></div>
+        <div class="row"><label>Vitesse de frappe simulée (caractères / seconde)</label><input type="number" id="typing_chars_per_second" /></div>
+        <div class="row"><label>Quand tu réponds toi-même, l'agent se tait pendant (heures)</label><input type="number" id="owner_takeover_hours" /></div>
+        <div class="row"><label>Nombre de messages d'historique lus par l'agent</label><input type="number" id="history_messages" /></div>
+        <h2>Messages vocaux</h2>
+        <p class="muted">Pour comprendre les vocaux, il faut un service de transcription (Whisper). Groq est rapide et peu cher : crée une clé sur console.groq.com.</p>
+        <div class="row"><label>Clé API transcription</label><input id="transcription_api_key" /></div>
+        <div class="row"><label>Adresse du service</label><input id="transcription_url" /></div>
+        <div class="row"><label>Modèle</label><input id="transcription_model" /></div>
+        <button class="primary save-settings" data-keys="anthropic_api_key,model,effort,debounce_seconds,min_reply_delay_seconds,max_reply_delay_seconds,typing_chars_per_second,owner_takeover_hours,history_messages,transcription_api_key,transcription_url,transcription_model">Enregistrer</button>
+      </div>
+    </section>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+  <script src="app.js"></script>
+</body>
+</html>

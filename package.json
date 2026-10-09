@@ -1,0 +1,35 @@
+{
+  "name": "nk-agent",
+  "version": "1.0.0",
+  "description": "Agent IA multicanal (WhatsApp, Telegram, Facebook) qui répond comme toi",
+  "scripts": {
+    "test": "node --disable-warning=ExperimentalWarning --test test/*.test.js",
+    "start": "node --env-file-if-exists=.env --disable-warning=ExperimentalWarning src/server.js",
+    "dev": "node --env-file-if-exists=.env --disable-warning=ExperimentalWarning --watch src/server.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/digitalbrainnk-boop/Nk.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/digitalbrainnk-boop/Nk/issues"
+  },
+  "homepage": "https://github.com/digitalbrainnk-boop/Nk#readme",
+  "type": "module",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.132.1",
+    "baileys": "^7.0.0-rc14",
+    "express": "^5.2.1",
+    "fflate": "^0.8.3",
+    "multer": "^2.4.0",
+    "pino": "^10.4.0",
+    "qrcode": "^1.5.4",
+    "zod": "^4.6.5"
+  },
+  "engines": {
+    "node": ">=22.13"
+  }
+}
