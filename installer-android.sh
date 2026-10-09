@@ -8,7 +8,7 @@ DOSSIER="$HOME/Nk"
 
 echo "=== Installation de l'agent IA (3 à 10 minutes) ==="
 pkg update -y -o Dpkg::Options::="--force-confnew"
-pkg install -y nodejs-lts git || pkg install -y nodejs git
+pkg install -y nodejs-lts git procps || pkg install -y nodejs git procps
 
 if [ -d "$DOSSIER/.git" ]; then
   echo "Mise à jour du projet..."
@@ -45,5 +45,16 @@ npm start
 EOS
 chmod +x "$PREFIX/bin/agent"
 
+# Lancement automatique à chaque ouverture de Termux (une seule fois à la fois).
+if ! grep -q "# agent-auto" "$HOME/.bashrc" 2>/dev/null; then
+  cat >> "$HOME/.bashrc" <<'EOS'
+# agent-auto : démarre l'agent IA à l'ouverture de Termux
+if ! pgrep -f "src/server.js" >/dev/null 2>&1; then agent; fi
+EOS
+fi
+
 echo
-echo "=== Installé ! Pour lancer l'agent maintenant et les prochaines fois, tape : agent ==="
+echo "=== Installé ! L'agent démarre maintenant. ==="
+echo "Les prochaines fois, il suffit d'ouvrir Termux : il se lance tout seul."
+sleep 2
+exec agent

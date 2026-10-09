@@ -37,7 +37,7 @@ Clé Claude : https://console.anthropic.com → API Keys. Elle peut aussi être 
    ```
    curl -fsSL https://raw.githubusercontent.com/digitalbrainnk-boop/Nk/claude/ai-agent-multichannel-0snabq/installer-android.sh | bash
    ```
-3. Réponds aux questions (clé Claude, mot de passe). Ensuite, pour lancer l'agent, tape simplement `agent` dans Termux.
+3. Réponds aux questions (clé Claude, mot de passe). L'agent démarre tout seul à la fin, puis à chaque ouverture de Termux (ou tape `agent`).
 4. Dans Chrome, ouvre http://localhost:3000. Menu ⋮ → *Ajouter à l'écran d'accueil* pour avoir l'icône comme une application.
 5. WhatsApp : dans Canaux, utilise **« Recevoir un code »** (pas le QR, impossible de scanner son propre écran).
 
