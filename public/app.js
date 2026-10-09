@@ -424,7 +424,7 @@ async function loadChannels() {
 }
 $("#wa-start").addEventListener("click", () => api("/api/channels/whatsapp/start", { method: "POST" }).then(loadChannels).catch((e) => toast(e.message)));
 $("#wa-pair").addEventListener("click", () => {
-  const phone = $("#wa-phone").value.replace(/\D/g, "");
+  const phone = $("#wa-phone").value.replace(/\D/g, "").replace(/^0+/, "");
   if (phone.length < 8) return toast("Entre ton numéro complet avec l'indicatif du pays");
   api("/api/channels/whatsapp/start", { method: "POST", body: { phone } })
     .then(() => toast("Patiente quelques secondes, le code va s'afficher…"))

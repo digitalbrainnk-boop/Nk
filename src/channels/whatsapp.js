@@ -143,7 +143,7 @@ function onHistory({ messages }) {
 }
 
 export async function startWhatsApp({ phone } = {}) {
-  if (phone !== undefined) pairingPhone = String(phone).replace(/\D/g, "") || null;
+  if (phone !== undefined) pairingPhone = String(phone).replace(/\D/g, "").replace(/^0+/, "") || null;
   stopping = false;
   const gen = ++generation;
   const old = sock;
