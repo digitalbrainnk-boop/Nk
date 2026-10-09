@@ -14,6 +14,12 @@ if ! grep -qE '^ANTHROPIC_API_KEY=.+' .env; then
   read -r KEY
   sed -i '' "s|^ANTHROPIC_API_KEY=.*|ANTHROPIC_API_KEY=$KEY|" .env
 fi
-echo "Démarrage... ne ferme pas cette fenêtre. Le mot de passe s'affiche ci-dessous."
+if ! grep -qE '^ADMIN_PASSWORD=.+' .env; then
+  echo "Choisis un mot de passe pour ton tableau de bord (lettres et chiffres), puis Entrée. Note-le bien :"
+  read -r MDP
+  sed -i '' "s|^ADMIN_PASSWORD=.*|ADMIN_PASSWORD=$MDP|" .env
+fi
+echo "Démarrage... ne ferme pas cette fenêtre."
+echo "Ton mot de passe : $(grep -E '^ADMIN_PASSWORD=' .env | cut -d= -f2-)"
 (sleep 5; open http://localhost:3000) &
 npm start

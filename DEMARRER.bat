@@ -42,9 +42,24 @@ if "%KEY%"=="" goto demander_cle
 powershell -NoProfile -Command "(Get-Content .env) -replace '^ANTHROPIC_API_KEY=.*','ANTHROPIC_API_KEY=%KEY%' | Set-Content -Encoding ASCII .env"
 
 :lancer
+findstr /r /c:"^ADMIN_PASSWORD=..*" .env >nul
+if not errorlevel 1 goto demarrer
+:demander_mdp
+echo.
+echo  Choisis un mot de passe pour ton tableau de bord (lettres et chiffres seulement),
+echo  tape-le puis appuie sur Entree. NOTE-LE bien.
+echo.
+set "MDP="
+set /p "MDP=Mot de passe : "
+if "%MDP%"=="" goto demander_mdp
+powershell -NoProfile -Command "(Get-Content .env) -replace '^ADMIN_PASSWORD=.*','ADMIN_PASSWORD=%MDP%' | Set-Content -Encoding ASCII .env"
+
+:demarrer
+for /f "tokens=1,* delims==" %%a in ('findstr /r /c:"^ADMIN_PASSWORD=" .env') do set "MDP=%%b"
 echo.
 echo  Demarrage... ton navigateur va s'ouvrir sur http://localhost:3000
-echo  Le MOT DE PASSE s'affiche juste en dessous.
+echo  Ton MOT DE PASSE est : %MDP%
+echo  (il est aussi ecrit dans le fichier .env, ligne ADMIN_PASSWORD)
 echo  NE FERME PAS cette fenetre tant que tu veux que l'agent reponde.
 echo.
 start "" cmd /c "timeout /t 5 >nul & start http://localhost:3000"
