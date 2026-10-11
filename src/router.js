@@ -260,6 +260,7 @@ export async function approveDraft(messageId, editedText) {
   const m = getMessage(messageId);
   if (!m || m.status !== "draft") throw new Error("Brouillon introuvable");
   const contact = getContact(m.contact_id);
+  if (m.kind === "audio" && m.media_path) return sendSong(contact, m);
   const finalText = (editedText ?? m.text).trim();
   if (editedText && finalText !== m.text.trim()) {
     // Une correction = une leçon : on la garde comme exemple de style.
@@ -274,6 +275,70 @@ export async function approveDraft(messageId, editedText) {
   if (externalMsgId) rememberSent(contact.channel, contact.external_id, finalText, externalMsgId);
   updateMessage(m.id, { status: "sent", text: finalText, external_id: externalMsgId, created_at: Date.now() });
   emit("message", { contact_id: contact.id, message: getMessage(m.id) });
+}
+
+// ---------- Chansons (Suno) ----------
+
+async function sendSong(contact, m) {
+  const adapter = adapters.get(contact.channel);
+  if (!adapter && contact.channel !== "test") throw new Error(`Canal ${contact.channel} non connecté`);
+  let externalMsgId = null;
+  if (contact.channel !== "test") {
+    if (adapter.sendAudio) {
+      externalMsgId = await adapter.sendAudio(contact, { path: m.media_path, mime: m.media_type, url: m.media_url, title: m.text });
+    } else if (m.media_url) {
+      // Canal sans envoi de fichier (ex. commentaire public) : on envoie le lien.
+      externalMsgId = await adapter.send(contact, `${m.text}\n${m.media_url}`);
+    } else {
+      throw new Error("Ce canal ne permet pas d'envoyer un fichier audio.");
+    }
+  }
+  if (externalMsgId) rememberSent(contact.channel, contact.external_id, "", externalMsgId);
+  updateMessage(m.id, { status: "sent", external_id: externalMsgId, created_at: Date.now() });
+  emit("message", { contact_id: contact.id, message: getMessage(m.id) });
+}
+
+/**
+ * Lance Suno en arrière-plan. Chaque version créée apparaît comme un brouillon
+ * audio que le propriétaire écoute puis envoie (ou rejette).
+ */
+export async function createSong(contactId, brief) {
+  const { startSong, waitSong } = await import("./suno.js");
+  const { downloadToMedia } = await import("./media.js");
+  const title = brief.title || "Chanson";
+  const placeholder = addMessage(contactId, {
+    author: "agent",
+    kind: "audio",
+    text: `🎵 Création de « ${title} » en cours avec Suno… (1 à 5 minutes)`,
+    status: "generating",
+  });
+  emit("message", { contact_id: contactId, message: placeholder });
+  const taskId = await startSong(brief);
+  (async () => {
+    try {
+      const tracks = await waitSong(taskId, {
+        onStatus: (st) => {
+          const label = { PENDING: "en attente", TEXT_SUCCESS: "paroles prêtes", FIRST_SUCCESS: "première version presque prête" }[st];
+          if (!label) return;
+          updateMessage(placeholder.id, { text: `🎵 « ${title} » : ${label}…` });
+          emit("message", { contact_id: contactId, message: getMessage(placeholder.id) });
+        },
+      });
+      for (const [i, t] of tracks.entries()) {
+        const media = await downloadToMedia(t.audioUrl);
+        const mime = media.mime.startsWith("audio/") ? media.mime : "audio/mpeg";
+        const text = `🎵 ${t.title || title}${tracks.length > 1 ? ` (version ${i + 1})` : ""}`;
+        const fields = { kind: "audio", text, media_path: media.path, media_type: mime, media_url: t.audioUrl, status: "draft" };
+        if (i === 0) updateMessage(placeholder.id, fields);
+        else addMessage(contactId, { author: "agent", ...fields });
+      }
+    } catch (e) {
+      updateMessage(placeholder.id, { text: `❌ Chanson « ${title} » : ${e.message}`, status: "rejected" });
+    }
+    emit("message", { contact_id: contactId, message: getMessage(placeholder.id) });
+    emit("contact", { contact_id: contactId });
+  })();
+  return { taskId, message_id: placeholder.id };
 }
 
 export function rejectDraft(messageId) {

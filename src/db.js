@@ -59,6 +59,11 @@ CREATE TABLE IF NOT EXISTS knowledge (
 );
 `);
 
+// Migrations légères pour les bases créées par une version précédente.
+try {
+  db.exec("ALTER TABLE messages ADD COLUMN media_url TEXT");
+} catch {}
+
 const now = () => Date.now();
 
 // ---------- Réglages ----------
@@ -91,7 +96,10 @@ export const DEFAULT_SETTINGS = {
   transcription_model: "whisper-large-v3",
   transcription_api_key: "",
   anthropic_api_key: "",
-  brain: "claude", // claude | openai (service compatible : Kie.ai, DeepSeek...)
+  brain: "claude", // claude | kie | openai (autre service compatible OpenAI)
+  kie_api_key: "",
+  kie_chat_model: "deepseek-v4-1-flash",
+  suno_model: "V5",
   llm_url: "",
   llm_api_key: "",
   llm_model: "",
@@ -182,8 +190,8 @@ export function deleteContact(id) {
 export function addMessage(contactId, msg) {
   const r = db
     .prepare(
-      `INSERT INTO messages(contact_id, author, kind, text, media_path, media_type, status, external_id, answered, created_at)
-       VALUES(?,?,?,?,?,?,?,?,?,?)`,
+      `INSERT INTO messages(contact_id, author, kind, text, media_path, media_type, media_url, status, external_id, answered, created_at)
+       VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
     )
     .run(
       contactId,
@@ -192,6 +200,7 @@ export function addMessage(contactId, msg) {
       msg.text || "",
       msg.media_path || null,
       msg.media_type || null,
+      msg.media_url || null,
       msg.status || "sent",
       msg.external_id || null,
       msg.author === "client" ? 0 : 1,

@@ -1,5 +1,6 @@
 // Telegram : un bot (créé avec @BotFather) reçoit les messages par
 // "long polling" — pas besoin d'adresse publique.
+import fs from "node:fs";
 import { getSettings } from "../db.js";
 import { downloadToMedia } from "../media.js";
 import { handleIncoming, registerAdapter } from "../router.js";
@@ -111,6 +112,16 @@ registerAdapter({
       api("sendChatAction", { chat_id: contact.external_id, action: "typing" }).catch(() => {});
     await tick();
     const t = setInterval(() => (Date.now() < until - 1000 ? tick() : clearInterval(t)), 4500);
+  },
+  async sendAudio(contact, { path: file, mime, title }) {
+    const form = new FormData();
+    form.append("chat_id", contact.external_id);
+    form.append("audio", new Blob([fs.readFileSync(file)], { type: mime || "audio/mpeg" }), "chanson.mp3");
+    if (title) form.append("title", title.replace(/^🎵\s*/, "").slice(0, 60));
+    const res = await fetch(`https://api.telegram.org/bot${token}/sendAudio`, { method: "POST", body: form });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.description || "Telegram sendAudio a échoué");
+    return String(data.result.message_id);
   },
   async notify(chatId, text) {
     await api("sendMessage", { chat_id: chatId, text });

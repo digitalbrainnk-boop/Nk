@@ -25,9 +25,9 @@ import {
   upsertContact,
 } from "./db.js";
 import { bus } from "./events.js";
-import { approveDraft, handleIncoming, rejectDraft, schedule, sendManual } from "./router.js";
-import { buildStyleProfile, friendlyError } from "./agent.js";
-import { chatText } from "./openai-compat.js";
+import { approveDraft, createSong, handleIncoming, rejectDraft, schedule, sendManual } from "./router.js";
+import { buildStyleProfile, friendlyError, songBrief } from "./agent.js";
+import { chatText, probeKie } from "./openai-compat.js";
 import { buildPairs, parseWhatsAppExport, participants } from "./learning.js";
 import { startTelegram, telegramStatus } from "./channels/telegram.js";
 import { maybeAutoStartWhatsApp, startWhatsApp, stopWhatsApp, whatsappStatus } from "./channels/whatsapp.js";
@@ -139,6 +139,18 @@ app.get("/api/media/:id", (req, res) => {
   if (!m?.media_path) return res.sendStatus(404);
   res.type(m.media_type || "application/octet-stream").sendFile(m.media_path);
 });
+app.post("/api/contacts/:id/song/brief", wrap(async (req, res) => {
+  try {
+    res.json(await songBrief(getContact(Number(req.params.id))));
+  } catch (e) {
+    res.status(400).json({ error: friendlyError(e) });
+  }
+}));
+app.post("/api/contacts/:id/song", wrap(async (req, res) => {
+  const { title, style, lyrics, instrumental } = req.body || {};
+  if (!title?.trim() || (!instrumental && !lyrics?.trim())) throw new Error("Il faut au moins un titre et des paroles.");
+  res.json(await createSong(Number(req.params.id), { title, style, lyrics, instrumental: !!instrumental }));
+}));
 app.post("/api/messages/:id/approve", wrap(async (req, res) => {
   await approveDraft(Number(req.params.id), req.body.text);
   res.json({ ok: true });
@@ -164,6 +176,7 @@ const SECRET_KEYS = [
   "wa_cloud_token",
   "transcription_api_key",
   "llm_api_key",
+  "kie_api_key",
   "admin_password",
 ];
 app.get("/api/settings", (req, res) => {
@@ -188,6 +201,11 @@ app.put("/api/settings", wrap(async (req, res) => {
 
 app.post("/api/llm/test", wrap(async (req, res) => {
   try {
+    if (getSettings().brain === "kie") {
+      const r = await probeKie();
+      setSettings({ kie_chat_model: r.model });
+      return res.json({ ok: true, text: r.text, model: r.model });
+    }
     const text = await chatText({
       system: "Tu es un assistant. Réponds en français, en une phrase courte.",
       turns: [{ role: "user", content: [{ type: "text", text: "Dis bonjour et confirme que tu fonctionnes." }] }],

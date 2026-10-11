@@ -235,6 +235,11 @@ registerAdapter({
   async typing(contact) {
     await sock?.sendPresenceUpdate("composing", contact.external_id);
   },
+  async sendAudio(contact, { path: file, mime }) {
+    if (!sock || state.status !== "connecté") throw new Error("WhatsApp n'est pas connecté");
+    const r = await sock.sendMessage(contact.external_id, { audio: fs.readFileSync(file), mimetype: mime || "audio/mpeg" });
+    return r?.key?.id;
+  },
   async markRead(contact, msgs) {
     const keys = msgs
       .filter((m) => m.external_id)

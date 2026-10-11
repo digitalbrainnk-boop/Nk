@@ -43,7 +43,13 @@ Clé Claude : https://console.anthropic.com → API Keys. Elle peut aussi être 
 
 Limites : Termux doit rester ouvert et le téléphone allumé (idéalement en charge) ; Facebook/Instagram demandent une adresse internet publique, donc un hébergement en ligne.
 
-### Utiliser un autre cerveau que Claude (Kie.ai, DeepSeek…)
+### Kie.ai : DeepSeek comme cerveau + Suno pour les chansons
+
+Réglages → **Cerveau de l'agent** → « Kie.ai — DeepSeek V4.1 Flash », colle ta **clé Kie.ai** dans la section Kie.ai, puis **Tester la connexion** (le bon nom de modèle est trouvé automatiquement).
+
+Dans une conversation, bouton **🎵 Créer la chanson** : l'IA écrit titre, style et paroles à partir de la discussion, tu corriges, puis **Lancer Suno**. 1 à 5 minutes plus tard, les versions apparaissent dans la conversation : tu les écoutes et tu cliques **Envoyer au client** (WhatsApp, Telegram, Messenger, Instagram).
+
+### Utiliser un autre cerveau que Claude (DeepSeek, OpenRouter…)
 
 Réglages → **Cerveau de l'agent** → « Autre service compatible OpenAI », puis colle l'adresse de l'API (`…/chat/completions`), ta clé et le nom du modèle (ex. `deepseek-v4-flash`). Le bouton **Tester la connexion** vérifie que tout marche. Les photos ne sont pas vues par ces modèles (seulement signalées).
 

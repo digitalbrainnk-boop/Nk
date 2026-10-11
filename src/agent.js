@@ -9,7 +9,7 @@ import { allExamples, getSettings, listKnowledge, listMessages } from "./db.js";
 import { LLMError, chatJSON } from "./openai-compat.js";
 
 // "claude" (par défaut) ou "openai" (service compatible : Kie.ai, DeepSeek...).
-const useCompat = () => getSettings().brain === "openai";
+const useCompat = () => ["openai", "kie"].includes(getSettings().brain);
 
 const REPLY_SHAPE = `{"messages": ["bulle 1", "bulle 2"], "memory": "mémoire à jour sur ce client", "needs_human": false, "reason": ""}
 - messages : 1 à 4 messages courts à envoyer (tableau vide si aucune réponse n'est nécessaire)
@@ -325,4 +325,49 @@ ${corpus}
   const text = final.content.find((b) => b.type === "text")?.text;
   if (!text) throw new Error("Pas de réponse de l'IA.");
   return Profile.parse(JSON.parse(text));
+}
+
+const SongBrief = z.object({
+  title: z.string().describe("Titre court de la chanson (max 80 caractères)."),
+  style: z.string().describe("Style musical pour Suno, en anglais, mots-clés séparés par des virgules (genre, ambiance, instruments, voix)."),
+  lyrics: z.string().describe("Paroles complètes avec [Verse], [Chorus], [Bridge]... dans la langue de la conversation."),
+});
+
+/** Prépare titre, style et paroles d'une chanson à partir de la conversation et de la mémoire du client. */
+export async function songBrief(contact) {
+  const s = getSettings();
+  const history = listMessages(contact.id, 60)
+    .filter((m) => m.status === "sent" || m.status === "received")
+    .map((m) => `${m.author === "client" ? "Client" : s.owner_name || "Moi"} : ${m.text}`)
+    .join("\n");
+  const instructions = `Tu es parolier pour ${s.owner_name || "un compositeur"} qui crée des chansons personnalisées.
+À partir de la conversation et de la mémoire du client, écris la chanson commandée : prénoms, anecdotes, occasion, émotions, langue demandée.
+Paroles chantables, rimes naturelles, structure [Verse 1] [Chorus] [Verse 2] [Chorus] [Bridge] [Chorus], 2 à 3 minutes.
+${s.business_description ? `Activité : ${s.business_description}\n` : ""}
+Mémoire du client :
+${contact.memory || "(vide)"}
+
+Conversation :
+${history || "(vide)"}`;
+
+  if (useCompat()) {
+    const r = await chatJSON({
+      system: "Tu écris des chansons personnalisées.",
+      turns: [{ role: "user", content: [{ type: "text", text: instructions }] }],
+      schema: SongBrief,
+      shape: `{"title": "...", "style": "afro pop, joyful, male vocals, guitar", "lyrics": "[Verse 1]\\n..."}`,
+    });
+    if (!r.ok) throw new Error("L'IA n'a pas renvoyé de paroles lisibles, réessaie.");
+    return r.data;
+  }
+  const response = await getClient().beta.messages.parse({
+    model: s.model || "claude-opus-5-5",
+    max_tokens: 16000,
+    betas: ["server-side-fallback-2026-07-01"],
+    fallbacks: "default",
+    output_config: { effort: "medium", format: betaZodOutputFormat(SongBrief) },
+    messages: [{ role: "user", content: instructions }],
+  });
+  if (!response.parsed_output) throw new Error("L'IA n'a pas renvoyé de paroles lisibles, réessaie.");
+  return response.parsed_output;
 }

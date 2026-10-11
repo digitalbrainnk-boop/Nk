@@ -159,9 +159,11 @@
         <h2>Cerveau de l'agent</h2>
         <div class="row"><label>Service d'IA utilisé</label>
           <select id="brain">
+            <option value="kie">Kie.ai — DeepSeek V4.1 Flash (avec ta clé Kie)</option>
             <option value="claude">Claude (Anthropic)</option>
-            <option value="openai">Autre service compatible OpenAI (Kie.ai, DeepSeek, OpenRouter…)</option>
+            <option value="openai">Autre service compatible OpenAI (DeepSeek, OpenRouter…)</option>
           </select></div>
+        <p id="brain-kie" class="muted">Le cerveau utilise ta clé Kie.ai (section « Kie.ai » ci-dessous).</p>
         <div id="brain-openai">
           <p class="muted">Copie ces informations depuis la page du modèle sur ton service (ex : Kie.ai → DeepSeek V4 Flash → API).</p>
           <div class="row"><label>Adresse de l'API (URL « chat/completions »)</label><input id="llm_url" placeholder="https://api.exemple.com/v1/chat/completions" /></div>
@@ -179,6 +181,16 @@
         <div class="row"><label>Niveau de réflexion</label>
           <select id="effort"><option value="low">Rapide</option><option value="medium">Normal</option><option value="high">Approfondi</option></select></div>
         </div>
+        <h2>Kie.ai (Suno pour les chansons, DeepSeek pour le cerveau)</h2>
+        <div class="row"><label>Clé API Kie.ai</label><input id="kie_api_key" placeholder="colle ta clé Kie ici" /></div>
+        <div class="row"><label>Modèle de chat Kie (ne change que si besoin)</label><input id="kie_chat_model" placeholder="deepseek-v4-1-flash" /></div>
+        <div class="row"><label>Version de Suno</label>
+          <select id="suno_model">
+            <option value="V5_5">V5.5 (la plus récente)</option>
+            <option value="V5">V5 (recommandée)</option>
+            <option value="V4_5PLUS">V4.5+</option>
+            <option value="V4_5">V4.5</option>
+          </select></div>
         <div class="btns"><button id="llm-test">Tester la connexion</button></div>
         <p id="llm-test-result" class="muted"></p>
         <h2>Comportement humain</h2>
@@ -193,7 +205,7 @@
         <div class="row"><label>Clé API transcription</label><input id="transcription_api_key" /></div>
         <div class="row"><label>Adresse du service</label><input id="transcription_url" /></div>
         <div class="row"><label>Modèle</label><input id="transcription_model" /></div>
-        <button class="primary save-settings" data-keys="brain,llm_url,llm_api_key,llm_model,anthropic_api_key,model,effort,debounce_seconds,min_reply_delay_seconds,max_reply_delay_seconds,typing_chars_per_second,owner_takeover_hours,history_messages,transcription_api_key,transcription_url,transcription_model">Enregistrer</button>
+        <button class="primary save-settings" data-keys="brain,kie_api_key,kie_chat_model,suno_model,llm_url,llm_api_key,llm_model,anthropic_api_key,model,effort,debounce_seconds,min_reply_delay_seconds,max_reply_delay_seconds,typing_chars_per_second,owner_takeover_hours,history_messages,transcription_api_key,transcription_url,transcription_model">Enregistrer</button>
       </div>
     </section>
   </div>

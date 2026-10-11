@@ -200,8 +200,22 @@ async function pageTyping(contact) {
   });
 }
 
-registerAdapter({ channel: "messenger", send: sendPageMessage, typing: pageTyping });
-registerAdapter({ channel: "instagram", send: sendPageMessage, typing: pageTyping });
+async function sendPageAudio(contact, { url }) {
+  if (!url) throw new Error("Pas d'adresse publique pour ce fichier audio.");
+  const r = await graph("me/messages", {
+    method: "POST",
+    token: cfg().pageToken,
+    body: {
+      recipient: { id: contact.external_id },
+      messaging_type: "RESPONSE",
+      message: { attachment: { type: "audio", payload: { url, is_reusable: true } } },
+    },
+  });
+  return r.message_id;
+}
+
+registerAdapter({ channel: "messenger", send: sendPageMessage, typing: pageTyping, sendAudio: sendPageAudio });
+registerAdapter({ channel: "instagram", send: sendPageMessage, typing: pageTyping, sendAudio: sendPageAudio });
 
 registerAdapter({
   channel: "facebook_comment",
@@ -223,6 +237,16 @@ registerAdapter({
       method: "POST",
       token: waToken,
       body: { messaging_product: "whatsapp", to: contact.external_id, type: "text", text: { body: text } },
+    });
+    return r.messages?.[0]?.id;
+  },
+  async sendAudio(contact, { url }) {
+    if (!url) throw new Error("Pas d'adresse publique pour ce fichier audio.");
+    const { waToken, waPhoneId } = cfg();
+    const r = await graph(`${waPhoneId}/messages`, {
+      method: "POST",
+      token: waToken,
+      body: { messaging_product: "whatsapp", to: contact.external_id, type: "audio", audio: { link: url } },
     });
     return r.messages?.[0]?.id;
   },

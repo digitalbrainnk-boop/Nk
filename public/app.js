@@ -103,13 +103,18 @@ function renderContacts() {
 $("#search").addEventListener("input", renderContacts);
 
 function bubble(m, { actions = true } = {}) {
-  const cls = m.status === "draft" ? "draft" : m.status === "rejected" ? "rejected" : m.author;
+  const cls = m.status === "draft" ? "draft" : m.status === "rejected" ? "rejected" : m.status === "generating" ? "draft" : m.author;
   let media = "";
   if (m.media_path && m.kind === "image") media = `<img src="/api/media/${m.id}" alt="photo" />`;
   if (m.media_path && m.kind === "audio") media = `<audio controls src="/api/media/${m.id}"></audio>`;
-  const label = m.kind === "audio" ? "🎤 " : m.kind === "comment" ? "💬 " : "";
+  const label = m.kind === "audio" && m.author === "client" ? "🎤 " : m.kind === "comment" ? "💬 " : "";
+  const isSong = m.kind === "audio" && m.author === "agent";
   const draftUi =
-    m.status === "draft" && actions
+    m.status === "draft" && actions && isSong
+      ? `<div class="draft-actions" data-id="${m.id}">
+           <button class="primary small" data-act="approve">Envoyer au client</button>
+           <button class="small danger" data-act="reject">Rejeter</button></div>`
+      : m.status === "draft" && actions
       ? `<div class="draft-actions" data-id="${m.id}" data-text="${esc(m.text)}">
            <button class="primary small" data-act="approve">Envoyer</button>
            <button class="small" data-act="edit">Corriger</button>
@@ -134,6 +139,7 @@ async function openContact(id) {
         <span class="status ${paused ? "" : "ok"}">${paused ? (forever ? "Agent en pause" : `Tu as la main jusqu'à ${new Date(c.paused_until).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}`) : "Agent actif"}</span>
         <button class="small" id="toggle-pause">${paused ? "Réactiver l'agent" : "Mettre l'agent en pause"}</button>
         <button class="small" id="regen">Proposer une réponse</button>
+        <button class="small primary" id="song-open">🎵 Créer la chanson</button>
       </div>
     </div>
     ${c.needs_human ? `<div class="alert-box"><span>🔔 ${esc(c.needs_human_reason || "L'agent a besoin de toi")}</span><button class="small" id="clear-alert">C'est réglé</button></div>` : ""}
@@ -144,6 +150,17 @@ async function openContact(id) {
         <form class="composer" id="composer"><input id="manual" placeholder="Écrire toi-même (l'agent apprendra de ta réponse)…" /><button class="primary">Envoyer</button></form>
       </div>
       <div class="side">
+        <div id="song-panel" class="hidden">
+          <h3>🎵 Chanson avec Suno</h3>
+          <p class="muted">L'IA peut écrire les paroles à partir de la conversation. Relis, corrige, puis lance Suno. Tu écoutes avant d'envoyer.</p>
+          <button class="small" id="song-brief">✍️ Écrire les paroles avec l'IA</button>
+          <div class="row"><label>Titre</label><input id="song-title" /></div>
+          <div class="row"><label>Style (en anglais, ex : afro pop, joyful, male vocals)</label><input id="song-style" /></div>
+          <div class="row"><label>Paroles</label><textarea id="song-lyrics" rows="10"></textarea></div>
+          <label class="check"><input type="checkbox" id="song-instr" /> Instrumental (sans paroles)</label>
+          <button class="primary small" id="song-go">Lancer Suno</button>
+          <hr />
+        </div>
         <h3>🧠 Mémoire sur ce client</h3>
         <textarea id="memory" rows="14">${esc(c.memory)}</textarea>
         <button class="small" id="save-memory">Enregistrer</button>
@@ -157,6 +174,37 @@ async function openContact(id) {
   $("#toggle-pause").onclick = async () => {
     await api(`/api/contacts/${id}`, { method: "PATCH", body: { paused: !paused } });
     openContact(id);
+  };
+  $("#song-open").onclick = () => {
+    $("#song-panel").classList.toggle("hidden");
+    $(".side").style.display = "block"; // aussi visible sur téléphone
+  };
+  $("#song-brief").onclick = async () => {
+    const btn = $("#song-brief");
+    btn.disabled = true;
+    btn.textContent = "L'IA écrit…";
+    try {
+      const b = await api(`/api/contacts/${id}/song/brief`, { method: "POST" });
+      $("#song-title").value = b.title;
+      $("#song-style").value = b.style;
+      $("#song-lyrics").value = b.lyrics;
+    } catch (err) {
+      toast(err.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "✍️ Écrire les paroles avec l'IA";
+    }
+  };
+  $("#song-go").onclick = async () => {
+    try {
+      await api(`/api/contacts/${id}/song`, {
+        method: "POST",
+        body: { title: $("#song-title").value, style: $("#song-style").value, lyrics: $("#song-lyrics").value, instrumental: $("#song-instr").checked },
+      });
+      toast("Suno crée la chanson… elle apparaîtra dans la conversation.");
+    } catch (err) {
+      toast(err.message);
+    }
   };
   $("#regen").onclick = async () => {
     await api(`/api/contacts/${id}/regenerate`, { method: "POST" });
@@ -241,8 +289,23 @@ async function openContactSoft(id) {
   const typing = $("#manual")?.value;
   const editing = $("#bubbles textarea");
   if (editing) return;
+  const song = $("#song-panel") && {
+    open: !$("#song-panel").classList.contains("hidden"),
+    title: $("#song-title").value,
+    style: $("#song-style").value,
+    lyrics: $("#song-lyrics").value,
+    instr: $("#song-instr").checked,
+  };
   await openContact(id);
   if (typing) $("#manual").value = typing;
+  if (song) {
+    $("#song-panel").classList.toggle("hidden", !song.open);
+    if (song.open) $(".side").style.display = "block";
+    $("#song-title").value = song.title;
+    $("#song-style").value = song.style;
+    $("#song-lyrics").value = song.lyrics;
+    $("#song-instr").checked = song.instr;
+  }
 }
 
 // ---------- Bac à sable ----------
@@ -449,25 +512,28 @@ function fillSettings() {
   toggleBrain();
 }
 function toggleBrain() {
-  const compat = $("#brain").value === "openai";
-  $("#brain-openai").classList.toggle("hidden", !compat);
-  $("#brain-claude").classList.toggle("hidden", compat);
+  const b = $("#brain").value;
+  $("#brain-openai").classList.toggle("hidden", b !== "openai");
+  $("#brain-claude").classList.toggle("hidden", b !== "claude");
+  $("#brain-kie").classList.toggle("hidden", b !== "kie");
 }
 $("#brain").addEventListener("change", toggleBrain);
 $("#llm-test").addEventListener("click", async () => {
   const out = $("#llm-test-result");
   // On enregistre d'abord ce qui est saisi pour tester la bonne configuration.
   const patch = {};
-  for (const k of ["brain", "llm_url", "llm_api_key", "llm_model", "anthropic_api_key", "model"]) patch[k] = $(`#${k}`).value;
+  for (const k of ["brain", "kie_api_key", "kie_chat_model", "suno_model", "llm_url", "llm_api_key", "llm_model", "anthropic_api_key", "model"]) patch[k] = $(`#${k}`).value;
   await saveSettings(patch);
   fillSettings();
   out.textContent = "Test en cours…";
-  if (patch.brain !== "openai") {
+  if (patch.brain === "claude") {
     out.textContent = "Pour Claude, le test se fait dans l'onglet Tester.";
     return;
   }
   const r = await api("/api/llm/test", { method: "POST" });
-  out.innerHTML = r.ok ? `✅ Ça marche ! Réponse : « ${esc(r.text)} »` : `<span class="error">❌ ${esc(r.error)}</span>`;
+  out.innerHTML = r.ok
+    ? `✅ Ça marche !${r.model ? ` (modèle : ${esc(r.model)})` : ""} Réponse : « ${esc(r.text)} »`
+    : `<span class="error">❌ ${esc(r.error)}</span>`;
 });
 
 async function saveSettings(patch) {
