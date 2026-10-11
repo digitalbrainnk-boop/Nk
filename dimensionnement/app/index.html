@@ -4,9 +4,17 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Agent de dimensionnement électrique</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<meta name="description" content="Dimensionnement électrique multi-normes : bâtiment, solaire, batteries, groupe électrogène, réseau, compensation et lignes aériennes. Fonctionne hors connexion.">
+<meta name="theme-color" content="#a94b1c">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Dimensionnement">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="32x32" href="icones/favicon-32.png">
+<link rel="icon" type="image/svg+xml" href="icones/icone.svg">
+<link rel="apple-touch-icon" href="icones/apple-touch-icon.png">
+<!-- POLICES --><link rel="stylesheet" href="polices.css"><!-- /POLICES -->
 <style>
 /* Mise en page : poste de travail d'ingénieur — assistant à gauche (colonne fixe sur grand écran, onglet sur téléphone),
    espace de calcul à droite organisé comme un dossier technique (projet → charges → choix → résultats → note). */
@@ -264,6 +272,14 @@ table.tableau { width: 100%; font-size: 0.88rem; }
 .bulle-info div { display: flex; justify-content: space-between; gap: 12px; font-family: var(--f-donnee); }
 .bulle-info div span:first-child { font-family: var(--f-texte); color: var(--ink-2); }
 
+/* Installation */
+.btn-installer { padding: 6px 12px; }
+.bandeau-maj { margin-bottom: 16px; justify-content: space-between; align-items: center; flex-wrap: wrap; }
+.etapes-install { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; }
+.lien-copie { font-family: var(--f-donnee); font-size: 0.82rem; overflow-wrap: anywhere; background: var(--surface-2); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; }
+.cle-api { display: flex; flex-direction: column; gap: 8px; padding: 12px; margin: 12px; border-radius: 6px; background: var(--info-doux); font-size: 0.88rem; color: var(--ink-2); }
+.cle-api .rangee input { flex: 1 1 200px; }
+
 /* Ligne aérienne */
 .portees input { width: 100%; min-width: 58px; }
 .portees th { white-space: normal; }
@@ -321,7 +337,7 @@ table.tableau { width: 100%; font-size: 0.88rem; }
       </svg>
       <div><strong>Agent de dimensionnement</strong><span>Bâtiment · Solaire · Batteries · Groupe · Réseau · Lignes aériennes</span></div>
     </div>
-    <div class="etat-projet"><span class="nom" id="entete-nom"></span><span class="statut statut-info" id="entete-norme"></span><span class="statut statut-info" id="entete-systeme"></span><span id="entete-etat"></span></div>
+    <div class="etat-projet"><button type="button" class="btn btn-primaire btn-installer" id="btn-installer" hidden>Installer l'application</button><span class="nom" id="entete-nom"></span><span class="statut statut-info" id="entete-norme"></span><span class="statut statut-info" id="entete-systeme"></span><span id="entete-etat"></span></div>
   </header>
 
   <nav class="onglets" role="tablist" aria-label="Sections">
@@ -341,6 +357,7 @@ table.tableau { width: 100%; font-size: 0.88rem; }
     </div>
     <div class="fil" id="fil" aria-live="polite"></div>
     <div class="indispo" id="assistant-indispo" hidden></div>
+    <div class="cle-api" id="cle-api" hidden></div>
     <form class="saisie" id="saisie">
       <div class="suggestions" id="suggestions"></div>
       <label class="champ"><span class="etiquette">Votre demande</span>
@@ -353,6 +370,7 @@ table.tableau { width: 100%; font-size: 0.88rem; }
   </aside>
 
   <main class="contenu">
+    <div class="bandeau bandeau-info bandeau-maj" id="bandeau-maj" role="status" hidden><span>Une nouvelle version de l'application est prête.</span><button type="button" class="btn btn-primaire" id="btn-maj">Mettre à jour</button></div>
     <!-- PROJET -->
     <section class="panneau" data-panneau="projet" aria-label="Projet">
       <div class="bloc">
@@ -404,6 +422,10 @@ table.tableau { width: 100%; font-size: 0.88rem; }
           <button type="button" class="btn" id="btn-vide-non">Garder le projet</button>
         </div>
         <p class="discret" id="fichier-message"></p>
+      </div>
+      <div class="bloc" id="bloc-installation">
+        <div class="bloc-titre"><h2>Installer et partager l'application</h2><span class="discret" id="version-app"></span></div>
+        <div id="installation-contenu"></div>
       </div>
     </section>
 

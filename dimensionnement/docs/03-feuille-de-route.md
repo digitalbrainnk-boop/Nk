@@ -50,9 +50,15 @@ gantt
     * résultats et comparaison des systèmes ;
     * note de calcul téléchargeable.
   * L'assistant Claude choisit la norme du pays, remplit le projet, calcule et explique.
-* 41 tests automatiques :
+  * L'application est installable et fonctionne hors connexion :
+    * application web installable (Android, iPhone, ordinateur) ;
+    * application Android (APK signé, moins de 1 Mo) ;
+    * fichier unique pour ordinateur.
+  * Hors de Claude, l'assistant fonctionne avec une clé API Anthropic personnelle.
+* 46 tests automatiques :
   * 18 sur le démonstrateur Python ;
-  * 23 sur le moteur de l'application : parité, conservation de l'énergie, systèmes, validation des saisies, cas types NEC et BS 7671, compensation, ligne aérienne, toutes les combinaisons norme × réseau × système.
+  * 23 sur le moteur de l'application : parité, conservation de l'énergie, systèmes, validation des saisies, cas types NEC et BS 7671, compensation, ligne aérienne, toutes les combinaisons norme × réseau × système ;
+  * 5 sur les versions distribuables : manifeste, cache hors connexion, polices, fichier unique, APK signé.
 * Documents : architecture, recueil d'équations, cette feuille de route.
 
 ---
@@ -98,7 +104,7 @@ gantt
 | Moteur documentaire | Ingestion de PDF, extraction structurée par IA avec provenance, contrôles physiques, validation humaine, catalogue certifié, recherche hybride avec citations. |
 | Agent IA | Assistant conversationnel (Claude) dont les outils sont le moteur, la recherche documentaire et le catalogue. Il ne publie aucun chiffre sans outil et cite chaque clause. |
 | Optimisation | Balayage des variantes PV × batterie × groupe : coût actualisé net (NPC), LCOE, CO₂, sensibilité au prix du carburant, contrainte de fiabilité (LLP). |
-| Plateforme | Rôles et organisations, mode hors-ligne (PWA), exports DXF, notifications, journal d'audit. |
+| Plateforme | Rôles et organisations, synchronisation des projets entre appareils, exports DXF, notifications, journal d'audit. Publication sur le Play Store et l'App Store. |
 
 **Critères d'acceptation :**
 

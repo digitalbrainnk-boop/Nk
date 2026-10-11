@@ -1253,6 +1253,13 @@ ${lignes.join("\n")}
     return `${base}${suffixe}.${extension}`;
   }
   async function proposerFichier(nom, contenu, type) {
+    if (window.AndroidApp && typeof window.AndroidApp.enregistrer === "function") {
+      try {
+        return window.AndroidApp.enregistrer(nom, contenu, type);
+      } catch (e) {
+        return "Enregistrement impossible sur ce téléphone.";
+      }
+    }
     const telechargements = await capacite("downloads");
     if (telechargements) {
       try {
@@ -1265,6 +1272,16 @@ ${lignes.join("\n")}
       }
     }
     if (!window.claude) {
+      // iPhone (application installée) : le téléchargement direct ne fonctionne pas, on passe par le partage
+      const fichier = typeof File === "function" ? new File([contenu], nom, { type }) : null;
+      if (fichier && estIos() && navigator.canShare && navigator.canShare({ files: [fichier] })) {
+        try {
+          await navigator.share({ files: [fichier], title: nom });
+          return `Fichier « ${nom} » partagé.`;
+        } catch (e) {
+          if (e && e.name === "AbortError") return "Partage annulé.";
+        }
+      }
       const url = URL.createObjectURL(new Blob([contenu], { type }));
       const a = document.createElement("a");
       a.href = url; a.download = nom; document.body.appendChild(a); a.click(); a.remove();
@@ -1279,6 +1296,127 @@ ${lignes.join("\n")}
     else if (type === "note" && etat.resultat) message = await proposerFichier(nomFichier("html", "-note-de-calcul"), noteHtmlAutonome(etat.resultat), "text/html");
     else if (type === "cables" && etat.resultat) message = await proposerFichier(nomFichier("csv", "-cables"), cablesCsv(etat.resultat), "text/csv");
     if (message && zoneMessage) zoneMessage.textContent = message;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Application installable : application web (PWA), application Android, partage
+  // ---------------------------------------------------------------------------
+
+  const LIEN_WEB = "https://digitalbrainnk-boop.github.io/Nk/dimensionnement/app/";
+  const LIEN_APK = "https://github.com/digitalbrainnk-boop/Nk/raw/ccr-efb31b50-bazt84/dimensionnement/dist/agent-dimensionnement.apk";
+  const installation = { invite: null, majDemandee: false };
+  const dansAndroid = () => Boolean(window.AndroidApp);
+  const estIos = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  const enModeApplication = () => window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+  const surLeWeb = () => (location.protocol === "https:" || location.hostname === "localhost") && !dansAndroid() && !window.claude;
+
+  function enregistrerServiceWorker() {
+    if (!("serviceWorker" in navigator) || !surLeWeb()) return;
+    const proposer = () => { $("#bandeau-maj").hidden = false; };
+    navigator.serviceWorker.register("sw.js").then((reg) => {
+      const surveiller = (sw) => sw && sw.addEventListener("statechange", () => {
+        if (sw.state === "installed" && navigator.serviceWorker.controller) proposer();
+      });
+      if (reg.waiting && navigator.serviceWorker.controller) proposer();
+      surveiller(reg.installing);
+      reg.addEventListener("updatefound", () => surveiller(reg.installing));
+      setInterval(() => reg.update().catch(() => {}), 60 * 60 * 1000);
+    }).catch(() => { /* sans service worker, l'application fonctionne en ligne */ });
+    navigator.serviceWorker.addEventListener("controllerchange", () => { if (installation.majDemandee) location.reload(); });
+    $("#btn-maj").addEventListener("click", () => {
+      installation.majDemandee = true;
+      navigator.serviceWorker.getRegistration().then((reg) => {
+        if (reg && reg.waiting) reg.waiting.postMessage("activer");
+        else location.reload();
+      });
+    });
+  }
+
+  function messagePartage() {
+    return `Agent de dimensionnement électrique (NF C 15-100, IEC, BS 7671, NEC) : bâtiment, solaire, batteries, groupe, réseau, lignes aériennes. Fonctionne sans connexion.\n\n`
+      + `Android : téléchargez et installez ${LIEN_APK}\n\niPhone, Android ou PC : ouvrez ${LIEN_WEB} puis « Installer » ou « Sur l'écran d'accueil ».`;
+  }
+  async function partagerApplication(zone) {
+    const texte = messagePartage();
+    try {
+      if (dansAndroid() && typeof window.AndroidApp.partagerTexte === "function") {
+        window.AndroidApp.partagerTexte("Agent de dimensionnement", texte);
+        return;
+      }
+      if (navigator.share) {
+        await navigator.share({ title: "Agent de dimensionnement électrique", text: texte });
+        return;
+      }
+      await navigator.clipboard.writeText(texte);
+      zone.textContent = "Message et liens copiés : collez-les dans WhatsApp ou un e-mail.";
+    } catch (e) {
+      if (e && e.name === "AbortError") return;
+      zone.textContent = "Copiez les liens ci-dessus pour les envoyer.";
+    }
+  }
+
+  function majInstallation() {
+    const bouton = $("#btn-installer");
+    const iosAInstaller = estIos() && surLeWeb() && !enModeApplication();
+    bouton.hidden = !(installation.invite || iosAInstaller);
+    $("#version-app").textContent = `Version ${M.VERSION}${dansAndroid() ? " · application Android" : enModeApplication() ? " · application installée" : ""}`;
+    let etat;
+    if (dansAndroid()) {
+      etat = `<p>${statutHtml("ok", "Installée")} Application Android installée sur ce téléphone. Elle fonctionne sans connexion ; seul l'assistant IA a besoin d'internet.</p>
+        <p class="discret">Mise à jour : téléchargez le nouveau fichier APK et installez-le par-dessus. Vos projets sont conservés.</p>`;
+    } else if (enModeApplication()) {
+      etat = `<p>${statutHtml("ok", "Installée")} Application installée sur cet appareil. Elle fonctionne sans connexion et se met à jour toute seule quand internet est disponible.</p>`;
+    } else if (installation.invite) {
+      etat = `<p>Ce navigateur peut installer l'application : une icône sera ajoutée à l'écran d'accueil, et l'application fonctionnera sans connexion.</p>
+        <div class="rangee"><button type="button" class="btn btn-primaire" data-installer>Installer l'application</button></div>`;
+    } else if (iosAInstaller) {
+      etat = `<p>Pour installer sur cet iPhone ou iPad : touchez <strong>Partager</strong> (carré avec une flèche) dans Safari, puis <strong>Sur l'écran d'accueil</strong>.</p>`;
+    } else if (window.claude) {
+      etat = `<p>Cette page est ouverte dans Claude. Pour installer l'application sur un téléphone, utilisez les liens ci-dessous.</p>`;
+    } else if (location.protocol === "file:") {
+      etat = `<p>Application ouverte depuis un fichier de l'ordinateur : tout fonctionne, sans installation. Pour un téléphone, utilisez les liens ci-dessous.</p>`;
+    } else {
+      etat = `<p>Dans Chrome ou Edge, menu ⋮ puis <strong>Installer l'application</strong> (ou « Ajouter à l'écran d'accueil »).</p>`;
+    }
+    $("#installation-contenu").innerHTML = `${etat}
+      <div class="deux-colonnes">
+        <div><h3>Téléphone Android</h3><ol class="etapes-install">
+          <li>Téléchargez <a href="${LIEN_APK}" target="_blank" rel="noopener">agent-dimensionnement.apk</a> (moins de 1 Mo).</li>
+          <li>Ouvrez le fichier ; si Android le demande, autorisez l'installation depuis cette source.</li>
+          <li>L'icône « Dimensionnement » apparaît avec vos applications.</li></ol></div>
+        <div><h3>iPhone, iPad ou ordinateur</h3><ol class="etapes-install">
+          <li>Ouvrez <a href="${LIEN_WEB}" target="_blank" rel="noopener">l'application web</a> (Safari sur iPhone, Chrome ou Edge ailleurs).</li>
+          <li>iPhone : Partager, puis « Sur l'écran d'accueil ». Ordinateur : bouton « Installer » de la barre d'adresse.</li>
+          <li>L'application s'ouvre ensuite depuis son icône, même sans connexion.</li></ol></div>
+      </div>
+      <h3>Envoyer l'application à un collègue</h3>
+      <div class="lien-copie">${echap(LIEN_APK)}</div>
+      <div class="lien-copie">${echap(LIEN_WEB)}</div>
+      <div class="rangee"><button type="button" class="btn btn-primaire" data-partager>Envoyer à un collègue</button></div>
+      <p class="discret" data-message-partage>Les projets restent sur chaque appareil. Pour transmettre un projet, exportez-le (.json) puis importez-le chez votre collègue.</p>`;
+  }
+  function brancherInstallation() {
+    window.addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); installation.invite = e; majInstallation(); });
+    window.addEventListener("appinstalled", () => { installation.invite = null; majInstallation(); });
+    const installer = async () => {
+      if (installation.invite) {
+        const invite = installation.invite;
+        installation.invite = null;
+        invite.prompt();
+        await invite.userChoice.catch(() => null);
+        majInstallation();
+      } else {
+        ouvrirOnglet("projet");
+        $("#bloc-installation").scrollIntoView({ block: "start" });
+      }
+    };
+    $("#btn-installer").addEventListener("click", installer);
+    $("#bloc-installation").addEventListener("click", (e) => {
+      if (e.target.closest("[data-installer]")) installer();
+      if (e.target.closest("[data-partager]")) partagerApplication($("[data-message-partage]"));
+    });
+    majInstallation();
+    enregistrerServiceWorker();
   }
 
   // ---------------------------------------------------------------------------
@@ -1493,6 +1631,10 @@ Règles :
     empty_completion: "Aucune réponse n'a été produite. Reformulez ou simplifiez la demande.",
     prompt_too_large: "La conversation est trop longue. Rechargez la page pour repartir d'une conversation vide.",
     tools_unavailable: "L'assistant ne peut pas agir sur le projet dans cette vue.",
+    cle_invalide: "La clé API est refusée par Anthropic : vérifiez-la dans les réglages de l'assistant.",
+    hors_ligne: "Pas de connexion internet : l'assistant en a besoin. Les calculs, eux, fonctionnent sans connexion.",
+    surcharge: "Le service Claude est momentanément surchargé. Réessayez dans un instant.",
+    sdk_absent: "Le module de l'assistant n'a pas pu être chargé. Rechargez l'application.",
   };
   const CODES_DEFINITIFS = ["not_granted", "sampling_disabled", "not_declared", "capability_disabled", "capability_removed"];
 
@@ -1512,14 +1654,164 @@ Règles :
     majSaisie(false);
   }
 
+  // --- Assistant hors de Claude : clé API Anthropic personnelle, enregistrée sur l'appareil ---
+
+  const CLE_API = "agent-dimensionnement:cle-api";
+  const MODELE_API = "claude-opus-5-5";
+  function lireCle() {
+    try { return localStorage.getItem(CLE_API) || ""; } catch (e) { return ""; }
+  }
+  function ecrireCle(cle) {
+    try {
+      if (cle) localStorage.setItem(CLE_API, cle);
+      else localStorage.removeItem(CLE_API);
+    } catch (e) { /* stockage indisponible : la clé ne sera pas retenue */ }
+  }
+  function rendreCleApi(message = "") {
+    const zone = $("#cle-api");
+    const cle = lireCle();
+    zone.hidden = false;
+    agent.indisponible = !cle;
+    $("#assistant-indispo").hidden = true;
+    zone.innerHTML = cle
+      ? `<div>${statutHtml("ok", "Assistant actif")} avec votre clé API Anthropic (…${echap(cle.slice(-4))}), modèle Claude Opus 5.5. Chaque demande est facturée sur le compte de la clé.</div>
+        <div class="rangee"><button type="button" class="btn btn-discret" data-cle="changer">Changer de clé</button><button type="button" class="btn btn-discret btn-danger" data-cle="supprimer">Retirer la clé de cet appareil</button></div>`
+      : `<div><strong>Assistant IA hors de Claude.</strong> Dans Claude, l'assistant est inclus. Ici, il fonctionne avec une clé API Anthropic personnelle (console.anthropic.com, rubrique API Keys). La clé reste enregistrée sur cet appareil et n'est envoyée qu'à Anthropic ; chaque demande est facturée sur son compte.</div>
+        <form class="rangee" data-cle-form><input type="password" autocomplete="off" spellcheck="false" placeholder="sk-ant-…" aria-label="Clé API Anthropic" data-cle-saisie>
+        <button type="submit" class="btn btn-primaire">Activer l'assistant</button></form>
+        <div class="discret">Sans clé, tous les onglets de calcul restent utilisables, hors connexion.</div>`;
+    if (message) zone.append(html(`<div class="discret">${echap(message)}</div>`));
+    $("#suggestions").hidden = !cle || $("#fil").childElementCount > 1;
+    majSaisie(false);
+  }
+  function brancherCleApi() {
+    const zone = $("#cle-api");
+    zone.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const cle = $("[data-cle-saisie]", zone).value.trim();
+      if (!/^sk-ant-[A-Za-z0-9_-]{20,}$/.test(cle)) {
+        rendreCleApi("Cette clé ne ressemble pas à une clé API Anthropic (elle commence par « sk-ant- »).");
+        return;
+      }
+      ecrireCle(cle);
+      rendreCleApi("Clé enregistrée sur cet appareil.");
+    });
+    zone.addEventListener("click", (e) => {
+      const b = e.target.closest("[data-cle]");
+      if (!b) return;
+      ecrireCle("");
+      rendreCleApi(b.dataset.cle === "supprimer" ? "Clé retirée de cet appareil." : "");
+    });
+  }
+
+  let promesseSdk = null;
+  function chargerSdk() {
+    if (window.AnthropicSDK) return Promise.resolve(window.AnthropicSDK);
+    if (!promesseSdk) {
+      promesseSdk = new Promise((ok, ko) => {
+        const script = document.createElement("script");
+        script.src = "vendor/anthropic-sdk.js";
+        script.onload = () => (window.AnthropicSDK ? ok(window.AnthropicSDK) : ko(new Error("sdk")));
+        script.onerror = () => { promesseSdk = null; ko(new Error("sdk")); };
+        document.head.append(script);
+      });
+    }
+    return promesseSdk;
+  }
+  const erreurCode = (code, texte = "") => Object.assign(new Error(code), { code, text: texte });
+
+  /**
+   * Même interface que la capacité « sample » de Claude : sample(entree, { tools, signal, onText }) → { text, truncated }.
+   * Boucle d'outils manuelle sur l'API Messages (SDK officiel, streaming) : le moteur exécute chaque outil dans la page.
+   */
+  function echantillonneurApi(cle) {
+    const sample = async (entree, options) => {
+      let Anthropic;
+      try {
+        ({ Anthropic } = await chargerSdk());
+      } catch (e) {
+        throw erreurCode("sdk_absent");
+      }
+      const client = new Anthropic({ apiKey: cle, dangerouslyAllowBrowser: true, maxRetries: 2 });
+      const [consignes, ...historique] = entree;
+      const messages = historique.map((m) => ({ role: m.role, content: m.content }));
+      const outils = options.tools || [];
+      const tools = outils.map((o) => ({ name: o.name, description: o.description,
+        input_schema: o.inputSchema || { type: "object", properties: {} }, eager_input_streaming: true }));
+      let texte = "";
+      let essaisJson = 0;
+      for (let tour = 0; tour < 16; tour++) {
+        const flux = client.beta.messages.stream({
+          model: MODELE_API,
+          max_tokens: 64000,
+          betas: ["server-side-fallback-2026-07-01"],
+          fallbacks: "default",
+          thinking: { type: "adaptive" },
+          output_config: { effort: "medium" },
+          system: consignes.content,
+          tools,
+          messages,
+        }, { signal: options.signal });
+        const debut = texte;
+        flux.on("text", (delta) => {
+          texte += delta;
+          if (options.onText) options.onText({ text: texte, delta });
+        });
+        let message;
+        try {
+          message = await flux.finalMessage();
+          essaisJson = 0;
+        } catch (e) {
+          if (e instanceof Anthropic.APIUserAbortError) throw erreurCode("cancelled", texte);
+          if (e instanceof Anthropic.AuthenticationError || e instanceof Anthropic.PermissionDeniedError) throw erreurCode("cle_invalide", texte);
+          if (e instanceof Anthropic.RateLimitError) throw erreurCode("rate_limited", texte);
+          if (e instanceof Anthropic.APIConnectionError) throw erreurCode(navigator.onLine === false ? "hors_ligne" : "surcharge", texte);
+          if (e instanceof Anthropic.InternalServerError) throw erreurCode("surcharge", texte);
+          if (e instanceof Anthropic.APIError) throw erreurCode("api", `${texte}\n\nErreur de l'API Claude : ${e.message}`);
+          // Entrée d'outil illisible pendant le streaming : on relance ce tour (deux fois au plus)
+          if (essaisJson++ < 2) { texte = debut; continue; }
+          throw e;
+        }
+        if (message.stop_reason === "refusal") throw erreurCode("refused", texte);
+        if (message.stop_reason === "pause_turn") {
+          messages.push({ role: "assistant", content: message.content });
+          continue;
+        }
+        const appels = message.content.filter((b) => b.type === "tool_use");
+        if (!appels.length) return { text: texte, truncated: message.stop_reason === "max_tokens" };
+        // Une entrée d'outil coupée par max_tokens n'est jamais exécutée
+        if (message.stop_reason === "max_tokens") return { text: texte, truncated: true };
+        messages.push({ role: "assistant", content: message.content });
+        const resultats = [];
+        for (const appel of appels) {
+          const outil = outils.find((o) => o.name === appel.name);
+          try {
+            if (!outil) throw new Error(`Outil inconnu : ${appel.name}`);
+            if (!appel.input || typeof appel.input !== "object" || Array.isArray(appel.input)) throw new Error("Entrée d'outil invalide : un objet JSON est attendu.");
+            const r = await outil.execute(appel.input, { signal: options.signal });
+            resultats.push({ type: "tool_result", tool_use_id: appel.id, content: JSON.stringify(r ?? null) });
+          } catch (e) {
+            resultats.push({ type: "tool_result", tool_use_id: appel.id, content: String((e && e.message) || e), is_error: true });
+          }
+        }
+        messages.push({ role: "user", content: resultats });
+        if (texte && !texte.endsWith("\n")) texte += "\n\n";
+      }
+      return { text: texte, truncated: true };
+    };
+    sample.limits = async () => ({ tools: { maxCount: 16 } });
+    return sample;
+  }
+
   async function envoyer(texte) {
     texte = texte.trim();
     if (!texte || agent.enCours || agent.indisponible) return;
     majSaisie(true);
-    const sample = await capacite("sample");
+    const sample = window.claude ? await capacite("sample") : lireCle() ? echantillonneurApi(lireCle()) : null;
     if (!sample) {
       majSaisie(false);
-      assistantIndisponible("L'assistant IA fonctionne lorsque l'application est ouverte dans Claude. Ici, tous les onglets de calcul restent utilisables.");
+      if (window.claude) assistantIndisponible("L'assistant IA n'est pas disponible dans cette vue. Tous les onglets de calcul restent utilisables.");
+      else rendreCleApi();
       return;
     }
     ajouterMessage("utilisateur", `<p>${echap(texte).replace(/\n/g, "<br>")}</p>`);
@@ -1679,9 +1971,13 @@ Règles :
       const b = e.target.closest("button");
       if (b) { $("#message").value = b.textContent; $("#message").focus(); }
     });
-    const absent = "L'assistant IA fonctionne lorsque l'application est ouverte dans Claude. Ici, tous les onglets de calcul restent utilisables.";
-    if (!window.claude) assistantIndisponible(absent);
-    else capacite("sample").then((sample) => { if (!sample) assistantIndisponible(absent); });
+    brancherInstallation();
+    if (!window.claude) {
+      brancherCleApi();
+      rendreCleApi();
+    } else {
+      capacite("sample").then((sample) => { if (!sample) assistantIndisponible("L'assistant IA n'est pas disponible dans cette vue. Tous les onglets de calcul restent utilisables."); });
+    }
   }
 
   demarrer();

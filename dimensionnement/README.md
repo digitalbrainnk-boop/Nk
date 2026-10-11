@@ -25,11 +25,22 @@ Le référentiel se choisit dans l'onglet Projet. Il fixe les tables, les règle
 
 Les autres normes citées : ISO 8528 (groupes), IEEE 1013/485 (batteries), IEC 62548 et NEC 690 (photovoltaïque), IEC 60831 et IEEE 519 (compensation et harmoniques).
 
+## Installer l'application
+
+L'application s'installe sur téléphone et ordinateur. Elle calcule **sans connexion internet**. Le guide pas à pas, à transmettre aux collègues, est [INSTALLATION.md](INSTALLATION.md).
+
+| Appareil | Comment |
+|---|---|
+| **Android** | Application à installer : [agent-dimensionnement.apk](https://github.com/digitalbrainnk-boop/Nk/raw/ccr-efb31b50-bazt84/dimensionnement/dist/agent-dimensionnement.apk) (moins de 1 Mo, Android 5.0 et plus). On peut l'envoyer par WhatsApp. |
+| **iPhone, iPad** | Application web : [digitalbrainnk-boop.github.io/Nk/dimensionnement/app](https://digitalbrainnk-boop.github.io/Nk/dimensionnement/app/), puis dans Safari Partager, « Sur l'écran d'accueil ». Le lien s'active une fois GitHub Pages activé, voir INSTALLATION.md. |
+| **Ordinateur** | Même lien web, puis « Installer » dans Chrome ou Edge. Sans internet : le fichier unique [`dist/agent-dimensionnement-hors-ligne.html`](dist/agent-dimensionnement-hors-ligne.html). |
+| **Dans Claude** | Lien de l'application publiée, avec l'assistant IA inclus. |
+
+Dans l'application installée, l'assistant IA fonctionne avec une clé API Anthropic personnelle, saisie dans son panneau. Elle reste sur l'appareil. Les exports (note, carnet de câbles, projet) se partagent directement par WhatsApp ou e-mail.
+
 ## Utiliser l'application
 
-**Sans rien installer :** ouvrez [`app/index.html`](app/index.html) dans un navigateur (Chrome, Edge, Firefox ; sur PC ou téléphone). Tous les calculs se font dans la page, même sans connexion internet.
-
-**Avec l'assistant IA :** ouvrez l'application publiée dans Claude (lien fourni dans la conversation). Vous décrivez l'installation avec vos mots, par exemple :
+Vous décrivez l'installation à l'assistant avec vos mots, par exemple :
 
 > « Maison de 4 chambres à Bouaké, 12 lampes, 2 climatiseurs, un congélateur et une pompe de 1 CV. Solaire avec groupe de secours. »
 >
@@ -57,8 +68,14 @@ Il ne calcule jamais lui-même : tous les chiffres viennent du moteur. Chaque mo
 
 | Élément | Rôle |
 |---|---|
-| [app/index.html](app/index.html), [app/app.js](app/app.js) | Interface de l'application et assistant IA |
+| [app/index.html](app/index.html), [app/app.js](app/app.js) | Interface de l'application et assistant IA (dans Claude ou avec une clé API) |
 | [app/moteur.js](app/moteur.js) | Moteur de calcul multi-normes (JavaScript, sans dépendance) |
+| [app/manifest.webmanifest](app/manifest.webmanifest), [app/sw.js](app/sw.js) | Application web installable : icônes, cache hors connexion, mises à jour |
+| [app/polices/](app/polices/), [app/vendor/](app/vendor/) | Polices embarquées (licence OFL) et SDK Anthropic pour le navigateur (licence MIT) |
+| [android/](android/) | Application Android : WebView native, partage des fichiers, script de construction sans SDK Android |
+| [dist/](dist/) | Versions distribuables : APK Android signé et fichier unique hors ligne |
+| [outils/construire.py](outils/construire.py) | Construit les versions distribuables (`--apk` pour l'Android) |
+| [INSTALLATION.md](INSTALLATION.md) | Guide d'installation pour les utilisateurs et le responsable de l'application |
 | [demo_hybride.py](demo_hybride.py) | Démonstrateur Python de référence (NF C 15-100, 400/230 V, en ligne de commande) |
 | [docs/01-architecture.md](docs/01-architecture.md) | Architecture cible : moteur, API, base de données, moteur documentaire et veille, agent IA |
 | [docs/02-equations-modules-A-B-C.md](docs/02-equations-modules-A-B-C.md) | Recueil des équations : modules A à E, comparaison des référentiels, source réseau |
@@ -68,10 +85,12 @@ Il ne calcule jamais lui-même : tous les chiffres viennent du moteur. Chaque mo
 ## Tests
 
 ```bash
-node --test dimensionnement/tests/*.test.mjs                                 # moteur de l'application (23 tests)
+node --test dimensionnement/tests/*.test.mjs                                 # moteur et versions distribuables (28 tests)
 cd dimensionnement && python3 -m unittest discover -s tests -v               # démonstrateur Python (18 tests)
 python3 demo_hybride.py --chimie plomb --autonomie 2                         # note de calcul en ligne de commande
 ```
+
+Après une modification de l'application, `python3 outils/construire.py --apk` met à jour le cache hors connexion, le fichier unique et l'APK. Les tests vérifient que ces versions sont cohérentes.
 
 Les tests du moteur vérifient notamment :
 * la parité exacte avec le démonstrateur Python en NF C 15-100 ;
