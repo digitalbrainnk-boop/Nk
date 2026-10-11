@@ -43,6 +43,10 @@ Clé Claude : https://console.anthropic.com → API Keys. Elle peut aussi être 
 
 Limites : Termux doit rester ouvert et le téléphone allumé (idéalement en charge) ; Facebook/Instagram demandent une adresse internet publique, donc un hébergement en ligne.
 
+### Utiliser un autre cerveau que Claude (Kie.ai, DeepSeek…)
+
+Réglages → **Cerveau de l'agent** → « Autre service compatible OpenAI », puis colle l'adresse de l'API (`…/chat/completions`), ta clé et le nom du modèle (ex. `deepseek-v4-flash`). Le bouton **Tester la connexion** vérifie que tout marche. Les photos ne sont pas vues par ces modèles (seulement signalées).
+
 ## Premiers pas (dans cet ordre)
 
 1. **Mon activité** : ton nom, ta description, et des fiches (tarifs, délais, étapes, paiement, FAQ).

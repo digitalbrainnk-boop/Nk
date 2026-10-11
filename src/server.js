@@ -26,7 +26,8 @@ import {
 } from "./db.js";
 import { bus } from "./events.js";
 import { approveDraft, handleIncoming, rejectDraft, schedule, sendManual } from "./router.js";
-import { buildStyleProfile } from "./agent.js";
+import { buildStyleProfile, friendlyError } from "./agent.js";
+import { chatText } from "./openai-compat.js";
 import { buildPairs, parseWhatsAppExport, participants } from "./learning.js";
 import { startTelegram, telegramStatus } from "./channels/telegram.js";
 import { maybeAutoStartWhatsApp, startWhatsApp, stopWhatsApp, whatsappStatus } from "./channels/whatsapp.js";
@@ -162,6 +163,7 @@ const SECRET_KEYS = [
   "facebook_app_secret",
   "wa_cloud_token",
   "transcription_api_key",
+  "llm_api_key",
   "admin_password",
 ];
 app.get("/api/settings", (req, res) => {
@@ -182,6 +184,18 @@ app.put("/api/settings", wrap(async (req, res) => {
   if ("telegram_token" in patch) await startTelegram();
   if ("facebook_page_token" in patch) resetMetaCache();
   res.json({ ok: true });
+}));
+
+app.post("/api/llm/test", wrap(async (req, res) => {
+  try {
+    const text = await chatText({
+      system: "Tu es un assistant. Réponds en français, en une phrase courte.",
+      turns: [{ role: "user", content: [{ type: "text", text: "Dis bonjour et confirme que tu fonctionnes." }] }],
+    });
+    res.json({ ok: true, text });
+  } catch (e) {
+    res.json({ ok: false, error: friendlyError(e) });
+  }
 }));
 
 // ---------- Connaissances ----------

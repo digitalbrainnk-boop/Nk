@@ -1,10 +1,20 @@
 // Le cerveau : construit le contexte (identité, style, connaissances, mémoire
-// du client, exemples réels) et demande à Claude la prochaine réponse.
+// du client, exemples réels) et demande la prochaine réponse à Claude ou à un
+// service compatible OpenAI (Kie.ai, DeepSeek...).
 import fs from "node:fs";
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { allExamples, getSettings, listKnowledge, listMessages } from "./db.js";
+import { LLMError, chatJSON } from "./openai-compat.js";
+
+// "claude" (par défaut) ou "openai" (service compatible : Kie.ai, DeepSeek...).
+const useCompat = () => getSettings().brain === "openai";
+
+const REPLY_SHAPE = `{"messages": ["bulle 1", "bulle 2"], "memory": "mémoire à jour sur ce client", "needs_human": false, "reason": ""}
+- messages : 1 à 4 messages courts à envoyer (tableau vide si aucune réponse n'est nécessaire)
+- memory : prénom, occasion, chanson demandée, budget, délais, étape de la commande, préférences (concis)
+- needs_human : true si le propriétaire doit intervenir ; reason : pourquoi (vide sinon)`;
 
 let client = null;
 let clientKey = null;
@@ -200,6 +210,22 @@ ${formatExamples(examples)}
 
 Écris maintenant la prochaine réponse au client.`;
 
+  if (useCompat()) {
+    const r = await chatJSON({
+      system: `${buildSystemPrompt(s)}\n\n${context}`,
+      turns,
+      schema: ReplySchema,
+      shape: REPLY_SHAPE,
+    });
+    if (!r.ok) {
+      // Le modèle n'a pas respecté le format : on garde son texte comme brouillon prudent.
+      const text = (r.text || "").trim();
+      return { messages: text ? [text] : [], memory: contact.memory, needs_human: true, reason: "Réponse de l'IA hors format, à vérifier." };
+    }
+    r.data.messages = r.data.messages.map((m) => m.trim()).filter(Boolean);
+    return r.data;
+  }
+
   const response = await getClient().beta.messages.parse({
     model: s.model || "claude-opus-5-5",
     max_tokens: 16000,
@@ -225,6 +251,12 @@ ${formatExamples(examples)}
 
 /** Traduit une erreur de l'API Claude en message clair pour le tableau de bord. */
 export function friendlyError(e) {
+  if (e instanceof LLMError) {
+    if (e.status === 401 || e.status === 403) return `Clé refusée par le service IA (Réglages → Cerveau) : ${e.message}`;
+    if (e.status === 402 || /credit|balance|insufficient/i.test(e.message)) return `Crédit épuisé sur le service IA : ${e.message}`;
+    if (e.status === 404) return `Adresse ou modèle introuvable (Réglages → Cerveau) : ${e.message}`;
+    return `Service IA : ${e.message}`;
+  }
   if (e instanceof Anthropic.AuthenticationError) {
     return "Clé Claude invalide : vérifie-la dans Réglages (console.anthropic.com → API Keys).";
   }
@@ -261,25 +293,33 @@ export async function buildStyleProfile(ownerName) {
       .describe("Faits sur l'activité repérés dans les échanges (prix, délais, process, moyens de paiement...)."),
   });
 
-  const stream = getClient().beta.messages.stream({
-    model: s.model || "claude-opus-5-5",
-    max_tokens: 32000,
-    betas: ["server-side-fallback-2026-07-01"],
-    fallbacks: "default",
-    output_config: { effort: "high", format: betaZodOutputFormat(Profile) },
-    messages: [
-      {
-        role: "user",
-        content: `Voici des échanges réels entre ${ownerName} (compositeur de chansons personnalisées) et ses clients.
+  const instructions = `Voici des échanges réels entre ${ownerName} (compositeur de chansons personnalisées) et ses clients.
 
 <echanges>
 ${corpus}
 </echanges>
 
 1. Rédige le profil d'écriture de ${ownerName} pour qu'une IA puisse répondre exactement comme lui : ton, tutoiement/vouvoiement, longueur et découpage des messages, salutations et formules récurrentes, emojis, ponctuation, fautes ou abréviations habituelles, manière de présenter ses offres, de relancer, de conclure. Cite des expressions typiques entre guillemets.
-2. Liste les faits sur l'activité que tu peux déduire (prix, délais, étapes, moyens de paiement, ce qui est inclus). Ne retiens que ce qui est clairement présent dans les échanges.`,
-      },
-    ],
+2. Liste les faits sur l'activité que tu peux déduire (prix, délais, étapes, moyens de paiement, ce qui est inclus). Ne retiens que ce qui est clairement présent dans les échanges.`;
+
+  if (useCompat()) {
+    const r = await chatJSON({
+      system: "Tu analyses des conversations commerciales et tu réponds en français.",
+      turns: [{ role: "user", content: [{ type: "text", text: instructions }] }],
+      schema: Profile,
+      shape: `{"style_profile": "portrait détaillé de la façon d'écrire", "business_facts": [{"title": "Tarifs", "content": "..."}]}`,
+    });
+    if (!r.ok) throw new Error("L'IA n'a pas renvoyé un profil lisible, réessaie.");
+    return r.data;
+  }
+
+  const stream = getClient().beta.messages.stream({
+    model: s.model || "claude-opus-5-5",
+    max_tokens: 32000,
+    betas: ["server-side-fallback-2026-07-01"],
+    fallbacks: "default",
+    output_config: { effort: "high", format: betaZodOutputFormat(Profile) },
+    messages: [{ role: "user", content: instructions }],
   });
   const final = await stream.finalMessage();
   const text = final.content.find((b) => b.type === "text")?.text;

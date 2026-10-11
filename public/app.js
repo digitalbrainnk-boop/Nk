@@ -446,7 +446,30 @@ function fillSettings() {
     else el.value = settings[el.id] ?? "";
   });
   if (settings.env?.anthropic_api_key && !settings.anthropic_api_key) $("#anthropic_api_key").placeholder = "Déjà fournie par le serveur (.env)";
+  toggleBrain();
 }
+function toggleBrain() {
+  const compat = $("#brain").value === "openai";
+  $("#brain-openai").classList.toggle("hidden", !compat);
+  $("#brain-claude").classList.toggle("hidden", compat);
+}
+$("#brain").addEventListener("change", toggleBrain);
+$("#llm-test").addEventListener("click", async () => {
+  const out = $("#llm-test-result");
+  // On enregistre d'abord ce qui est saisi pour tester la bonne configuration.
+  const patch = {};
+  for (const k of ["brain", "llm_url", "llm_api_key", "llm_model", "anthropic_api_key", "model"]) patch[k] = $(`#${k}`).value;
+  await saveSettings(patch);
+  fillSettings();
+  out.textContent = "Test en cours…";
+  if (patch.brain !== "openai") {
+    out.textContent = "Pour Claude, le test se fait dans l'onglet Tester.";
+    return;
+  }
+  const r = await api("/api/llm/test", { method: "POST" });
+  out.innerHTML = r.ok ? `✅ Ça marche ! Réponse : « ${esc(r.text)} »` : `<span class="error">❌ ${esc(r.error)}</span>`;
+});
+
 async function saveSettings(patch) {
   try {
     await api("/api/settings", { method: "PUT", body: patch });

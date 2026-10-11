@@ -91,6 +91,10 @@ export const DEFAULT_SETTINGS = {
   transcription_model: "whisper-large-v3",
   transcription_api_key: "",
   anthropic_api_key: "",
+  brain: "claude", // claude | openai (service compatible : Kie.ai, DeepSeek...)
+  llm_url: "",
+  llm_api_key: "",
+  llm_model: "",
 };
 
 export function getSettings() {

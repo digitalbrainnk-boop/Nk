@@ -156,7 +156,19 @@
     <!-- Réglages -->
     <section id="tab-settings" class="tab hidden">
       <div class="card narrow">
-        <h2>Intelligence</h2>
+        <h2>Cerveau de l'agent</h2>
+        <div class="row"><label>Service d'IA utilisé</label>
+          <select id="brain">
+            <option value="claude">Claude (Anthropic)</option>
+            <option value="openai">Autre service compatible OpenAI (Kie.ai, DeepSeek, OpenRouter…)</option>
+          </select></div>
+        <div id="brain-openai">
+          <p class="muted">Copie ces informations depuis la page du modèle sur ton service (ex : Kie.ai → DeepSeek V4 Flash → API).</p>
+          <div class="row"><label>Adresse de l'API (URL « chat/completions »)</label><input id="llm_url" placeholder="https://api.exemple.com/v1/chat/completions" /></div>
+          <div class="row"><label>Clé API</label><input id="llm_api_key" placeholder="sk-…" /></div>
+          <div class="row"><label>Nom du modèle</label><input id="llm_model" placeholder="deepseek-v4-flash" /></div>
+        </div>
+        <div id="brain-claude">
         <div class="row"><label>Clé API Anthropic (Claude)</label><input id="anthropic_api_key" placeholder="sk-ant-…" /></div>
         <div class="row"><label>Modèle</label>
           <select id="model">
@@ -166,6 +178,9 @@
           </select></div>
         <div class="row"><label>Niveau de réflexion</label>
           <select id="effort"><option value="low">Rapide</option><option value="medium">Normal</option><option value="high">Approfondi</option></select></div>
+        </div>
+        <div class="btns"><button id="llm-test">Tester la connexion</button></div>
+        <p id="llm-test-result" class="muted"></p>
         <h2>Comportement humain</h2>
         <div class="row"><label>Attendre que le client ait fini d'écrire (secondes)</label><input type="number" id="debounce_seconds" /></div>
         <div class="row"><label>Délai avant de répondre : min / max (secondes)</label>
@@ -178,7 +193,7 @@
         <div class="row"><label>Clé API transcription</label><input id="transcription_api_key" /></div>
         <div class="row"><label>Adresse du service</label><input id="transcription_url" /></div>
         <div class="row"><label>Modèle</label><input id="transcription_model" /></div>
-        <button class="primary save-settings" data-keys="anthropic_api_key,model,effort,debounce_seconds,min_reply_delay_seconds,max_reply_delay_seconds,typing_chars_per_second,owner_takeover_hours,history_messages,transcription_api_key,transcription_url,transcription_model">Enregistrer</button>
+        <button class="primary save-settings" data-keys="brain,llm_url,llm_api_key,llm_model,anthropic_api_key,model,effort,debounce_seconds,min_reply_delay_seconds,max_reply_delay_seconds,typing_chars_per_second,owner_takeover_hours,history_messages,transcription_api_key,transcription_url,transcription_model">Enregistrer</button>
       </div>
     </section>
   </div>
