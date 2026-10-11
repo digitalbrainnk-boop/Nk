@@ -31,10 +31,15 @@ gantt
 
 ---
 
-## Phase 0 — Démonstrateur (fait)
+## Phase 0 — Démonstrateur et application prototype (fait)
 
 * [`demo_hybride.py`](../demo_hybride.py) : chaîne complète bilan → PV → batteries → onduleur → groupe → simulation 8760 h → câbles et protections, avec note de calcul justifiée.
-* 18 tests automatiques : valeurs publiées et invariants physiques.
+* [`app/`](../app/) : **application de dimensionnement avec son agent IA**.
+  * Le moteur JavaScript donne les mêmes résultats que le démonstrateur Python ; un test le vérifie.
+  * Trois types de système : hybride, solaire autonome, groupe seul.
+  * Onglets : projet, charges avec bibliothèque d'appareils, choix techniques, résultats et comparaison des systèmes, note de calcul téléchargeable.
+  * L'assistant Claude remplit le projet, calcule et explique.
+* 26 tests automatiques : 18 sur le démonstrateur Python, 8 sur le moteur de l'application (parité, conservation de l'énergie, trois systèmes, validation des saisies).
 * Documents : architecture, recueil d'équations, cette feuille de route.
 
 ---
@@ -101,7 +106,7 @@ gantt
 | Veille | Surveillance automatique des éditions de normes et des révisions de fiches, impact signalé sur les projets existants, procédure de mise à jour du référentiel. |
 | Conformité | Workflow de validation avec le bureau de contrôle (commentaires, réserves, levée), signature électronique des notes, archivage à valeur probante. |
 | Intégrations | API publique, devis et ERP, maquette BIM (IFC), suivi après mise en service (production réelle comparée à la prévision). |
-| Terrain | Accès à l'agent depuis WhatsApp ou Telegram pour les techniciens, en réutilisant l'agent multicanal déjà présent dans ce dépôt. |
+| Terrain | Application installable sur téléphone (PWA) avec relevé de site : photos des plaques signalétiques lues par l'assistant, coordonnées GPS, mode hors-ligne. |
 
 ---
 

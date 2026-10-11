@@ -1,0 +1,410 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Agent de dimensionnement électrique</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Mise en page : poste de travail d'ingénieur — assistant à gauche (colonne fixe sur grand écran, onglet sur téléphone),
+   espace de calcul à droite organisé comme un dossier technique (projet → charges → choix → résultats → note). */
+:root {
+  --bg: #f2f4f6;
+  --surface: #ffffff;
+  --surface-2: #f7f8fa;
+  --ink: #16202a;
+  --ink-2: #475461;
+  --muted: #6f7b87;
+  --line: #d9dee4;
+  --line-fort: #b9c1ca;
+  --accent: #a94b1c;           /* cuivre des conducteurs */
+  --accent-ink: #ffffff;
+  --accent-doux: #f6e6dc;
+  --ok: #0b7d0b;
+  --ok-doux: #e3f3e3;
+  --attention: #9a6400;
+  --attention-doux: #fdf0d2;
+  --nc: #c0392f;
+  --nc-doux: #fbe4e2;
+  --info: #43617d;
+  --info-doux: #e5edf4;
+  --serie-conso: #2a78d6;
+  --serie-pv: #eb6834;
+  --serie-ge: #1baf7a;
+  --serie-neutre: #475461;
+  --grille: #e6e9ed;
+  --axe: #b9c1ca;
+  --phase-l1: #7a4a2b;         /* IEC 60445 : L1 marron, L2 noir, L3 gris */
+  --phase-l2: #1b1b1b;
+  --phase-l3: #8c939a;
+  --f-titre: "Barlow Semi Condensed", "Arial Narrow", "Roboto Condensed", system-ui, sans-serif;
+  --f-texte: "Barlow", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-donnee: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --rayon: 8px;
+  --ombre: 0 1px 2px rgba(16, 24, 32, 0.06), 0 4px 16px rgba(16, 24, 32, 0.05);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1318; --surface: #161c23; --surface-2: #1b232b; --ink: #e7ebee; --ink-2: #b3bdc6; --muted: #86929d;
+    --line: #2a333d; --line-fort: #3c4752; --accent: #e08650; --accent-ink: #1a0f08; --accent-doux: #3a2418;
+    --ok: #3dbb3d; --ok-doux: #15301a; --attention: #f2b33d; --attention-doux: #3a2d10; --nc: #ef6b62; --nc-doux: #3d1c1a;
+    --info: #8fb2d3; --info-doux: #1a2836; --serie-conso: #3987e5; --serie-pv: #d95926; --serie-ge: #199e70;
+    --serie-neutre: #b3bdc6; --grille: #222b34; --axe: #3c4752;
+    --ombre: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 16px rgba(0, 0, 0, 0.25);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e1318; --surface: #161c23; --surface-2: #1b232b; --ink: #e7ebee; --ink-2: #b3bdc6; --muted: #86929d;
+  --line: #2a333d; --line-fort: #3c4752; --accent: #e08650; --accent-ink: #1a0f08; --accent-doux: #3a2418;
+  --ok: #3dbb3d; --ok-doux: #15301a; --attention: #f2b33d; --attention-doux: #3a2d10; --nc: #ef6b62; --nc-doux: #3d1c1a;
+  --info: #8fb2d3; --info-doux: #1a2836; --serie-conso: #3987e5; --serie-pv: #d95926; --serie-ge: #199e70;
+  --serie-neutre: #b3bdc6; --grille: #222b34; --axe: #3c4752;
+  --ombre: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 16px rgba(0, 0, 0, 0.25);
+  color-scheme: dark;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--f-texte); font-size: 15px; line-height: 1.5;
+  -webkit-text-size-adjust: 100%;
+}
+h1, h2, h3, h4 { font-family: var(--f-titre); line-height: 1.15; margin: 0; text-wrap: balance; letter-spacing: 0.005em; }
+h2 { font-size: 1.35rem; font-weight: 700; }
+h3 { font-size: 1.08rem; font-weight: 600; }
+p { margin: 0; }
+a { color: var(--accent); }
+table { font-size: inherit; border-collapse: collapse; }
+button, input, select, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.donnee, td.n, .tuile-valeur, .mono { font-family: var(--f-donnee); font-variant-numeric: tabular-nums; }
+.discret { color: var(--muted); font-size: 0.86rem; }
+.etiquette { font-family: var(--f-titre); font-weight: 600; font-size: 0.78rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+
+/* ---------- Structure ---------- */
+.app {
+  display: grid; grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: "entete" "onglets" "contenu";
+  padding-inline: 16px; padding-block: 12px 40px; gap: 12px; max-width: 1480px; margin: 0 auto;
+}
+.entete { grid-area: entete; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 20px; }
+.marque { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.marque svg { flex: none; color: var(--accent); }
+.marque strong { display: block; font-family: var(--f-titre); font-size: 1.32rem; font-weight: 700; line-height: 1.1; }
+.marque span { display: block; color: var(--muted); font-size: 0.85rem; }
+.etat-projet { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
+.etat-projet .nom { font-weight: 600; overflow-wrap: anywhere; }
+
+.onglets {
+  grid-area: onglets; display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none;
+  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg);
+  border-bottom: 1px solid var(--line); padding-top: 4px;
+}
+.onglets::-webkit-scrollbar { display: none; }
+.onglets button {
+  flex: none; border: 0; background: none; padding: 9px 12px 10px; cursor: pointer; color: var(--ink-2);
+  font-family: var(--f-titre); font-weight: 600; font-size: 1rem; border-bottom: 3px solid transparent; margin-bottom: -1px;
+}
+.onglets button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+.onglets button:hover { color: var(--ink); }
+.compteur { display: inline-block; min-width: 1.4em; padding: 0 5px; margin-left: 4px; border-radius: 9px; font-size: 0.75rem;
+  font-family: var(--f-donnee); background: var(--nc); color: var(--surface); text-align: center; }
+.compteur[data-niveau="attention"] { background: var(--attention); }
+
+.contenu { grid-area: contenu; min-width: 0; }
+.panneau { display: none; flex-direction: column; gap: 16px; min-width: 0; }
+.app[data-onglet="projet"] [data-panneau="projet"],
+.app[data-onglet="charges"] [data-panneau="charges"],
+.app[data-onglet="choix"] [data-panneau="choix"],
+.app[data-onglet="resultats"] [data-panneau="resultats"],
+.app[data-onglet="note"] [data-panneau="note"] { display: flex; }
+
+.assistant { display: none; min-width: 0; }
+.app[data-onglet="assistant"] .assistant { display: flex; grid-area: contenu; }
+
+@media (min-width: 1180px) {
+  .app { grid-template-columns: 400px minmax(0, 1fr); grid-template-areas: "entete entete" "assistant onglets" "assistant contenu"; column-gap: 24px; }
+  .assistant, .app[data-onglet="assistant"] .assistant {
+    display: flex; grid-area: assistant; position: sticky; top: calc(env(safe-area-inset-top, 0px) + 12px);
+    align-self: start; height: calc(100vh - 110px); min-height: 520px;
+  }
+  .onglets [data-onglet="assistant"] { display: none; }
+}
+
+/* ---------- Blocs et formulaires ---------- */
+.bloc { background: var(--surface); border: 1px solid var(--line); border-radius: var(--rayon); padding: 18px; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.bloc-titre { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 12px; }
+.grille-champs { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
+.champ { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.champ > span:first-child { font-size: 0.84rem; color: var(--ink-2); font-weight: 500; }
+.champ small { color: var(--muted); font-size: 0.78rem; line-height: 1.35; }
+input[type="text"], input[type="number"], input:not([type]), select, textarea {
+  width: 100%; min-width: 0; border: 1px solid var(--line-fort); border-radius: 6px; background: var(--surface);
+  padding: 7px 9px; font-size: 0.95rem;
+}
+input.donnee { font-size: 0.9rem; }
+input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
+input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); width: 16px; height: 16px; margin: 0; }
+.case { display: inline-flex; align-items: center; gap: 7px; font-size: 0.9rem; cursor: pointer; }
+.unite { font-family: var(--f-donnee); font-size: 0.78rem; color: var(--muted); }
+fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+details.avance > summary { cursor: pointer; color: var(--ink-2); font-size: 0.88rem; font-weight: 500; }
+details.avance[open] > summary { margin-bottom: 10px; }
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px; border-radius: 6px; padding: 8px 14px;
+  border: 1px solid var(--line-fort); background: var(--surface); cursor: pointer; font-weight: 500; font-size: 0.92rem; white-space: nowrap;
+}
+.btn:hover { border-color: var(--ink-2); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-primaire { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+.btn-primaire:hover { filter: brightness(1.08); border-color: var(--accent); }
+.btn-discret { border-color: transparent; background: none; color: var(--ink-2); padding: 6px 8px; }
+.btn-discret:hover { color: var(--ink); background: var(--surface-2); border-color: transparent; }
+.btn-danger:hover { color: var(--nc); }
+.rangee { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+
+/* Choix du système */
+.systemes { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
+.systeme { position: relative; display: flex; gap: 10px; align-items: flex-start; padding: 12px; border: 1px solid var(--line-fort);
+  border-radius: var(--rayon); cursor: pointer; background: var(--surface); }
+.systeme:has(input:checked) { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); background: var(--accent-doux); }
+.systeme input { margin-top: 3px; }
+.systeme strong { display: block; font-family: var(--f-titre); font-size: 1.02rem; }
+.systeme span { display: block; font-size: 0.84rem; color: var(--ink-2); }
+.mois-grille { display: grid; grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); gap: 8px; }
+
+/* ---------- Circuits ---------- */
+.resume-charges { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 0.9rem; color: var(--ink-2); }
+.resume-charges b { color: var(--ink); font-family: var(--f-donnee); font-weight: 500; }
+.circuit { background: var(--surface); border: 1px solid var(--line); border-radius: var(--rayon); display: flex; flex-direction: column; min-width: 0; }
+.circuit-tete { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+.circuit-tete input.nom-circuit { flex: 1 1 200px; font-family: var(--f-titre); font-weight: 600; font-size: 1.05rem; border-color: transparent; background: var(--surface-2); }
+.circuit-tete select { width: auto; }
+.circuit-corps { padding: 12px 14px; display: flex; flex-direction: column; gap: 12px; }
+.circuit-params { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: flex-end; }
+.circuit-params .champ { width: 112px; }
+.circuit-chiffres { font-size: 0.84rem; color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.circuit-chiffres b { color: var(--ink-2); font-family: var(--f-donnee); font-weight: 500; }
+.liste-circuits { display: flex; flex-direction: column; gap: 16px; }
+.recepteur { display: grid; grid-template-columns: minmax(150px, 2.2fr) 64px 92px 72px 80px 64px minmax(150px, 2fr) 34px; gap: 8px; align-items: end;
+  padding: 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface-2); }
+.recepteur .champ > span:first-child { font-size: 0.74rem; }
+.recepteur-moteur { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
+.recepteur-moteur select { width: auto; }
+@media (max-width: 860px) {
+  .recepteur { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .recepteur .r-nom { grid-column: 1 / 6; }
+  .recepteur .r-suppr { grid-column: 6 / 7; }
+  .recepteur .r-qte { grid-column: 1 / 3; }
+  .recepteur .r-p { grid-column: 3 / 7; }
+  .recepteur .r-cos { grid-column: 1 / 3; }
+  .recepteur .r-eta { grid-column: 3 / 5; }
+  .recepteur .r-ku { grid-column: 5 / 7; }
+  .recepteur .r-plages { grid-column: 1 / -1; }
+}
+input[aria-invalid="true"] { border-color: var(--nc); background: var(--nc-doux); }
+.tableau td.critique { font-weight: 600; color: var(--accent); }
+
+/* ---------- Résultats ---------- */
+.bandeau { border-radius: var(--rayon); padding: 12px 14px; display: flex; gap: 10px; align-items: flex-start; border: 1px solid; }
+.bandeau ul { margin: 4px 0 0; padding-left: 18px; }
+.bandeau-nc { background: var(--nc-doux); border-color: var(--nc); }
+.bandeau-info { background: var(--info-doux); border-color: var(--line); }
+.tuiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
+.tuile { background: var(--surface); border: 1px solid var(--line); border-radius: var(--rayon); padding: 14px; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.tuile-valeur { font-size: 1.55rem; font-weight: 500; line-height: 1.15; font-variant-numeric: normal; }
+.tuile-valeur small { font-size: 0.85rem; color: var(--muted); margin-left: 3px; }
+.tuile-detail { font-size: 0.84rem; color: var(--ink-2); overflow-wrap: anywhere; }
+
+.statut { display: inline-flex; align-items: center; gap: 5px; border-radius: 999px; padding: 2px 9px 2px 3px; font-size: 0.78rem; font-weight: 600; white-space: nowrap; }
+.statut i { font-style: normal; display: inline-grid; place-items: center; width: 17px; height: 17px; border-radius: 50%; font-size: 0.72rem; color: var(--surface); }
+.statut-ok { background: var(--ok-doux); color: var(--ok); } .statut-ok i { background: var(--ok); }
+.statut-attention { background: var(--attention-doux); color: var(--attention); } .statut-attention i { background: var(--attention); }
+.statut-nc { background: var(--nc-doux); color: var(--nc); } .statut-nc i { background: var(--nc); }
+.statut-info { background: var(--info-doux); color: var(--info); } .statut-info i { background: var(--info); }
+.verifs { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.verifs li { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 10px; align-items: start; font-size: 0.92rem; }
+.verifs li .ref { color: var(--muted); font-family: var(--f-donnee); font-size: 0.78rem; }
+@media (max-width: 520px) { .verifs li { grid-template-columns: minmax(0, 1fr); gap: 3px; } }
+
+.deux-colonnes { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 16px; }
+.defile { overflow-x: auto; max-width: 100%; }
+table.tableau { width: 100%; font-size: 0.88rem; }
+.tableau th { text-align: left; font-family: var(--f-titre); font-weight: 600; font-size: 0.8rem; letter-spacing: 0.04em; text-transform: uppercase;
+  color: var(--muted); padding: 6px 8px; border-bottom: 1px solid var(--line-fort); white-space: nowrap; }
+.tableau td { padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.tableau td.n, .tableau th.n { text-align: right; white-space: nowrap; }
+.tableau tr.actuel td { background: var(--accent-doux); }
+.tableau tr.actuel td:first-child { font-weight: 600; }
+.phase { display: inline-block; min-width: 28px; text-align: center; border-radius: 4px; padding: 0 5px; font-size: 0.76rem; font-family: var(--f-donnee);
+  box-shadow: 0 0 0 1px var(--line-fort); }
+.phase-L1 { background: var(--phase-l1); color: #ffffff; }
+.phase-L2 { background: var(--phase-l2); color: #ffffff; }
+.phase-L3 { background: var(--phase-l3); color: #111111; }
+.phase-tri { background: var(--surface-2); color: var(--ink); }
+
+/* Graphiques */
+.graphique { position: relative; }
+.graphique svg { display: block; width: 100%; height: auto; overflow: visible; }
+.graphique .axe-texte { fill: var(--muted); font-family: var(--f-donnee); font-size: 11px; }
+.graphique .ref-texte { fill: var(--ink-2); font-family: var(--f-texte); font-size: 11px; }
+.legende { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 0.85rem; color: var(--ink-2); }
+.legende span { display: inline-flex; align-items: center; gap: 6px; }
+.legende i { display: inline-block; width: 14px; height: 4px; border-radius: 2px; }
+.legende i.carre { height: 10px; width: 10px; border-radius: 2px; }
+.bulle-info { position: absolute; pointer-events: none; z-index: 3; background: var(--surface); border: 1px solid var(--line-fort); border-radius: 6px;
+  box-shadow: var(--ombre); padding: 7px 9px; font-size: 0.8rem; min-width: 150px; }
+.bulle-info b { display: block; font-family: var(--f-titre); margin-bottom: 2px; }
+.bulle-info div { display: flex; justify-content: space-between; gap: 12px; font-family: var(--f-donnee); }
+.bulle-info div span:first-child { font-family: var(--f-texte); color: var(--ink-2); }
+
+/* Note de calcul */
+.note-rubrique table { width: 100%; }
+.note-rubrique td.lib { color: var(--ink-2); }
+.note-rubrique td.val { font-family: var(--f-donnee); text-align: right; white-space: nowrap; }
+.note-rubrique td.val.long { white-space: normal; text-align: left; font-family: var(--f-texte); }
+.note-rubrique td.r { width: 46px; text-align: right; color: var(--muted); font-family: var(--f-donnee); font-size: 0.78rem; }
+.references { margin: 0; padding-left: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; font-size: 0.86rem; }
+.references b { font-family: var(--f-donnee); font-weight: 500; color: var(--muted); margin-right: 6px; }
+
+/* ---------- Assistant ---------- */
+.assistant { flex-direction: column; background: var(--surface); border: 1px solid var(--line); border-radius: var(--rayon); overflow: hidden; min-height: 70vh; }
+.assistant-tete { padding: 14px 16px 12px; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 4px; }
+.assistant-tete h2 { font-size: 1.15rem; display: flex; align-items: center; gap: 8px; }
+.fil { flex: 1; overflow-y: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; }
+.msg { max-width: 92%; padding: 10px 12px; border-radius: 10px; font-size: 0.93rem; overflow-wrap: anywhere; }
+.msg p + p, .msg p + ul, .msg ul + p { margin-top: 7px; }
+.msg ul { margin: 0; padding-left: 18px; }
+.msg-utilisateur { align-self: flex-end; background: var(--accent-doux); border: 1px solid var(--line); }
+.msg-agent { align-self: flex-start; background: var(--surface-2); border: 1px solid var(--line); }
+.msg-agent.en-cours { color: var(--ink-2); }
+.msg .actions-msg { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; }
+.etapes { list-style: none; margin: 0 0 6px; padding: 0; display: flex; flex-direction: column; gap: 2px; font-size: 0.8rem; color: var(--muted); }
+.etapes li::before { content: "▸ "; color: var(--accent); }
+.suggestions { display: flex; flex-wrap: wrap; gap: 6px; }
+.suggestions button { border: 1px solid var(--line-fort); background: var(--surface); border-radius: 999px; padding: 5px 11px; font-size: 0.83rem; cursor: pointer; text-align: left; }
+.suggestions button:hover { border-color: var(--accent); }
+.saisie { border-top: 1px solid var(--line); padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.saisie textarea { resize: vertical; min-height: 64px; max-height: 220px; }
+.saisie .rangee { justify-content: space-between; }
+.indispo { padding: 12px; margin: 12px; border-radius: 6px; background: var(--info-doux); color: var(--ink-2); font-size: 0.88rem; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .msg { animation: apparait 0.18s ease-out; }
+  @keyframes apparait { from { transform: translateY(4px); opacity: 0.4; } to { transform: none; opacity: 1; } }
+}
+</style>
+</head>
+<body>
+<div class="app" id="app" data-onglet="resultats">
+  <header class="entete">
+    <div class="marque">
+      <svg width="34" height="34" viewBox="0 0 34 34" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+        <path d="M17 2v8M17 24v8M17 10l7 13"/><path d="M13.5 6.5l7 7M20.5 6.5l-7 7" stroke-width="1.8"/><circle cx="17" cy="24" r="1.6" fill="currentColor" stroke="none"/>
+      </svg>
+      <div><strong>Agent de dimensionnement</strong><span>Bâtiment · Solaire · Batteries · Groupe électrogène</span></div>
+    </div>
+    <div class="etat-projet"><span class="nom" id="entete-nom"></span><span class="statut statut-info" id="entete-systeme"></span><span id="entete-etat"></span></div>
+  </header>
+
+  <nav class="onglets" role="tablist" aria-label="Sections">
+    <button type="button" role="tab" data-onglet="assistant">Assistant IA</button>
+    <button type="button" role="tab" data-onglet="projet">Projet</button>
+    <button type="button" role="tab" data-onglet="charges">Charges</button>
+    <button type="button" role="tab" data-onglet="choix">Choix techniques</button>
+    <button type="button" role="tab" data-onglet="resultats">Résultats<span class="compteur" id="compteur-verifs" hidden></span></button>
+    <button type="button" role="tab" data-onglet="note">Note de calcul</button>
+  </nav>
+
+  <aside class="assistant" id="assistant" aria-label="Assistant de dimensionnement">
+    <div class="assistant-tete">
+      <h2>Assistant de dimensionnement</h2>
+      <p class="discret">Décrivez votre installation avec vos mots. L'assistant remplit le projet, lance le calcul et vous explique les résultats.</p>
+    </div>
+    <div class="fil" id="fil" aria-live="polite"></div>
+    <div class="indispo" id="assistant-indispo" hidden></div>
+    <form class="saisie" id="saisie">
+      <div class="suggestions" id="suggestions"></div>
+      <label class="champ"><span class="etiquette">Votre demande</span>
+        <textarea id="message" rows="3" placeholder="Ex. : Maison de 4 chambres à Bouaké, 12 lampes, 2 climatiseurs, un congélateur et une pompe de 1 CV. Je veux du solaire avec un groupe de secours."></textarea>
+      </label>
+      <div class="rangee"><span class="discret" id="assistant-etat"></span>
+        <span class="rangee"><button type="button" class="btn" id="btn-stop" hidden>Arrêter</button><button type="submit" class="btn btn-primaire" id="btn-envoyer">Envoyer</button></span>
+      </div>
+    </form>
+  </aside>
+
+  <main class="contenu">
+    <!-- PROJET -->
+    <section class="panneau" data-panneau="projet" aria-label="Projet">
+      <div class="bloc">
+        <div class="bloc-titre"><h2>Projet</h2><span class="discret">Le projet est enregistré dans ce navigateur.</span></div>
+        <label class="champ"><span>Nom du projet</span><input type="text" id="p-nom" data-chemin="nom" data-type="texte"></label>
+        <fieldset class="champ"><span>Type de système</span>
+          <div class="systemes" id="systemes">
+            <label class="systeme"><input type="radio" name="systeme" id="sys-hybride" value="hybride"><div><strong>Hybride</strong><span>Solaire + batteries, groupe électrogène d'appoint pour les jours sans soleil.</span></div></label>
+            <label class="systeme"><input type="radio" name="systeme" id="sys-solaire" value="solaire"><div><strong>Solaire autonome</strong><span>Solaire + batteries uniquement. Le calcul mesure le délestage éventuel.</span></div></label>
+            <label class="systeme"><input type="radio" name="systeme" id="sys-groupe" value="groupe"><div><strong>Groupe électrogène seul</strong><span>Groupe en continu ou en secours, sans solaire ni batteries.</span></div></label>
+          </div>
+        </fieldset>
+      </div>
+      <div class="bloc">
+        <div class="bloc-titre"><h2>Site</h2><span class="discret">Coordonnées en degrés décimaux : latitude Nord positive, longitude Est positive.</span></div>
+        <div class="grille-champs" id="champs-site"></div>
+        <div class="champ">
+          <span>Irradiation horizontale moyenne par mois <span class="unite">kWh/m²/j</span> (facultatif)</span>
+          <small>Sans ces valeurs, le calcul prend un ensoleillement forfaitaire prudent (indice de clarté 0,5). Récupérez les valeurs du site sur
+            <a href="https://re.jrc.ec.europa.eu/pvg_tools/fr/" target="_blank" rel="noopener">PVGIS</a> ou
+            <a href="https://power.larc.nasa.gov/data-access-viewer/" target="_blank" rel="noopener">NASA POWER</a>.</small>
+          <div class="mois-grille" id="champs-ghi"></div>
+          <div class="rangee"><button type="button" class="btn btn-discret" id="ghi-effacer">Effacer les 12 valeurs</button></div>
+        </div>
+      </div>
+      <div class="bloc">
+        <h2>Fichier du projet</h2>
+        <div class="rangee">
+          <button type="button" class="btn" id="btn-exemple">Charger l'exemple</button>
+          <button type="button" class="btn" id="btn-vide">Nouveau projet vide</button>
+          <label class="btn" for="fichier-import">Importer un projet (.json)</label>
+          <input type="file" id="fichier-import" accept=".json,application/json" hidden>
+          <button type="button" class="btn" id="btn-exporter">Exporter le projet (.json)</button>
+        </div>
+        <div class="rangee" id="confirmation-vide" hidden>
+          <span>Effacer tous les circuits et repartir d'un projet vide ?</span>
+          <button type="button" class="btn btn-primaire" id="btn-vide-oui">Effacer</button>
+          <button type="button" class="btn" id="btn-vide-non">Garder le projet</button>
+        </div>
+        <p class="discret" id="fichier-message"></p>
+      </div>
+    </section>
+
+    <!-- CHARGES -->
+    <section class="panneau" data-panneau="charges" aria-label="Charges">
+      <div class="bloc">
+        <div class="bloc-titre"><h2>Bilan des charges</h2><button type="button" class="btn btn-primaire" id="btn-ajout-circuit">Ajouter un circuit</button></div>
+        <div class="resume-charges" id="resume-charges"></div>
+        <p class="discret">Un circuit regroupe des récepteurs alimentés par le même départ. Plages horaires : « 18-23 » (100 %), « 8-17 60% », plusieurs plages séparées par « ; ». Les plages peuvent passer minuit (« 22-6 »). Choisissez un appareil dans la liste pour pré-remplir des valeurs typiques, puis ajustez selon la plaque signalétique.</p>
+      </div>
+      <div id="liste-circuits" class="liste-circuits"></div>
+      <datalist id="bibliotheque"></datalist>
+    </section>
+
+    <!-- CHOIX TECHNIQUES -->
+    <section class="panneau" data-panneau="choix" aria-label="Choix techniques" id="choix"></section>
+
+    <!-- RÉSULTATS -->
+    <section class="panneau" data-panneau="resultats" aria-label="Résultats" id="resultats"></section>
+
+    <!-- NOTE -->
+    <section class="panneau" data-panneau="note" aria-label="Note de calcul" id="note"></section>
+  </main>
+</div>
+<script src="moteur.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

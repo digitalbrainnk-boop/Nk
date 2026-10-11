@@ -24,8 +24,7 @@ Le démonstrateur [`demo_hybride.py`](../demo_hybride.py) applique déjà les pr
 ```mermaid
 flowchart LR
   subgraph Clients
-    UI["Application web React + TypeScript<br/>PWA hors-ligne"]
-    TERRAIN["Agent terrain<br/>(WhatsApp / Telegram)"]
+    UI["Application de dimensionnement<br/>web, téléphone, hors-ligne"]
   end
 
   subgraph API["API — FastAPI, OpenAPI 3.1"]
@@ -64,7 +63,7 @@ flowchart LR
   EXT["Sources externes :<br/>PVGIS · NASA POWER · Meteonorm<br/>catalogues fabricants · listes CEC"]
 
   UI --> API
-  TERRAIN --> AGENT
+  UI --> AGENT
   RUN --> MOTEUR
   AGENT --> RUN
   AGENT --> DOCS
@@ -271,7 +270,7 @@ flowchart LR
   * s'il ne trouve pas la source, il le dit ;
   * il n'écrit jamais dans le catalogue sans validation humaine.
 * Pour la veille sur le web, l'agent utilise l'outil de recherche web côté serveur, restreint à une liste de domaines autorisés (fabricants, organismes de normalisation).
-* Le dépôt contient déjà un agent Claude multicanal (WhatsApp, Telegram). À terme, un technicien sur le terrain pourra interroger le moteur depuis son téléphone (feuille de route V2).
+* L'agent vit dans l'application elle-même : un onglet « Assistant IA » à côté des formulaires. Le prototype [`app/`](../app/) le montre déjà : l'assistant remplit le projet, lance le moteur et explique les résultats, sans jamais calculer lui-même.
 
 ---
 

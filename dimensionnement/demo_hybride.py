@@ -43,7 +43,6 @@ from __future__ import annotations
 import argparse
 import json
 import math
-import random
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -1142,13 +1141,32 @@ def preparer_simulation(hyp: Hypotheses, bilan: dict, gis: dict, pv: dict, ondul
     return annuel, stress, params
 
 
+class Mulberry32:
+    """Générateur pseudo-aléatoire 32 bits, identique bit à bit à la version JavaScript de l'application."""
+
+    def __init__(self, graine: int) -> None:
+        self.etat = graine & 0xFFFFFFFF
+
+    def uniforme(self) -> float:
+        self.etat = (self.etat + 0x6D2B79F5) & 0xFFFFFFFF
+        a = self.etat
+        t = ((a ^ (a >> 15)) * (1 | a)) & 0xFFFFFFFF
+        t = ((t + (((t ^ (t >> 7)) * (61 | t)) & 0xFFFFFFFF)) & 0xFFFFFFFF) ^ t
+        return ((t ^ (t >> 14)) & 0xFFFFFFFF) / 4294967296
+
+    def gauss(self) -> float:
+        """Loi normale centrée réduite (Box-Muller)."""
+        u1, u2 = self.uniforme(), self.uniforme()
+        return math.sqrt(-2.0 * math.log(1.0 - u1)) * math.cos(2.0 * math.pi * u2)
+
+
 def facteurs_meteo(kt_mensuel: list[float], hyp: Hypotheses) -> list[tuple[int, float]]:
     """Séquence journalière synthétique (mois, facteur) : processus AR(1) à graine fixe.
 
     Chaque facteur multiplie l'irradiation moyenne du mois ; la moyenne mensuelle est conservée et le
     facteur est borné par le ciel clair (K_T ≈ 0,75). En V1, remplacer par une année type (TMY) mesurée.
     """
-    rng = random.Random(hyp.graine_meteo)
+    rng = Mulberry32(hyp.graine_meteo)
     phi, sigma = hyp.autocorrelation_journaliere, hyp.variabilite_journaliere
     z = 0.0
     sequence = []
@@ -1156,7 +1174,7 @@ def facteurs_meteo(kt_mensuel: list[float], hyp: Hypotheses) -> list[tuple[int, 
         f_max = hyp.kt_ciel_clair / kt_mensuel[m]
         bruts = []
         for _ in range(JOURS_PAR_MOIS[m]):
-            z = phi * z + math.sqrt(1 - phi ** 2) * rng.gauss(0.0, 1.0)
+            z = phi * z + math.sqrt(1 - phi ** 2) * rng.gauss()
             bruts.append(min(f_max, max(0.1, 1 + sigma * z)))
         moyenne = sum(bruts) / len(bruts)
         sequence += [(m, min(f_max, f / moyenne)) for f in bruts]
