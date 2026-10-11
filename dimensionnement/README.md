@@ -36,7 +36,7 @@ L'application s'installe sur téléphone et ordinateur. Elle calcule **sans conn
 | **Ordinateur** | Même lien web, puis « Installer » dans Chrome ou Edge. Sans internet : le fichier unique [`dist/agent-dimensionnement-hors-ligne.html`](dist/agent-dimensionnement-hors-ligne.html). |
 | **Dans Claude** | Lien de l'application publiée, avec l'assistant IA inclus. |
 
-Dans l'application installée, l'assistant IA fonctionne avec une clé API Anthropic personnelle, saisie dans son panneau. Elle reste sur l'appareil. Les exports (note, carnet de câbles, projet) se partagent directement par WhatsApp ou e-mail.
+Dans l'application installée, l'assistant IA fonctionne avec une clé personnelle saisie dans son panneau, qui reste sur l'appareil. Deux « cerveaux » au choix : **DeepSeek V4.1 Flash via Kie.ai** (par défaut) ou **Claude Opus 5.5 via Anthropic**. Si le modèle refuse les outils natifs, l'application passe automatiquement par un protocole texte. Les exports (note, carnet de câbles, projet) se partagent directement par WhatsApp ou e-mail.
 
 ## Utiliser l'application
 

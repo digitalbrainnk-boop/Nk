@@ -34,12 +34,18 @@ L'application fonctionne sur Android 5.0 et plus. Les notes de calcul, carnets d
 ## L'assistant IA
 
 * **Dans Claude**, l'assistant est inclus : il suffit d'ouvrir le lien de l'application partagé depuis Claude.
-* **Dans l'application installée**, l'assistant fonctionne avec une clé API Anthropic personnelle, créée sur console.anthropic.com, rubrique API Keys.
-  * Saisissez la clé dans le panneau de l'assistant.
-  * La clé reste enregistrée sur l'appareil et n'est envoyée qu'à Anthropic.
-  * Chaque demande est facturée sur le compte de la clé.
+* **Dans l'application installée**, on choisit le « cerveau » de l'assistant dans son panneau :
+  * **DeepSeek V4.1 Flash, via Kie.ai** (choix par défaut) : clé API du compte Kie.ai, rubrique API Key ;
+  * **Claude Opus 5.5, via Anthropic** : clé API créée sur console.anthropic.com, rubrique API Keys.
+* Saisissez la clé, touchez **Activer l'assistant**, puis **Tester la connexion**.
+* La clé reste enregistrée sur l'appareil et n'est envoyée qu'au service choisi. Chaque demande consomme des crédits du compte de la clé.
+* Pour un collègue, transmettez la clé en privé : elle n'est jamais intégrée à l'application ni publiée sur GitHub.
 
 Sans clé, tous les onglets de calcul restent disponibles.
+
+**Réglages avancés Kie.ai** (adresse de l'API, modèle) : à ne modifier que si Kie.ai change son adresse ou le nom du modèle. Par défaut :
+* adresse : `https://api.kie.ai/openai/v1/responses` ;
+* modèle : `deepseek-v4-1-flash`.
 
 ## Premier dimensionnement
 

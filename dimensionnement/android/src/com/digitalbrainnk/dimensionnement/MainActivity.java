@@ -23,12 +23,17 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 
+import org.json.JSONObject;
+
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.nio.charset.Charset;
 import java.util.Collections;
 
@@ -264,6 +269,59 @@ public class MainActivity extends Activity {
                     : "Fichier « " + nomSur + " » prêt à être envoyé.";
         }
 
+        /**
+         * Requête POST JSON vers une API d'IA (Kie.ai, Anthropic) faite par Android plutôt que par la page :
+         * pas de restriction CORS. La réponse revient à la page par window.__reponseAndroid(id, statut, texte).
+         */
+        @JavascriptInterface
+        public void requete(final String id, final String adresse, final String cle, final String corps) {
+            new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    int statut = 0;
+                    String texte;
+                    HttpURLConnection connexion = null;
+                    try {
+                        if (adresse == null || !adresse.startsWith("https://")) {
+                            throw new IOException("adresse non sécurisée");
+                        }
+                        connexion = (HttpURLConnection) new URL(adresse).openConnection();
+                        connexion.setRequestMethod("POST");
+                        connexion.setConnectTimeout(30000);
+                        connexion.setReadTimeout(240000);
+                        connexion.setDoOutput(true);
+                        connexion.setRequestProperty("Content-Type", "application/json");
+                        connexion.setRequestProperty("Accept", "application/json");
+                        connexion.setRequestProperty("Authorization", "Bearer " + cle);
+                        OutputStream sortie = connexion.getOutputStream();
+                        try {
+                            sortie.write((corps == null ? "" : corps).getBytes(UTF8));
+                        } finally {
+                            sortie.close();
+                        }
+                        statut = connexion.getResponseCode();
+                        texte = lireTout(statut >= 400 ? connexion.getErrorStream() : connexion.getInputStream());
+                    } catch (Exception e) {
+                        statut = 0;
+                        texte = String.valueOf(e.getMessage());
+                    } finally {
+                        if (connexion != null) {
+                            connexion.disconnect();
+                        }
+                    }
+                    final String script = "window.__reponseAndroid(" + JSONObject.quote(id) + "," + statut + "," + JSONObject.quote(texte) + ")";
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            if (vue != null) {
+                                vue.evaluateJavascript(script, null);
+                            }
+                        }
+                    });
+                }
+            }).start();
+        }
+
         /** Partage d'un texte (message et liens de l'application). */
         @JavascriptInterface
         public void partagerTexte(final String titre, final String texte) {
@@ -282,6 +340,23 @@ public class MainActivity extends Activity {
                 }
             });
         }
+    }
+
+    static String lireTout(InputStream flux) throws IOException {
+        if (flux == null) {
+            return "";
+        }
+        ByteArrayOutputStream tampon = new ByteArrayOutputStream();
+        byte[] bloc = new byte[8192];
+        int lus;
+        try {
+            while ((lus = flux.read(bloc)) != -1) {
+                tampon.write(bloc, 0, lus);
+            }
+        } finally {
+            flux.close();
+        }
+        return new String(tampon.toByteArray(), UTF8);
     }
 
     private boolean enregistrerDansTelechargements(String nom, String type, byte[] octets) throws IOException {

@@ -304,7 +304,10 @@ table.tableau { width: 100%; font-size: 0.88rem; }
 .etapes-install { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; }
 .lien-copie { font-family: var(--f-donnee); font-size: 0.82rem; overflow-wrap: anywhere; background: var(--surface-2); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; }
 .cle-api { display: flex; flex-direction: column; gap: 8px; padding: 12px; margin: 12px; border-radius: 6px; background: var(--info-doux); font-size: 0.88rem; color: var(--ink-2); }
-.cle-api .rangee input { flex: 1 1 200px; }
+.cle-api .rangee input[type="password"] { flex: 1 1 200px; }
+.choix-cerveau { display: flex; flex-direction: column; gap: 6px; }
+.cle-formulaire { display: flex; flex-direction: column; gap: 8px; }
+.cle-formulaire details .champ { margin-top: 6px; }
 
 /* Ligne aérienne */
 .portees input { width: 100%; min-width: 58px; }
@@ -529,7 +532,7 @@ new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
 (function (racine) {
   "use strict";
 
-  const VERSION = "1.1.0";
+  const VERSION = "1.2.0";
 
   // ===========================================================================
   // 0. Référentiels normatifs et réseaux
@@ -2740,7 +2743,7 @@ new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
   }
   function reinitialiserApplication() {
     try {
-      for (const cle of [CLE_PROJET, CLE_ONGLET, CLE_API]) localStorage.removeItem(cle);
+      for (const cle of [CLE_PROJET, CLE_ONGLET, CLE_API, CLE_KIE, CLE_CERVEAU, CLE_KIE_URL, CLE_KIE_MODELE]) localStorage.removeItem(cle);
     } catch (e) { /* sans effet */ }
     etat.projet = null;
     etat.supprime = null;
@@ -4324,6 +4327,10 @@ Règles :
     hors_ligne: "Pas de connexion internet : l'assistant en a besoin. Les calculs, eux, fonctionnent sans connexion.",
     surcharge: "Le service Claude est momentanément surchargé. Réessayez dans un instant.",
     sdk_absent: "Le module de l'assistant n'a pas pu être chargé. Rechargez l'application.",
+    cle_invalide_kie: "La clé API Kie.ai est refusée : vérifiez-la dans les réglages de l'assistant.",
+    credit_kie: "Crédits Kie.ai épuisés : rechargez votre compte sur kie.ai.",
+    reseau_kie: "Kie.ai ne répond pas : vérifiez la connexion internet, puis réessayez.",
+    api_kie: "Kie.ai a renvoyé une erreur.",
   };
   const CODES_DEFINITIFS = ["not_granted", "sampling_disabled", "not_declared", "capability_disabled", "capability_removed"];
 
@@ -4356,40 +4363,124 @@ Règles :
       else localStorage.removeItem(CLE_API);
     } catch (e) { /* stockage indisponible : la clé ne sera pas retenue */ }
   }
-  function rendreCleApi(message = "") {
+  // Cerveau de l'assistant hors de Claude : DeepSeek via Kie.ai (par défaut) ou Claude via l'API Anthropic
+  const CLE_CERVEAU = "agent-dimensionnement:cerveau";
+  const CLE_KIE = "agent-dimensionnement:cle-kie";
+  const CLE_KIE_URL = "agent-dimensionnement:kie-url";
+  const CLE_KIE_MODELE = "agent-dimensionnement:kie-modele";
+  const KIE_URL = "https://api.kie.ai/openai/v1/responses";
+  const KIE_MODELE = "deepseek-v4-1-flash";
+  const CERVEAUX = {
+    kie: { nom: "DeepSeek V4.1 Flash (Kie.ai)", aide: "Clé API de votre compte Kie.ai (kie.ai, rubrique API Key). Chaque demande consomme des crédits Kie.", indication: "clé API Kie.ai" },
+    anthropic: { nom: "Claude Opus 5.5 (Anthropic)", aide: "Clé API Anthropic (console.anthropic.com, rubrique API Keys). Chaque demande est facturée sur son compte.", indication: "sk-ant-…" },
+  };
+  function lireStockage(cle) {
+    try { return localStorage.getItem(cle) || ""; } catch (e) { return ""; }
+  }
+  function ecrireStockage(cle, valeur) {
+    try {
+      if (valeur) localStorage.setItem(cle, valeur);
+      else localStorage.removeItem(cle);
+    } catch (e) { /* stockage indisponible : réglage non retenu */ }
+  }
+  const cerveau = () => (lireStockage(CLE_CERVEAU) === "anthropic" ? "anthropic" : "kie");
+  const cleCerveau = (c = cerveau()) => (c === "kie" ? lireStockage(CLE_KIE) : lireCle());
+  const kieUrl = () => lireStockage(CLE_KIE_URL) || KIE_URL;
+  const kieModele = () => lireStockage(CLE_KIE_MODELE) || KIE_MODELE;
+
+  function rendreCleApi(message = "", formulaire = false) {
     const zone = $("#cle-api");
-    const cle = lireCle();
+    const c = cerveau();
+    const cle = cleCerveau(c);
     zone.hidden = false;
     agent.indisponible = !cle;
     $("#assistant-indispo").hidden = true;
-    zone.innerHTML = cle
-      ? `<div>${statutHtml("ok", "Assistant actif")} avec votre clé API Anthropic (…${echap(cle.slice(-4))}), modèle Claude Opus 5.5. Chaque demande est facturée sur le compte de la clé.</div>
-        <div class="rangee"><button type="button" class="btn btn-discret" data-cle="changer">Changer de clé</button><button type="button" class="btn btn-discret btn-danger" data-cle="supprimer">Retirer la clé de cet appareil</button></div>`
-      : `<div><strong>Assistant IA hors de Claude.</strong> Dans Claude, l'assistant est inclus. Ici, il fonctionne avec une clé API Anthropic personnelle (console.anthropic.com, rubrique API Keys). La clé reste enregistrée sur cet appareil et n'est envoyée qu'à Anthropic ; chaque demande est facturée sur son compte.</div>
-        <form class="rangee" data-cle-form><input type="password" autocomplete="off" spellcheck="false" placeholder="sk-ant-…" aria-label="Clé API Anthropic" data-cle-saisie>
-        <button type="submit" class="btn btn-primaire">Activer l'assistant</button></form>
+    const choix = Object.entries(CERVEAUX).map(([id, x]) => `<label class="case"><input type="radio" name="cerveau" value="${id}" data-cerveau${id === c ? " checked" : ""}> ${echap(x.nom)}</label>`).join("");
+    zone.innerHTML = cle && !formulaire
+      ? `<div>${statutHtml("ok", "Assistant actif")} Cerveau : <strong>${echap(CERVEAUX[c].nom)}</strong>, clé …${echap(cle.slice(-4))}. ${echap(CERVEAUX[c].aide.split(". ").slice(1).join(". "))}</div>
+        <div class="rangee"><button type="button" class="btn" data-cle="tester">Tester la connexion</button><button type="button" class="btn btn-discret" data-cle="changer">Changer de cerveau ou de clé</button><button type="button" class="btn btn-discret btn-danger" data-cle="supprimer">Retirer la clé</button></div>
+        <div class="discret" data-cle-message></div>`
+      : `<div><strong>Assistant IA hors de Claude.</strong> Choisissez son cerveau et saisissez votre clé API : elle reste enregistrée sur cet appareil et n'est envoyée qu'au service choisi.</div>
+        <form class="cle-formulaire" data-cle-form>
+          <div class="choix-cerveau">${choix}</div>
+          <small data-cle-aide>${echap(CERVEAUX[c].aide)}</small>
+          <div class="rangee"><input type="password" autocomplete="off" spellcheck="false" placeholder="${echap(CERVEAUX[c].indication)}" aria-label="Clé API" data-cle-saisie>
+          <button type="submit" class="btn btn-primaire">Activer l'assistant</button></div>
+          <details class="avance" data-kie-avance${c === "kie" ? "" : " hidden"}><summary>Réglages avancés Kie.ai</summary>
+            <label class="champ"><span>Adresse de l'API</span><input type="text" data-kie-url placeholder="${echap(KIE_URL)}" value="${echap(lireStockage(CLE_KIE_URL))}" autocomplete="off" spellcheck="false"></label>
+            <label class="champ"><span>Modèle</span><input type="text" data-kie-modele placeholder="${echap(KIE_MODELE)}" value="${echap(lireStockage(CLE_KIE_MODELE))}" autocomplete="off" spellcheck="false"></label>
+          </details>
+        </form>
         <div class="discret">Sans clé, tous les onglets de calcul restent utilisables, hors connexion.</div>`;
     if (message) zone.append(html(`<div class="discret">${echap(message)}</div>`));
     $("#suggestions").hidden = !cle || $("#fil").childElementCount > 1;
     majSaisie(false);
   }
+  async function testerConnexion() {
+    const zone = $("[data-cle-message]");
+    zone.textContent = "Test en cours…";
+    const sample = echantillonneur();
+    try {
+      const { text } = await sample([{ role: "user", content: "Tu es un assistant de test." }, { role: "user", content: "Réponds seulement : OK" }], { tools: [] });
+      zone.textContent = `Connexion réussie. Réponse : « ${String(text).trim().slice(0, 80)} »`;
+    } catch (e) {
+      zone.textContent = `Échec : ${MESSAGES_ERREUR[e && e.code] || ""} ${e && e.detail ? `(${e.detail})` : ""}`.trim();
+    }
+  }
   function brancherCleApi() {
     const zone = $("#cle-api");
+    zone.addEventListener("change", (e) => {
+      if (!e.target.matches("[data-cerveau]")) return;
+      const c = e.target.value;
+      $("[data-cle-aide]", zone).textContent = CERVEAUX[c].aide;
+      $("[data-cle-saisie]", zone).placeholder = CERVEAUX[c].indication;
+      $("[data-kie-avance]", zone).hidden = c !== "kie";
+    });
     zone.addEventListener("submit", (e) => {
       e.preventDefault();
       const cle = $("[data-cle-saisie]", zone).value.trim();
-      if (!/^sk-ant-[A-Za-z0-9_-]{20,}$/.test(cle)) {
+      // Une clé Anthropic se reconnaît à son préfixe : le bon cerveau est choisi d'office
+      const c = cle.startsWith("sk-ant-") ? "anthropic" : $("[data-cerveau]:checked", zone).value;
+      if (!cle && cleCerveau(c)) { // changement de cerveau avec une clé déjà enregistrée
+        ecrireStockage(CLE_CERVEAU, c);
+        rendreCleApi(`Cerveau : ${CERVEAUX[c].nom}.`);
+        return;
+      }
+      if (c === "anthropic" && !/^sk-ant-[A-Za-z0-9_-]{20,}$/.test(cle)) {
         rendreCleApi("Cette clé ne ressemble pas à une clé API Anthropic (elle commence par « sk-ant- »).");
         return;
       }
-      ecrireCle(cle);
-      rendreCleApi("Clé enregistrée sur cet appareil.");
+      if (c === "kie" && !/^[A-Za-z0-9_-]{16,}$/.test(cle)) {
+        rendreCleApi("Cette clé ne ressemble pas à une clé API Kie.ai (au moins 16 lettres et chiffres, sans espace).");
+        return;
+      }
+      if (c === "kie") {
+        const url = $("[data-kie-url]", zone).value.trim();
+        if (url && !/^https:\/\/[^\s]+$/.test(url)) {
+          rendreCleApi("L'adresse de l'API doit commencer par https://");
+          return;
+        }
+        ecrireStockage(CLE_KIE_URL, url === KIE_URL ? "" : url);
+        const modele = $("[data-kie-modele]", zone).value.trim();
+        ecrireStockage(CLE_KIE_MODELE, modele === KIE_MODELE ? "" : modele);
+        ecrireStockage(CLE_KIE, cle);
+      } else {
+        ecrireCle(cle);
+      }
+      ecrireStockage(CLE_CERVEAU, c);
+      rendreCleApi("Clé enregistrée sur cet appareil. Touchez « Tester la connexion » pour vérifier.");
     });
     zone.addEventListener("click", (e) => {
       const b = e.target.closest("[data-cle]");
       if (!b) return;
-      ecrireCle("");
-      rendreCleApi(b.dataset.cle === "supprimer" ? "Clé retirée de cet appareil." : "");
+      if (b.dataset.cle === "tester") { testerConnexion(); return; }
+      if (b.dataset.cle === "supprimer") {
+        if (cerveau() === "kie") ecrireStockage(CLE_KIE, ""); else ecrireCle("");
+        rendreCleApi("Clé retirée de cet appareil.");
+        return;
+      }
+      // Changer : les clés enregistrées restent valables tant qu'une autre n'est pas saisie
+      rendreCleApi("", true);
     });
   }
 
@@ -4492,11 +4583,155 @@ Règles :
     return sample;
   }
 
+  /** Requête POST JSON : par le pont natif dans l'application Android (pas de restriction CORS), sinon fetch. */
+  let requetesAndroid = 0;
+  const attentesAndroid = new Map();
+  window.__reponseAndroid = (id, statut, texte) => {
+    const attente = attentesAndroid.get(id);
+    if (attente) { attentesAndroid.delete(id); attente({ statut, texte }); }
+  };
+  function posterJson(url, cle, corps, signal) {
+    if (window.AndroidApp && typeof window.AndroidApp.requete === "function") {
+      return new Promise((ok, ko) => {
+        const id = `r${++requetesAndroid}`;
+        attentesAndroid.set(id, ok);
+        if (signal) signal.addEventListener("abort", () => { attentesAndroid.delete(id); ko(erreurCode("cancelled")); }, { once: true });
+        window.AndroidApp.requete(id, url, cle, JSON.stringify(corps));
+      });
+    }
+    return fetch(url, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${cle}` }, body: JSON.stringify(corps), signal })
+      .then(async (r) => ({ statut: r.status, texte: await r.text() }))
+      .catch((e) => {
+        if (e && e.name === "AbortError") throw erreurCode("cancelled");
+        return { statut: 0, texte: String((e && e.message) || e) };
+      });
+  }
+  async function appelKie(corps, cle, signal) {
+    const { statut, texte } = await posterJson(kieUrl(), cle, corps, signal);
+    if (statut === 0) throw Object.assign(erreurCode(navigator.onLine === false ? "hors_ligne" : "reseau_kie"), { detail: texte.slice(0, 160) });
+    let json = null;
+    try { json = JSON.parse(texte); } catch (e) { /* réponse non JSON */ }
+    // Kie.ai enveloppe certaines réponses : { code, msg, data }
+    const enveloppe = json && typeof json.code === "number" && "msg" in json;
+    const code = enveloppe ? json.code : statut;
+    if (statut >= 400 || (enveloppe && code !== 200)) {
+      const message = String((json && (json.msg || (json.error && (json.error.message || json.error)) || json.message)) || texte || `HTTP ${statut}`).slice(0, 240);
+      if (code === 401 || code === 403) throw Object.assign(erreurCode("cle_invalide_kie"), { detail: message });
+      if (code === 402 || /credit|insufficient|balance|solde/i.test(message)) throw Object.assign(erreurCode("credit_kie"), { detail: message });
+      if (code === 429) throw Object.assign(erreurCode("rate_limited"), { detail: message });
+      throw Object.assign(erreurCode("api_kie"), { statut: code, detail: message });
+    }
+    if (!json) throw Object.assign(erreurCode("api_kie"), { detail: texte.slice(0, 160) });
+    return enveloppe ? json.data : json;
+  }
+  /** Texte et appels d'outils d'une réponse « Responses » (ou « chat/completions », par compatibilité). */
+  function lireReponseKie(r) {
+    const textes = [];
+    const appels = [];
+    if (r && Array.isArray(r.output)) {
+      for (const item of r.output) {
+        if (item.type === "message") {
+          for (const c of item.content || []) if ((c.type === "output_text" || c.type === "text") && c.text) textes.push(c.text);
+        } else if (item.type === "function_call") {
+          appels.push({ id: item.call_id || item.id, nom: item.name, arguments: item.arguments });
+        }
+      }
+    } else if (r && Array.isArray(r.choices) && r.choices[0]) {
+      const m = r.choices[0].message || {};
+      if (m.content) textes.push(m.content);
+      for (const t of m.tool_calls || []) appels.push({ id: t.id, nom: t.function && t.function.name, arguments: t.function && t.function.arguments });
+    }
+    if (!textes.length && r && typeof r.output_text === "string" && r.output_text) textes.push(r.output_text);
+    return { texte: textes.join("\n").trim(), appels };
+  }
+  function lireArguments(brut) {
+    if (brut && typeof brut === "object") return brut;
+    const objet = JSON.parse(brut || "{}");
+    if (!objet || typeof objet !== "object" || Array.isArray(objet)) throw new Error("Entrée d'outil invalide : un objet JSON est attendu.");
+    return objet;
+  }
+  async function executerOutil(outils, nom, args, signal) {
+    const outil = outils.find((o) => o.name === nom);
+    try {
+      if (!outil) throw new Error(`Outil inconnu : ${nom}`);
+      return JSON.stringify((await outil.execute(lireArguments(args), { signal })) ?? null);
+    } catch (e) {
+      return JSON.stringify({ erreur: String((e && e.message) || e) });
+    }
+  }
+  /** Protocole de secours si le modèle n'accepte pas les outils natifs : blocs <outil nom="…">{JSON}</outil> dans le texte. */
+  function consignesModeTexte(outils) {
+    return `\n\nOUTILS. Tu n'as pas d'appel de fonction natif ici. Pour utiliser un outil, écris uniquement un bloc de cette forme, sans autre texte :\n<outil nom="NOM">{entrée JSON}</outil>\n`
+      + `Tu recevras le résultat dans le message suivant, puis tu continues. Quand tu as fini, réponds normalement à l'utilisateur, sans bloc.\nOutils disponibles :\n`
+      + outils.map((o) => `- ${o.name} : ${o.description} Entrée : ${JSON.stringify(o.inputSchema || { type: "object", properties: {} })}`).join("\n");
+  }
+  const BLOC_OUTIL = /<outil\s+nom="([\w-]+)"\s*>([\s\S]*?)<\/outil>/g;
+
+  function echantillonneurKie(cle) {
+    let modeTexte = false;
+    const sample = async (entree, options) => {
+      const [consignes, ...historique] = entree;
+      const outils = options.tools || [];
+      const tools = outils.map((o) => ({ type: "function", name: o.name, description: o.description, parameters: o.inputSchema || { type: "object", properties: {} } }));
+      const input = historique.map((m) => ({ role: m.role, content: m.content }));
+      let texte = "";
+      const montrer = (t) => {
+        if (!t) return;
+        texte += (texte ? "\n\n" : "") + t;
+        if (options.onText) options.onText({ text: texte, delta: t });
+      };
+      for (let tour = 0; tour < 12; tour++) {
+        const corps = { model: kieModele(), instructions: consignes.content + (modeTexte && outils.length ? consignesModeTexte(outils) : ""), input, stream: false };
+        if (tools.length && !modeTexte) { corps.tools = tools; corps.tool_choice = "auto"; }
+        let r;
+        try {
+          r = lireReponseKie(await appelKie(corps, cle, options.signal));
+        } catch (e) {
+          // Outils natifs refusés par le modèle : on bascule sur le protocole texte et on recommence ce tour
+          if (e.code === "api_kie" && tools.length && !modeTexte && (e.statut === 400 || e.statut === 422 || /tool|function/i.test(e.detail || ""))) {
+            modeTexte = true;
+            continue;
+          }
+          e.text = texte;
+          throw e;
+        }
+        if (!modeTexte) {
+          montrer(r.texte);
+          if (!r.appels.length) return { text: texte || "(réponse vide)", truncated: false };
+          if (r.texte) input.push({ role: "assistant", content: r.texte });
+          for (const appel of r.appels) {
+            const args = typeof appel.arguments === "string" ? appel.arguments : JSON.stringify(appel.arguments || {});
+            input.push({ type: "function_call", call_id: appel.id, name: appel.nom, arguments: args });
+            input.push({ type: "function_call_output", call_id: appel.id, output: await executerOutil(outils, appel.nom, appel.arguments, options.signal) });
+          }
+          continue;
+        }
+        const blocs = [...r.texte.matchAll(BLOC_OUTIL)];
+        montrer(r.texte.replace(BLOC_OUTIL, "").trim());
+        if (!blocs.length) return { text: texte || "(réponse vide)", truncated: false };
+        input.push({ role: "assistant", content: r.texte });
+        const resultats = [];
+        for (const [, nom, json] of blocs) resultats.push(`Résultat de ${nom} : ${await executerOutil(outils, nom, json.trim(), options.signal)}`);
+        input.push({ role: "user", content: resultats.join("\n\n") });
+      }
+      return { text: texte, truncated: true };
+    };
+    sample.limits = async () => ({ tools: { maxCount: 16 } });
+    return sample;
+  }
+  /** Échantillonneur de l'assistant hors de Claude, selon le cerveau choisi (null sans clé). */
+  function echantillonneur() {
+    const c = cerveau();
+    const cle = cleCerveau(c);
+    if (!cle) return null;
+    return c === "kie" ? echantillonneurKie(cle) : echantillonneurApi(cle);
+  }
+
   async function envoyer(texte) {
     texte = texte.trim();
     if (!texte || agent.enCours || agent.indisponible) return;
     majSaisie(true);
-    const sample = window.claude ? await capacite("sample") : lireCle() ? echantillonneurApi(lireCle()) : null;
+    const sample = window.claude ? await capacite("sample") : echantillonneur();
     if (!sample) {
       majSaisie(false);
       if (window.claude) assistantIndisponible("L'assistant IA n'est pas disponible dans cette vue. Tous les onglets de calcul restent utilisables.");
@@ -4527,7 +4762,7 @@ Règles :
       zoneTexte.innerHTML = e && e.text ? markdown(e.text) : "";
       if (code === "cancelled") zoneTexte.append(html(`<p class="discret">Arrêté.</p>`));
       else if (CODES_DEFINITIFS.includes(code)) assistantIndisponible("L'assistant IA n'est pas autorisé dans cette vue. Tous les onglets de calcul restent utilisables.");
-      else zoneTexte.append(html(`<p class="discret">${echap(MESSAGES_ERREUR[code] || "La réponse a été interrompue. Réessayez.")}</p>`));
+      else zoneTexte.append(html(`<p class="discret">${echap(MESSAGES_ERREUR[code] || "La réponse a été interrompue. Réessayez.")}${e && e.detail ? ` (${echap(e.detail)})` : ""}</p>`));
       agent.tours.push({ role: "user", content: texte });
     } finally {
       bulleAgent.classList.remove("en-cours");
