@@ -73,6 +73,19 @@ Sur Telegram, écris à **@BotFather** → `/newbot` → colle le jeton dans Can
 
 ## Héberger le site 24h/24
 
+### En un clic avec Render (recommandé)
+
+[![Déployer sur Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/digitalbrainnk-boop/Nk/tree/claude/ai-agent-multichannel-0snabq)
+
+1. Clique sur le bouton, connecte-toi à Render avec ton compte GitHub.
+2. Remplis `ANTHROPIC_API_KEY` (ta clé `sk-ant-…`) et `ADMIN_PASSWORD` (ton mot de passe), puis **Apply**.
+3. Après quelques minutes, Render te donne une adresse `https://mon-agent-ia-xxxx.onrender.com` : c'est ton tableau de bord, accessible depuis ton téléphone.
+4. Cette adresse sert aussi de webhook pour Facebook/Instagram (`https://…onrender.com/webhooks/meta`).
+
+L'offre utilisée (Starter + disque de 1 Go) est payante (quelques dollars par mois) : c'est nécessaire pour garder la session WhatsApp et la mémoire des clients.
+
+### Ailleurs
+
 N'importe quel serveur avec Node.js (VPS, Railway, Render, Fly.io…). Le dossier `data/` contient la base de données, la session WhatsApp et les médias : il doit être **persistant** et **sauvegardé**. Ne le partage jamais (il donne accès à ton WhatsApp).
 
 ## Coûts

@@ -1,0 +1,22 @@
+# Déploiement en un clic sur Render (https://render.com) depuis GitHub.
+services:
+  - type: web
+    name: mon-agent-ia
+    runtime: node
+    plan: starter # le disque permanent (session WhatsApp, mémoire) demande une offre payante
+    buildCommand: npm install
+    startCommand: node --disable-warning=ExperimentalWarning src/server.js
+    healthCheckPath: /
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: DATA_DIR
+        value: /var/data
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+    disk:
+      name: data
+      mountPath: /var/data
+      sizeGB: 1
