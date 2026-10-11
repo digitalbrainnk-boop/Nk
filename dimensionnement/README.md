@@ -27,11 +27,15 @@ Les autres normes citées : ISO 8528 (groupes), IEEE 1013/485 (batteries), IEC 6
 
 ## Installer l'application
 
+**Page de téléchargement : [github.com/digitalbrainnk-boop/Nk/releases/latest](https://github.com/digitalbrainnk-boop/Nk/releases/latest)**
+
+Cette page contient toujours la dernière version. Elle est publiée automatiquement par le workflow [`.github/workflows/publier-application.yml`](../.github/workflows/publier-application.yml), après vérification par les tests.
+
 L'application s'installe sur téléphone et ordinateur. Elle calcule **sans connexion internet**. Le guide pas à pas, à transmettre aux collègues, est [INSTALLATION.md](INSTALLATION.md).
 
 | Appareil | Comment |
 |---|---|
-| **Android** | Application à installer : [agent-dimensionnement.apk](https://github.com/digitalbrainnk-boop/Nk/raw/ccr-efb31b50-bazt84/dimensionnement/dist/agent-dimensionnement.apk) (moins de 1 Mo, Android 5.0 et plus). On peut l'envoyer par WhatsApp. |
+| **Android** | Application à installer : [agent-dimensionnement.apk](https://github.com/digitalbrainnk-boop/Nk/releases/latest/download/agent-dimensionnement.apk) (moins de 1 Mo, Android 5.0 et plus). On peut l'envoyer par WhatsApp. |
 | **iPhone, iPad** | Application web : [digitalbrainnk-boop.github.io/Nk/dimensionnement/app](https://digitalbrainnk-boop.github.io/Nk/dimensionnement/app/), puis dans Safari Partager, « Sur l'écran d'accueil ». Le lien s'active une fois GitHub Pages activé, voir INSTALLATION.md. |
 | **Ordinateur** | Même lien web, puis « Installer » dans Chrome ou Edge. Sans internet : le fichier unique [`dist/agent-dimensionnement-hors-ligne.html`](dist/agent-dimensionnement-hors-ligne.html). |
 | **Dans Claude** | Lien de l'application publiée, avec l'assistant IA inclus. |
@@ -49,7 +53,7 @@ L'application démarre sur un **projet vide**. Un guide indique les informations
 | Ensoleillement mensuel | Conseillé pour le solaire |
 | Choix techniques | Facultatif |
 
-Le calcul se lance dès que l'essentiel est saisi. Il n'utilise jamais de lieu ou d'appareils d'exemple à votre insu. Le bouton « Charger l'exemple » montre un projet complet. « Réinitialiser l'application » efface toutes les données de l'appareil.
+Le calcul se lance dès que l'essentiel est saisi. Il n'utilise jamais de lieu ou d'appareils d'exemple à votre insu. « Réinitialiser l'application » efface toutes les données de l'appareil.
 
 Vous pouvez aussi tout décrire à l'assistant avec vos mots, par exemple :
 

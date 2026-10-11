@@ -4,7 +4,7 @@ L'application calcule entièrement sur le téléphone ou l'ordinateur, **sans co
 
 | Appareil | Méthode | Lien |
 |---|---|---|
-| Téléphone Android | Application à installer (fichier APK, moins de 1 Mo) | [agent-dimensionnement.apk](https://github.com/digitalbrainnk-boop/Nk/raw/ccr-efb31b50-bazt84/dimensionnement/dist/agent-dimensionnement.apk) |
+| Téléphone Android | Application à installer (fichier APK, moins de 1 Mo) | [agent-dimensionnement.apk](https://github.com/digitalbrainnk-boop/Nk/releases/latest/download/agent-dimensionnement.apk) |
 | iPhone, iPad, Android, ordinateur | Application web installable | [digitalbrainnk-boop.github.io/Nk/dimensionnement/app](https://digitalbrainnk-boop.github.io/Nk/dimensionnement/app/) |
 | Ordinateur sans internet | Un seul fichier à ouvrir dans Chrome, Edge ou Firefox | [`dist/agent-dimensionnement-hors-ligne.html`](dist/agent-dimensionnement-hors-ligne.html), à envoyer en pièce jointe |
 

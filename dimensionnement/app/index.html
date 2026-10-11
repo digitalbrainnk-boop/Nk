@@ -377,7 +377,7 @@ table.tableau { width: 100%; font-size: 0.88rem; }
     <form class="saisie" id="saisie">
       <div class="suggestions" id="suggestions"></div>
       <label class="champ"><span class="etiquette">Votre demande</span>
-        <textarea id="message" rows="3" placeholder="Ex. : Maison de 4 chambres à Bouaké, 12 lampes, 2 climatiseurs, un congélateur et une pompe de 1 CV. Je veux du solaire avec un groupe de secours."></textarea>
+        <textarea id="message" rows="3" placeholder="Décrivez votre installation : lieu, type de système (solaire, groupe, réseau), appareils et heures d'utilisation."></textarea>
       </label>
       <div class="rangee"><span class="discret" id="assistant-etat"></span>
         <span class="rangee"><button type="button" class="btn" id="btn-stop" hidden>Arrêter</button><button type="submit" class="btn btn-primaire" id="btn-envoyer">Envoyer</button></span>
@@ -428,7 +428,6 @@ table.tableau { width: 100%; font-size: 0.88rem; }
       <div class="bloc">
         <h2>Fichier du projet</h2>
         <div class="rangee">
-          <button type="button" class="btn" id="btn-exemple">Charger l'exemple</button>
           <button type="button" class="btn" id="btn-vide">Nouveau projet vide</button>
           <label class="btn" for="fichier-import">Importer un projet (.json)</label>
           <input type="file" id="fichier-import" accept=".json,application/json" hidden>

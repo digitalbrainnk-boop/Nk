@@ -157,18 +157,16 @@
       mppt: { ...base.mppt, ...(p.mppt || {}) }, hypotheses, source: { ...(p.source || {}) }, ligne, circuits: Array.isArray(p.circuits) ? p.circuits : [] };
   }
   /**
-   * Projet enregistré sur l'appareil, sinon projet vide. Une seule fois (données au format 2), le projet d'exemple
-   * que les versions précédentes chargeaient d'office est effacé pour repartir d'un projet vierge.
+   * Projet enregistré sur l'appareil, sinon projet vide. Une seule fois, à la première ouverture de la version 1.3
+   * (données au format 3), tous les projets enregistrés pendant les essais sont effacés pour repartir de zéro ;
+   * la clé et le cerveau de l'assistant sont conservés.
    */
   function chargerProjet() {
     try {
-      if (localStorage.getItem(CLE_DONNEES) !== "2") {
-        const ancien = JSON.parse(localStorage.getItem(CLE_PROJET) || "null");
-        if (ancien && ancien.nom === M.projetExemple().nom) {
-          localStorage.removeItem(CLE_PROJET);
-          localStorage.removeItem(CLE_ONGLET);
-        }
-        localStorage.setItem(CLE_DONNEES, "2");
+      if (localStorage.getItem(CLE_DONNEES) !== "3") {
+        localStorage.removeItem(CLE_PROJET);
+        localStorage.removeItem(CLE_ONGLET);
+        localStorage.setItem(CLE_DONNEES, "3");
       }
       const t = localStorage.getItem(CLE_PROJET);
       if (t) return completer(JSON.parse(t));
@@ -1426,7 +1424,8 @@ ${lignes.join("\n")}
   // ---------------------------------------------------------------------------
 
   const LIEN_WEB = "https://digitalbrainnk-boop.github.io/Nk/dimensionnement/app/";
-  const LIEN_APK = "https://github.com/digitalbrainnk-boop/Nk/raw/ccr-efb31b50-bazt84/dimensionnement/dist/agent-dimensionnement.apk";
+  const LIEN_APK = "https://github.com/digitalbrainnk-boop/Nk/releases/latest/download/agent-dimensionnement.apk";
+  const LIEN_PUBLICATION = "https://github.com/digitalbrainnk-boop/Nk/releases/latest";
   const installation = { invite: null, majDemandee: false };
   const dansAndroid = () => Boolean(window.AndroidApp);
   const estIos = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
@@ -1457,7 +1456,7 @@ ${lignes.join("\n")}
 
   function messagePartage() {
     return `Agent de dimensionnement électrique (NF C 15-100, IEC, BS 7671, NEC) : bâtiment, solaire, batteries, groupe, réseau, lignes aériennes. Fonctionne sans connexion.\n\n`
-      + `Android : téléchargez et installez ${LIEN_APK}\n\niPhone, Android ou PC : ouvrez ${LIEN_WEB} puis « Installer » ou « Sur l'écran d'accueil ».`;
+      + `Android : téléchargez et installez ${LIEN_APK}\n(page de téléchargement : ${LIEN_PUBLICATION})\n\niPhone ou ordinateur : ouvrez ${LIEN_WEB} puis « Installer » ou « Sur l'écran d'accueil ».`;
   }
   async function partagerApplication(zone) {
     const texte = messagePartage();
@@ -2253,13 +2252,10 @@ Règles :
     ajouterMessage("agent", `${intro}
       <p>Décrivez votre bâtiment, vos appareils et le lieu : je choisis la norme du pays (NF C 15-100, IEC 60364, BS 7671 ou NEC), je remplis le projet, je lance le calcul et je vous explique le matériel retenu. Vous pouvez aussi me poser une question sur une norme ou un résultat.</p>`);
     $("#suggestions").hidden = false;
-    const suggestions = [
-      "Dimensionne une maison de 4 chambres à Bouaké : 12 lampes LED, 2 climatiseurs, un congélateur et une pompe de 1 CV. Solaire avec groupe de secours.",
-      "Petit commerce à Houston (Texas) raccordé au réseau en 120/240 V selon le NEC : éclairage LED, 2 climatiseurs de 3,5 kW, une chambre froide. Ajoute un groupe de secours.",
-      "Ajoute une ligne aérienne de 6 portées de 40 m pour alimenter 6 maisons de 3 kVA, et vérifie la chute de tension et les poteaux.",
-      "Pourquoi le groupe électrogène a-t-il cette puissance ?",
-      "Compare les quatre systèmes pour ce projet.",
-    ];
+    const suggestions = etat.projet.circuits.length
+      ? ["Explique-moi le matériel retenu et ce qui le dimensionne.", "Quelles corrections faut-il faire ?", "Compare les quatre systèmes pour ce projet."]
+      : ["Quelles informations faut-il pour dimensionner mon installation ?", "Je veux une installation solaire avec batteries pour ma maison.",
+        "Je veux dimensionner un groupe électrogène pour mon bâtiment.", "Quelle norme dois-je utiliser dans mon pays ?"];
     $("#suggestions").innerHTML = suggestions.map((t) => `<button type="button">${echap(t)}</button>`).join("");
   }
 
@@ -2317,7 +2313,6 @@ Règles :
       remplirChamps($("#choix"));
       calculer();
     });
-    $("#btn-exemple").addEventListener("click", () => { remplacerProjet(M.projetExemple()); $("#fichier-message").textContent = "Exemple chargé."; });
     $("#btn-vide").addEventListener("click", () => { $("#confirmation-vide").hidden = false; });
     $("#btn-vide-non").addEventListener("click", () => { $("#confirmation-vide").hidden = true; });
     $("#btn-vide-oui").addEventListener("click", () => {

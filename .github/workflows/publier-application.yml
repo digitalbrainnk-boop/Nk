@@ -1,0 +1,58 @@
+# Publie l'application de dimensionnement (APK Android et fichier hors ligne) sur la page « Releases » du dépôt.
+# Se lance quand les fichiers distribuables changent, ou à la main (onglet Actions, « Run workflow »).
+# Les tests du moteur et des fichiers distribuables doivent passer avant toute publication.
+name: Publier l'application de dimensionnement
+
+on:
+  push:
+    paths:
+      - "dimensionnement/dist/**"
+      - "dimensionnement/NOTES-VERSION.md"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publier-application
+  cancel-in-progress: false
+
+jobs:
+  publier:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Tests du moteur et des fichiers distribuables
+        run: |
+          node --test dimensionnement/tests/*.test.mjs
+          cd dimensionnement && python3 -m unittest discover -s tests
+
+      - name: Version de l'application
+        id: version
+        run: |
+          VERSION=$(grep -oP 'const VERSION = "\K[0-9]+\.[0-9]+\.[0-9]+' dimensionnement/app/moteur.js)
+          test -n "$VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Créer ou mettre à jour la publication
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          TAG="v$VERSION"
+          FICHIERS="dimensionnement/dist/agent-dimensionnement.apk dimensionnement/dist/agent-dimensionnement-hors-ligne.html"
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release upload "$TAG" $FICHIERS --clobber
+            gh release edit "$TAG" --notes-file dimensionnement/NOTES-VERSION.md
+          else
+            gh release create "$TAG" $FICHIERS \
+              --target "$GITHUB_SHA" \
+              --title "Agent de dimensionnement électrique $VERSION" \
+              --notes-file dimensionnement/NOTES-VERSION.md \
+              --latest
+          fi
