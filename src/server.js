@@ -203,7 +203,7 @@ app.post("/api/llm/test", wrap(async (req, res) => {
   try {
     if (getSettings().brain === "kie") {
       const r = await probeKie();
-      setSettings({ kie_chat_model: r.model });
+      setSettings({ kie_chat_model: r.model, kie_chat_url: r.url });
       return res.json({ ok: true, text: r.text, model: r.model });
     }
     const text = await chatText({

@@ -99,6 +99,7 @@ export const DEFAULT_SETTINGS = {
   brain: "claude", // claude | kie | openai (autre service compatible OpenAI)
   kie_api_key: "",
   kie_chat_model: "deepseek-v4-1-flash",
+  kie_chat_url: "",
   suno_model: "V5",
   llm_url: "",
   llm_api_key: "",

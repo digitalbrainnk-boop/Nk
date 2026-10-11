@@ -21,7 +21,7 @@ export function llmConfig() {
   const s = getSettings();
   if (s.brain === "kie") {
     const model = (s.kie_chat_model || KIE_DEFAULT_MODEL).trim();
-    return { url: kieChatUrl(model), key: kieKey(), model };
+    return { url: (s.kie_chat_url || "").trim() || kieChatUrl(model), key: kieKey(), model };
   }
   let url = (s.llm_url || process.env.LLM_URL || "").trim();
   // On accepte une adresse de base (".../v1") : on complète le chemin.
@@ -122,23 +122,37 @@ export async function chatJSON({ system, turns, schema, shape }) {
  * Kie.ai : le nom exact du modèle dans l'adresse peut varier. On essaie les
  * variantes connues et on renvoie la première qui répond.
  */
-export async function probeKie() {
-  const candidates = [getSettings().kie_chat_model, KIE_DEFAULT_MODEL, "deepseek-v4.1-flash", "deepseek-v4-flash"]
+export function kieCandidates() {
+  const s = getSettings();
+  const models = [s.kie_chat_model, KIE_DEFAULT_MODEL, "deepseek-v4.1-flash", "deepseek-v4-flash", "deepseek-chat"]
     .filter(Boolean)
     .filter((v, i, a) => a.indexOf(v) === i);
+  const list = [];
+  if (s.kie_chat_url) list.push({ url: s.kie_chat_url, model: s.kie_chat_model || KIE_DEFAULT_MODEL });
+  for (const m of models) list.push({ url: kieChatUrl(m), model: m });
+  for (const m of models.slice(0, 3)) {
+    list.push({ url: "https://api.kie.ai/v1/chat/completions", model: m });
+    list.push({ url: "https://api.kie.ai/api/v1/chat/completions", model: m });
+  }
+  return list;
+}
+
+export async function probeKie({ onTry } = {}) {
   const key = kieKey();
   if (!key) throw new LLMError("Clé Kie.ai manquante : colle-la dans Réglages → Kie.ai.");
   let lastError;
-  for (const model of candidates) {
+  for (const c of kieCandidates()) {
     try {
       const text = await post(
-        { url: kieChatUrl(model), key, model },
-        { model, messages: [{ role: "user", content: "Dis bonjour en une phrase courte, en français." }], max_tokens: 100 },
+        { ...c, key },
+        { model: c.model, messages: [{ role: "user", content: "Dis bonjour en une phrase courte, en français." }], max_tokens: 100 },
       );
-      return { model, text };
+      onTry?.(c, null);
+      return { ...c, text };
     } catch (e) {
+      onTry?.(c, e);
       lastError = e;
-      // Clé refusée ou crédit épuisé : inutile d'essayer d'autres noms.
+      // Clé refusée ou crédit épuisé : inutile d'essayer d'autres adresses.
       if ([401, 402, 403].includes(e.status)) throw e;
     }
   }
