@@ -1,5 +1,5 @@
 // Tests du moteur JavaScript de l'application.
-// Lancer depuis la racine du dépôt :  node --test dimensionnement/tests/
+// Lancer depuis la racine du dépôt :  node --test dimensionnement/tests/*.test.mjs
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -59,7 +59,15 @@ test("parité avec le démonstrateur Python sur le cas de référence", (t) => {
     assert.equal(c.protection, py.cables[i].protection, c.liaison);
     proche(c.chute_cumulee_pct, py.cables[i].chute_cumulee_pct, 1e-9, c.liaison);
   });
-  assert.deepEqual(js.verifications.map((v) => v.statut), py.verifications.map((v) => v.statut));
+  // Mêmes contrôles par rubrique ; le moteur de l'application ajoute des informations et la rubrique D (compensation).
+  const compte = (liste) => {
+    const m = {};
+    for (const v of liste) if (v.statut !== "INFO" && !v.rubrique.startsWith("D.")) m[`${v.rubrique} | ${v.statut}`] = (m[`${v.rubrique} | ${v.statut}`] || 0) + 1;
+    return m;
+  };
+  assert.deepEqual(compte(js.verifications), compte(py.verifications));
+  const infos = (liste) => liste.filter((v) => v.statut === "INFO").length;
+  assert.ok(infos(js.verifications) >= infos(py.verifications));
 });
 
 test("conservation de l'énergie dans la simulation annuelle", () => {

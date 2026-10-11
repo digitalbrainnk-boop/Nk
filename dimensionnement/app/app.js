@@ -62,8 +62,8 @@
     m = chemin.match(/^circuits\.\d+\.(\w+)$/);
     if (m) return DEFAUT_CIRCUIT[m[1]];
     const [racine, cle] = chemin.split(".");
-    const table = { hypotheses: M.HYPOTHESES, site: M.SITE, module: M.MODULE_PV, mppt: M.REGULATEUR }[racine];
-    return table ? table[cle] : undefined;
+    const table = { hypotheses: M.HYPOTHESES, site: M.SITE, module: M.MODULE_PV, mppt: M.REGULATEUR, source: M.SOURCE, ligne: M.LIGNE }[racine];
+    return table && !Array.isArray(table[cle]) ? table[cle] : undefined;
   }
 
   const capacites = {};
@@ -129,19 +129,31 @@
     ["Moteur triphasé 5,5 kW", 5500, 0.85, { rendement: 0.87, ku: 0.75, moteur: true, demarrage: "progressif", plages: [[8, 17, 0.6]] }],
     ["Autoclave 2 000 W", 2000, 1, { plages: [[10, 12, 0.8]] }],
     ["Concentrateur d'oxygène 350 W", 350, 0.95, { plages: [[0, 24, 0.5]] }],
-  ].map(([nom, puissance_w, cos_phi, extra]) => ({ nom, puissance_w, cos_phi, rendement: 1, ku: 1, moteur: false, demarrage: "direct", ...extra }));
+  ].map(([nom, puissance_w, cos_phi, extra]) => ({ nom, puissance_w, cos_phi, rendement: 1, ku: 1, moteur: false, demarrage: "direct",
+    non_lineaire: /LED|Ordinateur|Imprimante|Box|Caméra|Micro-ondes|Téléviseur|inverter/i.test(nom), ...extra }));
 
   // ---------------------------------------------------------------------------
   // Projet : chargement, enregistrement, calcul
   // ---------------------------------------------------------------------------
 
   function projetVide() {
-    return { nom: "Nouveau projet", systeme: "hybride", site: { ...M.SITE }, circuits: [], module: { ...M.MODULE_PV }, mppt: { ...M.REGULATEUR }, hypotheses: {} };
+    const actuel = etat.projet || {};
+    return { nom: "Nouveau projet", systeme: "hybride", referentiel: actuel.referentiel || "nfc15100", reseau: actuel.reseau || "400/230-50",
+      site: { ...M.SITE }, circuits: [], module: { ...M.MODULE_PV }, mppt: { ...M.REGULATEUR }, hypotheses: {}, source: {}, ligne: { actif: false } };
   }
   function completer(p) {
     const base = projetVide();
-    return { ...base, ...p, site: { ...base.site, ...(p.site || {}) }, module: { ...base.module, ...(p.module || {}) },
-      mppt: { ...base.mppt, ...(p.mppt || {}) }, hypotheses: { ...(p.hypotheses || {}) }, circuits: Array.isArray(p.circuits) ? p.circuits : [] };
+    const hypotheses = { ...(p.hypotheses || {}) };
+    if (hypotheses.disposition_circuits) { // projets enregistrés avant l'ajout des méthodes de pose
+      if (!hypotheses.methode_pose) hypotheses.methode_pose = { couche_paroi: "C", faisceau: "B1" }[hypotheses.disposition_circuits] || "E";
+      delete hypotheses.disposition_circuits;
+    }
+    const referentiel = M.REFERENTIELS[p.referentiel] ? p.referentiel : "nfc15100";
+    const reseau = M.RESEAUX[p.reseau] && M.RESEAUX[p.reseau].famille === M.REFERENTIELS[referentiel].famille ? p.reseau : M.normaliser({ referentiel }).reseau;
+    const ligne = { actif: false, ...(p.ligne || {}) };
+    ligne.portees = Array.isArray(ligne.portees) ? ligne.portees : cloner(M.LIGNE.portees);
+    return { ...base, ...p, referentiel, reseau, site: { ...base.site, ...(p.site || {}) }, module: { ...base.module, ...(p.module || {}) },
+      mppt: { ...base.mppt, ...(p.mppt || {}) }, hypotheses, source: { ...(p.source || {}) }, ligne, circuits: Array.isArray(p.circuits) ? p.circuits : [] };
   }
   function chargerProjet() {
     try {
@@ -167,6 +179,7 @@
     rendreEntete();
     majChiffresCircuits();
     rendreResultats();
+    rendreLigneResultats();
     rendreNote();
   }
   function programmerCalcul() {
@@ -192,6 +205,20 @@
     return etat.comparaison;
   }
 
+  const NOMS_SYSTEMES = { hybride: "Hybride", solaire: "Solaire autonome", groupe: "Groupe seul", reseau: "Réseau public" };
+  const reseauActif = () => M.RESEAUX[etat.projet.reseau] || M.RESEAUX["400/230-50"];
+  const referentielActif = () => M.REFERENTIELS[etat.projet.referentiel] || M.REFERENTIELS.nfc15100;
+  const famille = () => referentielActif().famille;
+  /** Libellé court d'un réseau : « 400/230 V », « 120/240 V », « 230 V mono ». */
+  function tensionCourte(res = reseauActif()) {
+    if (res.nph === 1) return `${res.u0} V mono`;
+    return res.nph === 2 ? `${res.u0}/${res.u_ll} V` : `${res.u_ll}/${res.u0} V`;
+  }
+  function libelleAlimentation(poly, res = reseauActif()) {
+    if (!poly || res.nph === 1) return res.nph === 2 ? `${res.u0} V phase-neutre` : `Monophasé ${res.u0} V`;
+    return res.nph === 2 ? `${res.u_ll} V entre phases` : `Triphasé ${res.u_ll} V`;
+  }
+
   // ---------------------------------------------------------------------------
   // Onglets
   // ---------------------------------------------------------------------------
@@ -203,6 +230,7 @@
     $$(".onglets button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.onglet === nom)));
     if (memoriser) try { localStorage.setItem(CLE_ONGLET, nom); } catch (e) { /* sans effet */ }
     if (nom === "resultats") rendreResultats();
+    if (nom === "ligne") rendreLigneResultats();
   }
 
   // ---------------------------------------------------------------------------
@@ -215,7 +243,8 @@
   }
   function rendreEntete() {
     $("#entete-nom").textContent = etat.projet.nom;
-    $("#entete-systeme").innerHTML = `<i aria-hidden="true">≡</i>${echap({ hybride: "Hybride", solaire: "Solaire autonome", groupe: "Groupe seul" }[etat.projet.systeme] || "Hybride")}`;
+    $("#entete-systeme").innerHTML = `<i aria-hidden="true">≡</i>${echap(NOMS_SYSTEMES[etat.projet.systeme] || "Hybride")}`;
+    $("#entete-norme").innerHTML = `<i aria-hidden="true">§</i>${echap(referentielActif().nom)} · ${echap(tensionCourte())}`;
     const compteur = $("#compteur-verifs");
     if (!etat.resultat && !etat.erreurs) { $("#entete-etat").innerHTML = ""; compteur.hidden = true; return; }
     if (etat.erreurs) {
@@ -240,9 +269,16 @@
   // Formulaires génériques (data-chemin / data-type)
   // ---------------------------------------------------------------------------
 
-  function champHtml({ chemin, libelle, unite = "", aide = "", type = "nombre", options = null, classe = "" }) {
+  /** `famille` : « iec » ou « nec » (champ propre à une famille de normes) ; `systemes` : systèmes concernés. */
+  function attributsVisibilite({ famille: fam, systemes }) {
+    return `${fam ? ` data-famille="${fam}"` : ""}${systemes ? ` data-systemes="${systemes.join(" ")}"` : ""}`;
+  }
+  function champHtml({ chemin, libelle, unite = "", aide = "", type = "nombre", options = null, classe = "", famille: fam, systemes }) {
     const id = `f-${chemin.replace(/\./g, "-")}`;
     let controle;
+    if (type === "bool") {
+      return `<label class="case ${classe}"${attributsVisibilite({ famille: fam, systemes })}><input type="checkbox" id="${id}" data-chemin="${chemin}" data-type="bool"> ${echap(libelle)}</label>`;
+    }
     if (type === "select") {
       controle = `<select id="${id}" data-chemin="${chemin}" data-type="texte">${options.map(([v, l]) => `<option value="${echap(v)}">${echap(l)}</option>`).join("")}</select>`;
     } else {
@@ -250,7 +286,20 @@
       const indication = defaut === null || defaut === undefined ? "auto" : type === "pct" ? fr(defaut * 100, 2) : fr(defaut, 4);
       controle = `<input id="${id}" class="${type === "texte" ? "" : "donnee"}" ${type === "texte" ? "" : 'inputmode="decimal"'} data-chemin="${chemin}" data-type="${type}" placeholder="${echap(indication)}" autocomplete="off">`;
     }
-    return `<label class="champ ${classe}"><span>${echap(libelle)}${unite ? ` <span class="unite">${echap(unite)}</span>` : ""}</span>${controle}${aide ? `<small>${echap(aide)}</small>` : ""}</label>`;
+    return `<label class="champ ${classe}"${attributsVisibilite({ famille: fam, systemes })}><span>${echap(libelle)}${unite ? ` <span class="unite">${echap(unite)}</span>` : ""}</span>${controle}${aide ? `<small>${echap(aide)}</small>` : ""}</label>`;
+  }
+  /** Masque les champs et blocs qui ne concernent pas la famille de normes ou le système du projet. */
+  function majVisibilite(racine = document) {
+    const fam = famille();
+    const sys = etat.projet.systeme;
+    $$("[data-famille], [data-systemes]", racine).forEach((el) => {
+      el.hidden = (el.dataset.famille && el.dataset.famille !== fam) || (el.dataset.systemes && !el.dataset.systemes.split(" ").includes(sys));
+    });
+    $("#bloc-source").hidden = sys !== "reseau";
+    $$(".si-ligne", racine).forEach((el) => { el.hidden = !etat.projet.ligne.actif; });
+    const transfo = (etat.projet.source || {}).type === "transfo";
+    $$(".si-transfo", racine).forEach((el) => { el.hidden = !transfo; });
+    $$(".si-public", racine).forEach((el) => { el.hidden = transfo; });
   }
 
   function remplirChamps(racine) {
@@ -258,7 +307,7 @@
       const chemin = input.dataset.chemin;
       const type = input.dataset.type;
       let v = lire(chemin);
-      if (type === "bool") { input.checked = Boolean(v); return; }
+      if (type === "bool") { input.checked = Boolean(v ?? valeurParDefaut(chemin)); return; }
       if (input.type === "radio") { input.checked = input.value === v; return; }
       if (v === undefined && input.tagName === "SELECT") v = valeurParDefaut(chemin);
       if (type === "plages") input.value = ecrirePlages(v);
@@ -294,6 +343,9 @@
       const ligne = input.closest(".recepteur");
       if (ligne) $(".choix-demarrage", ligne).hidden = !valeur;
     }
+    if (chemin === "referentiel") surChangementReferentiel();
+    else if (chemin === "reseau") surChangementReseau();
+    if (chemin === "systeme" || chemin === "source.type" || chemin === "ligne.actif") majVisibilite();
     if (chemin === "nom" || chemin === "systeme") rendreEntete();
     programmerCalcul();
   }
@@ -310,7 +362,53 @@
     { chemin: "site.t_amb_min", libelle: "Température minimale", unite: "°C", aide: "Tension à vide des modules au froid." },
     { chemin: "site.t_amb_jour", libelle: "Température moyenne de jour", unite: "°C" },
   ];
+  const CHAMPS_SOURCE = [
+    { chemin: "source.type", libelle: "Alimentation", type: "select", options: [["public", "Branchement BT"], ["transfo", "Poste privé (transformateur)"]] },
+    { chemin: "source.s_transfo_kva", libelle: "Puissance du transformateur", unite: "kVA", aide: "Vide : choisie par le moteur.", classe: "si-transfo" },
+    { chemin: "source.uk_pct", libelle: "Tension de court-circuit u_k", unite: "%", aide: "Vide : valeur usuelle selon la puissance.", classe: "si-transfo" },
+    { chemin: "source.s_kq_mva", libelle: "Puissance de court-circuit amont", unite: "MVA", classe: "si-transfo" },
+    { chemin: "source.icc_livraison_ka", libelle: "Icc maximal au point de livraison", unite: "kA", aide: "Donnée du distributeur.", classe: "si-public" },
+    { chemin: "source.icc_min_ka", libelle: "Icc minimal au point de livraison", unite: "kA", aide: "Donnée du distributeur.", classe: "si-public" },
+    { chemin: "source.longueur_m", libelle: "Câble source → tableau principal", unite: "m" },
+    { chemin: "source.secours", libelle: "Groupe électrogène de secours", type: "bool" },
+    { chemin: "source.part_secourue", libelle: "Part de l'installation secourue", unite: "%", type: "pct" },
+    { chemin: "source.autonomie_h", libelle: "Autonomie de la cuve à pleine charge", unite: "h" },
+  ];
+  function construireNormes() {
+    const refs = Object.values(M.REFERENTIELS).map((r) => [r.code, r.libelle]);
+    $("#champs-normes").innerHTML = champHtml({ chemin: "referentiel", libelle: "Référentiel normatif", type: "select", options: refs })
+      + `<label class="champ"><span>Réseau de distribution</span><select id="f-reseau" data-chemin="reseau" data-type="texte"></select></label>`;
+    $("#champs-source").innerHTML = CHAMPS_SOURCE.map(champHtml).join("");
+  }
+  /** Liste des réseaux compatibles avec la famille de normes, et description du référentiel. */
+  function remplirNormes() {
+    const fam = famille();
+    $("#f-reseau").innerHTML = Object.entries(M.RESEAUX).filter(([, r]) => r.famille === fam)
+      .map(([cle, r]) => `<option value="${echap(cle)}">${echap(r.nom)}</option>`).join("");
+    $("#f-reseau").value = etat.projet.reseau;
+    $("#f-referentiel").value = etat.projet.referentiel;
+    $("#description-norme").textContent = referentielActif().description;
+  }
+  function surChangementReferentiel() {
+    if (reseauActif().famille !== famille()) etat.projet.reseau = M.normaliser({ referentiel: etat.projet.referentiel }).reseau;
+    remplirNormes();
+    surChangementReseau();
+    majVisibilite();
+  }
+  function surChangementReseau() {
+    let message = "";
+    if (reseauActif().nph === 1) {
+      const tri = etat.projet.circuits.filter((c) => c.triphase);
+      tri.forEach((c) => { c.triphase = false; });
+      if (tri.length) message = `${tri.length} circuit${tri.length > 1 ? "s" : ""} triphasé${tri.length > 1 ? "s" : ""} passé${tri.length > 1 ? "s" : ""} en monophasé : le réseau choisi est monophasé.`;
+    }
+    $("#message-reseau").textContent = message;
+    rendreCharges();
+    rendreEntete();
+  }
+
   function construireProjet() {
+    construireNormes();
     $("#champs-site").innerHTML = CHAMPS_SITE.map(champHtml).join("");
     $("#champs-ghi").innerHTML = M.MOIS.map((m, i) => `<label class="champ"><span>${m}</span><input class="donnee" inputmode="decimal" data-ghi="${i}" id="ghi-${i}" placeholder="—" autocomplete="off"></label>`).join("");
     $$("#systemes input").forEach((r) => { r.dataset.chemin = "systeme"; });
@@ -347,15 +445,18 @@
       <div class="recepteur-moteur">
         <label class="case"><input type="checkbox" data-chemin="${b}.moteur" data-type="bool"> Moteur (P = puissance utile)</label>
         <label class="case choix-demarrage"><span class="discret">Démarrage</span><select data-chemin="${b}.demarrage" data-type="texte">${OPTIONS_DEMARRAGE}</select></label>
+        <label class="case" title="LED, informatique, variateurs, onduleurs : courants harmoniques"><input type="checkbox" data-chemin="${b}.non_lineaire" data-type="bool"> Non linéaire (électronique)</label>
       </div>
     </div>`;
   }
   function circuitHtml(c, i) {
     const b = `circuits.${i}`;
+    const res = reseauActif();
+    const alimentation = `<option value="0">${echap(libelleAlimentation(false, res))}</option>${res.nph > 1 ? `<option value="1">${echap(libelleAlimentation(true, res))}</option>` : ""}`;
     return `<article class="circuit" data-circuit="${i}">
       <div class="circuit-tete">
         <input class="nom-circuit" data-chemin="${b}.nom" data-type="texte" aria-label="Nom du circuit" autocomplete="off">
-        <select data-chemin="${b}.triphase" data-type="triphase" aria-label="Alimentation"><option value="0">Monophasé 230 V</option><option value="1">Triphasé 400 V</option></select>
+        <select data-chemin="${b}.triphase" data-type="triphase" aria-label="Alimentation">${alimentation}</select>
         <span class="rangee"><button type="button" class="btn btn-discret" data-action="dupliquer-circuit" data-i="${i}">Dupliquer</button>
         <button type="button" class="btn btn-discret btn-danger" data-action="supprimer-circuit" data-i="${i}">Supprimer</button></span>
       </div>
@@ -363,11 +464,11 @@
         <div class="circuit-params">
           ${champHtml({ chemin: `${b}.longueur_m`, libelle: "Longueur", unite: "m" })}
           ${champHtml({ chemin: `${b}.ks`, libelle: "Simultanéité ks" })}
-          <label class="case"><input type="checkbox" data-chemin="${b}.eclairage" data-type="bool"> Éclairage (ΔU ≤ 3 %)</label>
+          <label class="case"><input type="checkbox" data-chemin="${b}.eclairage" data-type="bool"> Circuit d'éclairage</label>
           <details class="avance"><summary>Options</summary><div class="circuit-params">
             ${champHtml({ chemin: `${b}.calibre_min`, libelle: "Calibre mini", unite: "A" })}
-            ${champHtml({ chemin: `${b}.section_min`, libelle: "Section mini", unite: "mm²" })}
-            ${champHtml({ chemin: `${b}.courbe`, libelle: "Courbe", type: "select", options: [["", "Automatique"], ["B", "B"], ["C", "C"], ["D", "D"]] })}
+            ${champHtml({ chemin: `${b}.section_min`, libelle: "Section mini", unite: "mm²", famille: "iec" })}
+            ${champHtml({ chemin: `${b}.courbe`, libelle: "Courbe", type: "select", options: [["", "Automatique"], ["B", "B"], ["C", "C"], ["D", "D"]], famille: "iec" })}
           </div></details>
         </div>
         <div class="circuit-chiffres" data-chiffres="${i}"></div>
@@ -385,6 +486,7 @@
       ? etat.projet.circuits.map(circuitHtml).join("")
       : `<div class="bloc"><p>Aucun circuit pour l'instant. Ajoutez un circuit, ou décrivez l'installation à l'assistant.</p></div>`);
     remplirChamps(liste);
+    majVisibilite(liste);
     $$(".recepteur", liste).forEach((ligne) => {
       const moteur = $('[data-type="bool"][data-chemin$=".moteur"]', ligne);
       $(".choix-demarrage", ligne).hidden = !moteur.checked;
@@ -404,16 +506,22 @@
     b.lignes.forEach((l, i) => {
       const zone = $(`[data-chiffres="${i}"]`);
       if (!zone) return;
-      const ph = l.circuit.triphase ? "3~" : `L${l.phase + 1}`;
       const cable = res.cables.find((c) => c.liaison === l.circuit.nom);
-      zone.innerHTML = `${phaseHtml(ph)}<span>P <b>${fr(l.p_w / 1000, 2)} kW</b></span><span>I<sub>B</sub> <b>${fr(l.i_b_a, 1)} A</b></span>`
+      zone.innerHTML = `${phaseHtml(etiquettePhase(l, res))}<span>P <b>${fr(l.p_w / 1000, 2)} kW</b></span><span>I<sub>B</sub> <b>${fr(l.i_b_a, 1)} A</b></span>`
         + `<span><b>${fr(l.energie_wh_j / 1000, 2)} kWh/j</b></span>`
-        + (cable ? `<span>${echap(cable.protection)} · <b>${fr(cable.section_mm2)} mm²</b> · ΔU <b>${fr(cable.chute_cumulee_pct, 2)} %</b></span>` : "");
+        + (cable ? `<span>${echap(cable.protection)} · <b>${echap(cable.section)}</b> · ΔU <b>${fr(cable.chute_cumulee_pct, 2)} %</b></span>` : "");
     });
   }
+  /** Phase d'un circuit selon le réseau du calcul : « 3~ », « L1-L2 » (entre phases en 120/240 V) ou « L1 ». */
+  function etiquettePhase(l, res) {
+    const nph = M.RESEAUX[res.projet.reseau].nph;
+    if (l.circuit.triphase && nph === 3) return "3~";
+    if (l.circuit.triphase && nph === 2) return "L1-L2";
+    return `L${l.phase + 1}`;
+  }
   function phaseHtml(ph) {
-    const classe = ph === "3~" ? "phase-tri" : `phase-${ph}`;
-    return `<span class="phase ${classe}" title="${ph === "3~" ? "Triphasé" : `Phase ${ph}`}">${ph}</span>`;
+    const poly = ph === "3~" || ph === "L1-L2";
+    return `<span class="phase ${poly ? "phase-tri" : `phase-${ph}`}" title="${ph === "3~" ? "Triphasé" : ph === "L1-L2" ? "Entre phases" : `Phase ${ph}`}">${ph}</span>`;
   }
   function surActionCharges(e) {
     const bouton = e.target.closest("[data-action]");
@@ -470,15 +578,17 @@
   // Onglet Choix techniques
   // ---------------------------------------------------------------------------
 
-  const n = (chemin, libelle, unite = "", aide = "", type = "nombre") => ({ chemin, libelle, unite, aide, type });
+  const n = (chemin, libelle, unite = "", aide = "", type = "nombre", extra = {}) => ({ chemin, libelle, unite, aide, type, ...extra });
+  const AVEC_STOCKAGE = ["hybride", "solaire"];
+  const AVEC_GROUPE = ["hybride", "groupe", "reseau"];
   const CHOIX = [
-    { titre: "Batteries", aide: "Le parc est dimensionné sur la consommation journalière, l'autonomie, la profondeur de décharge et le vieillissement.", champs: [
+    { titre: "Batteries", systemes: AVEC_STOCKAGE, aide: "Le parc est dimensionné sur la consommation journalière, l'autonomie, la profondeur de décharge et le vieillissement.", champs: [
       { chemin: "hypotheses.chimie", libelle: "Technologie", type: "select", options: [["lifepo4", "Lithium LiFePO4"], ["plomb", "Plomb OPzV / GEL"]] },
       n("hypotheses.jours_autonomie", "Jours d'autonomie", "j", "Hybride : 0,5 à 1,5 j. Solaire seul : 2 à 5 j."),
       n("hypotheses.t_batterie_min", "Température mini du local", "°C"),
       n("hypotheses.longueur_batterie_m", "Câble batterie → onduleur", "m"),
     ] },
-    { titre: "Onduleur / chargeur", champs: [
+    { titre: "Onduleur / chargeur", systemes: AVEC_STOCKAGE, champs: [
       n("hypotheses.k_temp_onduleur", "Puissance continue à 40 °C", "% de Sn", "Fiche constructeur (souvent 65 à 85 %).", "pct"),
       n("hypotheses.rendement_onduleur", "Rendement onduleur", "%", "", "pct"),
       n("hypotheses.rendement_chargeur", "Rendement chargeur", "%", "", "pct"),
@@ -487,7 +597,7 @@
       n("hypotheses.heures_recharge_cible", "Durée de recharge visée sur groupe", "h"),
       n("hypotheses.longueur_onduleur_tgbt_m", "Câble onduleur → TGBT", "m"),
     ] },
-    { titre: "Groupe électrogène", champs: [
+    { titre: "Groupe électrogène", systemes: AVEC_GROUPE, champs: [
       n("site.t_local_ge", "Température du local groupe", "°C"),
       n("hypotheses.chute_tension_max", "Chute de tension admise au démarrage", "%", "ISO 8528-5 : 20 % (G2), 15 % (G3).", "pct"),
       n("hypotheses.xd_transitoire", "Réactance transitoire x'd", "p.u."),
@@ -502,7 +612,7 @@
       n("hypotheses.conso_b", "Consommation à vide", "L/h par kW"),
       n("hypotheses.longueur_ge_m", "Câble groupe", "m"),
     ] },
-    { titre: "Champ solaire", champs: [
+    { titre: "Champ solaire", systemes: AVEC_STOCKAGE, champs: [
       n("hypotheses.inclinaison_deg", "Inclinaison imposée", "°", "Vide : optimisée pour le mois le plus défavorable."),
       n("site.albedo", "Albédo du sol"),
       n("hypotheses.pertes_encrassement", "Pertes par encrassement", "%", "", "pct"),
@@ -526,16 +636,22 @@
         n("mppt.v_mppt_max", "Plage MPPT maxi", "V"), n("mppt.isc_max", "Isc maxi par entrée", "A"), n("mppt.i_charge_max", "Courant de charge maxi", "A"),
       ] },
     ] },
-    { titre: "Distribution et bilan", champs: [
+    { titre: "Distribution et câbles", champs: [
       n("hypotheses.k_extension", "Coefficient d'extension ke", "", "Réserve sur la pointe, souvent 1,1 à 1,3."),
-      { chemin: "hypotheses.disposition_circuits", libelle: "Pose des câbles terminaux", type: "select",
-        options: [["couche_chemin_perfore", "Chemin de câbles perforé"], ["couche_paroi", "Sur paroi, une couche"], ["faisceau", "En faisceau ou sous conduit"]] },
-      n("hypotheses.chute_max_eclairage", "ΔU maxi éclairage", "%"),
-      n("hypotheses.chute_max_autres", "ΔU maxi autres usages", "%"),
-      n("hypotheses.chute_max_dc", "ΔU maxi batterie", "%"),
-      n("hypotheses.chute_max_pv", "ΔU maxi chaînes PV", "%"),
+      { chemin: "hypotheses.methode_pose", libelle: "Mode de pose des circuits", type: "select", famille: "iec",
+        options: Object.entries(M.METHODES_POSE).map(([cle, m]) => [cle, m.nom]), aide: "Méthode de référence IEC 60364-5-52 ; groupement selon le nombre de circuits." },
+      n("hypotheses.conducteurs_par_conduit", "Conducteurs actifs par conduit", "", "Ajustement NEC 310.15(C)(1) au-delà de 3.", "nombre", { famille: "nec" }),
+      { chemin: "hypotheses.bornes_75c", libelle: "Température des bornes", type: "select", famille: "nec",
+        options: [["1", "75 °C (bornes ≥ 100 A ou marquées 75 °C)"], ["0", "60 °C (110.14(C)(1)(a))"]] },
+      n("hypotheses.chute_max_eclairage", "ΔU maxi éclairage", "%", "Vide : 3 % (6 % depuis un poste privé).", "nombre", { famille: "iec" }),
+      n("hypotheses.chute_max_autres", "ΔU maxi autres usages", "%", "Vide : 5 % (8 % depuis un poste privé).", "nombre", { famille: "iec" }),
+      n("hypotheses.chute_max_dc", "ΔU maxi batterie", "%", "", "nombre", { systemes: AVEC_STOCKAGE }),
+      n("hypotheses.chute_max_pv", "ΔU maxi chaînes PV", "%", "", "nombre", { systemes: AVEC_STOCKAGE }),
     ] },
-    { titre: "Simulation", aide: "Une année de 365 jours est simulée heure par heure avec une météo journalière variable.", champs: [
+    { titre: "Compensation de l'énergie réactive", aide: "Batterie de condensateurs calculée pour atteindre le cos φ visé (module D).", champs: [
+      n("hypotheses.cos_phi_cible", "cos φ visé", "", "Vide : 0,928 (tan φ 0,4) en NF C 15-100, 0,95 sinon."),
+    ] },
+    { titre: "Simulation", systemes: AVEC_STOCKAGE, aide: "Une année de 365 jours est simulée heure par heure avec une météo journalière variable.", champs: [
       n("hypotheses.kt_defaut", "Indice de clarté forfaitaire", "", "Utilisé seulement sans irradiations mensuelles."),
       n("hypotheses.variabilite_journaliere", "Variabilité journalière", "%", "", "pct"),
       n("hypotheses.autocorrelation_journaliere", "Persistance des jours nuageux"),
@@ -545,7 +661,7 @@
     ] },
   ];
   function construireChoix() {
-    const bloc = (g) => `<div class="bloc"><div class="bloc-titre"><h2>${echap(g.titre)}</h2>${g.aide ? `<span class="discret">${echap(g.aide)}</span>` : ""}</div>
+    const bloc = (g) => `<div class="bloc"${attributsVisibilite(g)}><div class="bloc-titre"><h2>${echap(g.titre)}</h2>${g.aide ? `<span class="discret">${echap(g.aide)}</span>` : ""}</div>
       <div class="grille-champs">${g.champs.map(champHtml).join("")}</div>
       ${(g.sous || []).map((s) => `<h3>${echap(s.titre)}</h3><div class="grille-champs">${s.champs.map(champHtml).join("")}</div>`).join("")}</div>`;
     $("#choix").innerHTML = `<div class="bloc"><div class="bloc-titre"><h2>Choix techniques</h2>
@@ -555,10 +671,13 @@
   }
 
   function rendreFormulaires() {
+    remplirNormes();
     remplirChamps($('[data-panneau="projet"]'));
     remplirGhi();
     remplirChamps($("#choix"));
+    rendreLigneSaisie();
     rendreCharges();
+    majVisibilite();
     rendreEntete();
   }
 
@@ -567,8 +686,7 @@
   // ---------------------------------------------------------------------------
 
   /** Largeur de dessin = largeur réelle disponible, pour garder des textes lisibles sur téléphone. */
-  function largeurGraphique() {
-    const zone = $("#resultats");
+  function largeurGraphique(zone = $("#resultats")) {
     return Math.max(300, Math.min(760, (zone ? zone.clientWidth : 640) - 38));
   }
   function pasJoli(max, cible = 4) {
@@ -722,15 +840,24 @@
       tuiles.push(tuile("Énergie renouvelable", fr(s.simulation.fraction_renouvelable * 100, 0), "%", "Part de la consommation servie sans le groupe"));
     }
     if (s.simulation && !s.groupe) tuiles.push(tuile("Délestage", fr(s.simulation.llp * 100, 2), "%", `${fr(s.simulation.non_servie_kwh, 0)} kWh non servis par an`));
-    if (s.exploitation) {
+    if (s.exploitation && s.systeme === "groupe") {
       tuiles.push(tuile("Gasoil", fr(s.exploitation.carburant_l_an, 0), "L/an", `${s.exploitation.heures_jour} h de marche par jour`));
       tuiles.push(tuile("Charge moyenne du groupe", fr(s.exploitation.taux_moyen * 100, 0), "%", "Conseillé : au moins 30 %"));
     }
+    if (s.source) {
+      tuiles.push(s.source.type === "transfo"
+        ? tuile("Transformateur", fr(s.source.s_kva, 1), "kVA", `Icc ${fr(s.source.icc_max_ka, 1)} kA aux bornes BT`)
+        : tuile("Énergie du réseau", fr(s.exploitation.energie_kwh_an, 0), "kWh/an", `Puissance à souscrire ${fr(s.s_dim_kva, 1)} kVA`));
+    }
+    if (s.compensation.necessaire && s.compensation.q_kvar) {
+      tuiles.push(tuile("Compensation", fr(s.compensation.q_kvar, 1), "kvar", `cos φ ${fr(s.compensation.cos_initial, 2)} → ${fr(s.compensation.cos_cible, 3)}`));
+    }
+    if (s.ligne) tuiles.push(tuile("Ligne aérienne", fr(s.ligne.longueur_m, 0), "m", `${s.ligne.supports} supports · ΔU ${fr(s.ligne.chute_pct, 2)} %`));
     const nonOk = r.verifications.filter((v) => v.statut === "NON CONFORME" || v.statut === "ATTENTION");
     const ok = r.verifications.filter((v) => v.statut === "OK");
     const infos = r.verifications.filter((v) => v.statut === "INFO");
     zone.append(html(`<div class="bloc">
-      <div class="bloc-titre"><h2>Synthèse</h2><span class="discret">${echap(s.systeme_libelle)} · moteur v${echap(r.version)}</span></div>
+      <div class="bloc-titre"><h2>Synthèse</h2><span class="discret">${echap(s.systeme_libelle)} · ${echap(s.referentiel)} · ${echap(s.reseau)} · moteur v${echap(r.version)}</span></div>
       <div class="tuiles">${tuiles.join("")}</div></div>`));
     zone.append(html(`<div class="bloc">
       <div class="bloc-titre"><h2>Vérifications</h2><span class="rangee">${statutHtml("nc", `${s.verifications.non_conforme} non conforme`)}${statutHtml("attention", `${s.verifications.attention} attention`)}${statutHtml("ok", `${s.verifications.ok} conformes`)}</span></div>
@@ -738,10 +865,13 @@
       <details class="avance"><summary>Voir les ${ok.length} vérifications conformes et ${infos.length} informations</summary>${verifsHtml([...ok, ...infos])}</details></div>`));
 
     if (r.simulation) zone.append(blocSimulation(r));
-    if (r.exploitation) zone.append(blocGroupeSeul(r));
+    if (s.systeme === "groupe") zone.append(blocGroupeSeul(r));
+    if (r.source) zone.append(blocSource(r));
     zone.append(blocComparaison());
     zone.append(blocBilan(r));
     zone.append(blocCables(r));
+    zone.append(blocCompensation(r));
+    if (r.ligne) zone.append(blocLigneResume(r));
     if (r.gisement) zone.append(blocGisement(r));
   }
 
@@ -800,35 +930,68 @@
   function blocComparaison() {
     const comp = comparaison();
     const lignes = comp.map(({ systeme, res, erreur }) => {
-      const nom = { hybride: "Hybride", solaire: "Solaire autonome", groupe: "Groupe seul" }[systeme];
+      const nom = NOMS_SYSTEMES[systeme];
       const actuel = systeme === etat.projet.systeme;
       if (erreur) return `<tr class="${actuel ? "actuel" : ""}"><td>${nom}</td><td colspan="7">${echap(erreur)}</td></tr>`;
       const s = res.synthese;
-      const gasoil = s.simulation ? (s.groupe ? s.simulation.carburant_l_an : 0) : s.exploitation.carburant_l_an;
-      const enr = s.simulation ? (s.groupe ? s.simulation.fraction_renouvelable : 1 - s.simulation.llp) : 0;
+      const gasoil = gasoilAnnuel(s);
+      const enr = s.simulation ? (s.groupe ? s.simulation.fraction_renouvelable : 1 - s.simulation.llp) : s.systeme === "reseau" ? null : 0;
       return `<tr class="${actuel ? "actuel" : ""}"><td>${nom}${actuel ? " (projet)" : ""}</td>
         <td class="n">${s.pv ? `${fr(s.pv.kwc, 1)} kWc` : "—"}</td><td class="n">${s.batteries ? `${fr(s.batteries.kwh, 0)} kWh` : "—"}</td>
         <td class="n">${s.onduleur ? `${fr(s.onduleur.kva, 0)} kVA` : "—"}</td><td class="n">${s.groupe ? `${fr(s.groupe.kva, 0)} kVA` : "—"}</td>
-        <td class="n">${fr(gasoil, 0)} L/an</td><td class="n">${pct(enr)}</td>
+        <td class="n">${fr(gasoil, 0)} L/an</td><td class="n">${enr === null ? "réseau" : pct(enr)}</td>
         <td>${s.verifications.non_conforme ? statutHtml("nc", `${s.verifications.non_conforme} NC`) : ""}${s.verifications.attention ? statutHtml("attention", `${s.verifications.attention}`) : ""}${!s.verifications.non_conforme && !s.verifications.attention ? statutHtml("ok", "OK") : ""}</td></tr>`;
     }).join("");
     const bloc = html(`<div class="bloc"><div class="bloc-titre"><h2>Comparaison des systèmes</h2><span class="discret">Même bâtiment, mêmes hypothèses</span></div>
       <div class="defile"><table class="tableau"><thead><tr><th>Système</th><th class="n">Solaire</th><th class="n">Batteries</th><th class="n">Onduleurs</th><th class="n">Groupe</th><th class="n">Gasoil</th><th class="n">Énergie sans gasoil</th><th>Vérifications</th></tr></thead>
       <tbody>${lignes}</tbody></table></div>
-      <div class="rangee">${comp.filter((x) => x.systeme !== etat.projet.systeme && !x.erreur).map((x) => `<button type="button" class="btn" data-systeme="${x.systeme}">Passer en ${{ hybride: "hybride", solaire: "solaire autonome", groupe: "groupe seul" }[x.systeme]}</button>`).join("")}</div></div>`);
+      <div class="rangee">${comp.filter((x) => x.systeme !== etat.projet.systeme && !x.erreur).map((x) => `<button type="button" class="btn" data-systeme="${x.systeme}">Passer en ${NOMS_SYSTEMES[x.systeme].toLowerCase()}</button>`).join("")}</div></div>`);
     bloc.addEventListener("click", (e) => {
       const bouton = e.target.closest("[data-systeme]");
       if (!bouton) return;
       etat.projet.systeme = bouton.dataset.systeme;
       remplirChamps($('[data-panneau="projet"]'));
+      majVisibilite();
       calculer();
     });
     return bloc;
   }
 
+  /** Gasoil annuel d'un résultat : simulation (hybride), exploitation (groupe seul) ou essais du secours (réseau). */
+  function gasoilAnnuel(s) {
+    if (s.simulation) return s.groupe ? s.simulation.carburant_l_an : 0;
+    if (s.systeme === "reseau") return s.exploitation.carburant_essais_l_an;
+    return s.exploitation.carburant_l_an;
+  }
+
+  function blocSource(r) {
+    const src = r.source;
+    const lignes = r.note.filter((l) => l.rubrique === "S. Source réseau" || l.rubrique === "Exploitation sur réseau");
+    const ge = r.groupe;
+    return html(`<div class="bloc"><div class="bloc-titre"><h2>Raccordement au réseau</h2><span class="discret">${src.type === "transfo" ? "Poste de transformation privé" : "Branchement basse tension du distributeur"}${ge ? " · groupe de secours" : ""}</span></div>
+      <div class="defile"><table class="tableau"><tbody>${lignes.map((l) => `<tr><td>${echap(l.libelle)}</td><td class="n">${echap(valeurNote(l))} ${echap(l.unite || "")}</td></tr>`).join("")}
+      ${ge ? `<tr><td>Groupe de secours, puissance ${echap(ge.regime)}</td><td class="n">${fr(ge.s_kva)} kVA</td></tr><tr><td>Inverseur de source</td><td class="n">${fr(ge.inverseur_a)} A</td></tr><tr><td>Cuve</td><td class="n">${fr(ge.cuve_l, 0)} L</td></tr>` : ""}</tbody></table></div></div>`);
+  }
+
+  function blocCompensation(r) {
+    const c = r.compensation;
+    const verifs = r.verifications.filter((v) => v.rubrique.startsWith("D."));
+    const lignes = r.note.filter((l) => l.rubrique.startsWith("D.")).map((l) => `<tr><td>${echap(l.libelle)}</td><td class="n">${echap(valeurNote(l))} ${echap(l.unite || "")}</td><td class="n discret">${l.n ? `[R${l.n}]` : ""}</td></tr>`).join("");
+    return html(`<div class="bloc"><div class="bloc-titre"><h2>Énergie réactive et harmoniques</h2><span class="discret">cos φ ${fr(c.cos_initial, 3)} → visé ${fr(c.cos_cible, 3)} · charges non linéaires ${pct(c.gh_sur_sn)} de la source</span></div>
+      <div class="defile"><table class="tableau"><tbody>${lignes}</tbody></table></div>${verifsHtml(verifs)}</div>`);
+  }
+
+  function blocLigneResume(r) {
+    const l = r.ligne;
+    const bloc = html(`<div class="bloc"><div class="bloc-titre"><h2>Ligne aérienne</h2><button type="button" class="btn">Ouvrir l'onglet Ligne aérienne</button></div>
+      <p>${fr(l.longueur_m, 0)} m en ${echap(l.conducteur)}, ${l.supports.length} supports ; chute de tension ${fr(l.chute_pct, 2)} %, flèche maximale ${fr(l.fleche_max_m, 2)} m, Icc mini en bout ${fr(l.icc_fin_a, 0)} A (${echap(l.protection)}).</p></div>`);
+    $("button", bloc).addEventListener("click", () => ouvrirOnglet("ligne"));
+    return bloc;
+  }
+
   function blocBilan(r) {
     const lignes = r.bilan.lignes.map((l) => {
-      const ph = l.circuit.triphase ? "3~" : `L${l.phase + 1}`;
+      const ph = etiquettePhase(l, r);
       return `<tr><td>${echap(l.circuit.nom)}</td><td>${phaseHtml(ph)}</td><td class="n">${fr(l.p_w / 1000, 2)}</td><td class="n">${fr(l.q_var / 1000, 2)}</td>
         <td class="n">${fr(l.s_va / 1000, 2)}</td><td class="n">${fr(l.cos_phi, 2)}</td><td class="n">${fr(l.i_b_a, 1)}</td><td class="n">${fr(l.energie_wh_j / 1000, 2)}</td></tr>`;
     }).join("");
@@ -841,22 +1004,26 @@
   }
 
   function blocCables(r) {
-    const lignes = r.cables.map((c) => `<tr><td>${echap(c.liaison)}</td><td class="n">${fr(c.i_b_a, 1)}</td><td class="n">${fr(c.longueur_m, 0)}</td>
-      <td class="n">${c.conducteurs_paralleles > 1 ? `${c.conducteurs_paralleles} × ` : ""}${fr(c.section_mm2)}</td><td class="n">${fr(c.iz_corrige_a, 0)}</td>
+    const nec = M.REFERENTIELS[r.projet.referentiel].famille === "nec";
+    const bs = r.projet.referentiel === "bs7671";
+    const lignes = r.cables.map((c) => `<tr><td>${echap(c.liaison)}</td><td class="n">${fr(c.i_b_a, 1)}</td><td class="n">${fr(c.longueur_m, 0)}${nec ? ` <span class="discret">(${fr(c.longueur_m * 3.281, 0)} ft)</span>` : ""}</td>
+      <td class="n">${echap(c.section)}</td><td class="n">${echap(c.pe)}</td><td class="n">${fr(c.iz_corrige_a, 0)}</td>
       <td class="n">${fr(c.chute_cumulee_pct, 2)}</td><td>${echap(c.protection)}</td><td>${echap(c.critere_dimensionnant)}</td></tr>`).join("");
     const terminaux = r.cables.filter((c) => c.seuil_magnetique_a !== undefined);
-    const avecOnd = terminaux.some((c) => c.icc_min_onduleur_a !== null);
-    const avecGe = terminaux.some((c) => c.icc_min_groupe_a !== null);
-    const cellule = (v, seuil) => (v === null ? "—" : `${fr(v, 0)} ${v >= seuil ? statutHtml("ok", "instantané") : statutHtml("attention", "lent")}`);
-    const ilot = terminaux.map((c) => `<tr><td>${echap(c.liaison)}</td><td>${echap(c.protection)}</td><td class="n">${fr(c.seuil_magnetique_a, 0)}</td>
-      ${avecOnd ? `<td class="n">${cellule(c.icc_min_onduleur_a, c.seuil_magnetique_a)}</td>` : ""}${avecGe ? `<td class="n">${cellule(c.icc_min_groupe_a, c.seuil_magnetique_a)}</td>` : ""}</tr>`).join("");
-    return html(`<div class="bloc"><div class="bloc-titre"><h2>Câbles et protections</h2><span class="discret">Cuivre isolé PR ; chute de tension cumulée depuis la source</span></div>
-      <div class="defile"><table class="tableau"><thead><tr><th>Liaison</th><th class="n">I<sub>B</sub> A</th><th class="n">L m</th><th class="n">S mm²</th><th class="n">I<sub>z</sub> A</th><th class="n">ΔU %</th><th>Protection</th><th>Critère dimensionnant</th></tr></thead>
+    const colonnes = [["icc_min_reseau_a", "Sur réseau A"], ["icc_min_onduleur_a", "Sur onduleur A"], ["icc_min_groupe_a", "Sur groupe A"]]
+      .filter(([cle]) => terminaux.some((c) => c[cle] !== null && c[cle] !== undefined));
+    const cellule = (v, seuil) => (v === null || v === undefined ? "—" : `${fr(v, 0)} ${v >= seuil ? statutHtml("ok", "instantané") : statutHtml("attention", "lent")}`);
+    const declenchement = terminaux.map((c) => `<tr><td>${echap(c.liaison)}</td><td>${echap(c.protection)}</td><td class="n">${fr(c.seuil_magnetique_a, 0)}</td>
+      ${colonnes.map(([cle]) => `<td class="n">${cellule(c[cle], c.seuil_magnetique_a)}</td>`).join("")}
+      ${bs ? `<td class="n">${fr(c.zs_ohm, 3)}</td><td class="n">${fr(c.zs_max_ohm, 2)}</td>` : ""}</tr>`).join("");
+    const isolant = nec ? "Cuivre THHN/THWN-2 (Table 310.16), sections en AWG/kcmil" : "Cuivre isolé PR (XLPE), sections en mm²";
+    return html(`<div class="bloc"><div class="bloc-titre"><h2>Câbles et protections</h2><span class="discret">${isolant} ; chute de tension cumulée depuis la source</span></div>
+      <div class="defile"><table class="tableau"><thead><tr><th>Liaison</th><th class="n">I<sub>B</sub> A</th><th class="n">L m</th><th class="n">Section</th><th class="n">${nec ? "EGC" : "PE"}</th><th class="n">I<sub>z</sub> A</th><th class="n">ΔU %</th><th>Protection</th><th>Critère dimensionnant</th></tr></thead>
       <tbody>${lignes}</tbody></table></div>
-      <h3>Déclenchement des disjoncteurs sur source autonome</h3>
-      <p class="discret">Courant de court-circuit phase-neutre minimal en bout de circuit, comparé au seuil magnétique maximal du disjoncteur. « Lent » : la coupure n'est pas instantanée, le DDR 30 mA assure la protection des personnes.</p>
-      <div class="defile"><table class="tableau"><thead><tr><th>Circuit</th><th>Protection</th><th class="n">I<sub>m</sub> max A</th>${avecOnd ? '<th class="n">Sur onduleur A</th>' : ""}${avecGe ? '<th class="n">Sur groupe A</th>' : ""}</tr></thead>
-      <tbody>${ilot}</tbody></table></div></div>`);
+      <h3>Déclenchement des disjoncteurs${bs ? " et impédance de boucle Zs" : ""}</h3>
+      <p class="discret">Courant de court-circuit phase-neutre minimal en bout de circuit, comparé au seuil de déclenchement instantané du disjoncteur${bs ? " ; Zs comparée à Zs max = 0,95·U0/Ia (BS 7671 Table 41.3)" : ""}. « Lent » : la coupure n'est pas instantanée ; ${nec ? "vérifier la courbe temps-courant (GFCI pour les personnes)" : "le DDR 30 mA assure la protection des personnes"}.</p>
+      <div class="defile"><table class="tableau"><thead><tr><th>Circuit</th><th>Protection</th><th class="n">Seuil instantané A</th>${colonnes.map(([, t]) => `<th class="n">${t}</th>`).join("")}${bs ? '<th class="n">Zs Ω</th><th class="n">Zs max Ω</th>' : ""}</tr></thead>
+      <tbody>${declenchement}</tbody></table></div></div>`);
   }
 
   function blocGisement(r) {
@@ -866,6 +1033,135 @@
       <span class="discret">${g.mesure ? "Irradiations saisies" : "Indice de clarté forfaitaire"} · plan incliné à ${g.beta}° · mois critique ${M.MOIS[g.mois_critique]}</span></div>
       <div class="defile"><table class="tableau"><thead><tr><th>kWh/m²/j</th>${M.MOIS.map((m) => `<th class="n">${m}</th>`).join("")}</tr></thead>
       <tbody>${ligne("H0 hors atmosphère", "h0")}${ligne("Indice de clarté", "kt")}${ligne("Horizontal", "ghi")}${ligne("Fraction diffuse", "fd")}${ligne("Plan incliné", "ht")}</tbody></table></div></div>`);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Onglet Ligne aérienne (module E)
+  // ---------------------------------------------------------------------------
+
+  const AUTO = ["", "Selon la norme du projet"];
+  const CHAMPS_LIGNE = [
+    { chemin: "ligne.conducteur", libelle: "Conducteur", type: "select", options: [AUTO, ...Object.entries(M.CONDUCTEURS_AERIENS).map(([cle, c]) => [cle, c.nom])] },
+    { chemin: "ligne.climat", libelle: "Hypothèses climatiques", type: "select", options: [AUTO, ...Object.entries(M.CLIMATS).map(([cle, c]) => [cle, c.nom])] },
+    { chemin: "ligne.poteau", libelle: "Supports", type: "select", options: [AUTO, ...Object.entries(M.POTEAUX).map(([cle, x]) => [cle, x.nom])] },
+    n("ligne.hauteur_poteau_m", "Hauteur des poteaux", "m"),
+    n("ligne.garde_min_m", "Hauteur libre minimale", "m", "Selon la réglementation locale (traversées de routes…)."),
+    n("ligne.diametre_poteau_m", "Diamètre moyen des poteaux", "m"),
+    n("ligne.cos_phi", "cos φ des charges"),
+    n("ligne.ks", "Simultanéité des charges"),
+    { chemin: "ligne.protection_type", libelle: "Protection de départ", type: "select", options: [["fusible", "Fusible gG"], ["disjoncteur", "Disjoncteur"]] },
+    n("ligne.protection_a", "Calibre de la protection", "A", "Vide : choisi par le moteur."),
+    n("ligne.icc_min_ka", "Icc minimal à l'origine", "kA", "Vide : déduit de la source du projet."),
+    n("ligne.cs_charge", "Coefficient de sécurité du porteur", "", "Vide : selon les hypothèses climatiques."),
+    n("ligne.eds_max", "Tension journalière maximale", "% rupture", "", "pct"),
+    n("ligne.facteur_support", "Facteur de charge des supports", "", "Vide : 1 (IEC/NF), 2 (NESC)."),
+    { chemin: "ligne.vent_support", libelle: "Compter le vent sur les poteaux", type: "bool" },
+  ];
+  function construireLigne() {
+    $("#ligne").innerHTML = `<div class="bloc">
+        <div class="bloc-titre"><h2>Ligne aérienne basse tension</h2><span class="discret">Flèches et tensions mécaniques, choix des supports, chute de tension et court-circuit le long de la ligne.</span></div>
+        <label class="case"><input type="checkbox" id="f-ligne-actif" data-chemin="ligne.actif" data-type="bool"> Calculer une ligne aérienne issue du tableau principal</label>
+        <p class="discret">Le climat, le type de supports et le conducteur suivent le référentiel choisi dans l'onglet Projet (NF C 11-201, IEC/EN 50341, NESC). Les charges de la ligne s'ajoutent au poteau d'arrivée de chaque portée.</p>
+      </div>
+      <div class="bloc si-ligne"><h2>Conducteur et supports</h2><div class="grille-champs">${CHAMPS_LIGNE.map(champHtml).join("")}</div></div>
+      <div class="bloc si-ligne"><div class="bloc-titre"><h2>Portées</h2><button type="button" class="btn" data-action="ajouter-portee">Ajouter une portée</button></div>
+        <div class="defile"><table class="tableau portees"><thead><tr><th>Portée</th><th>Longueur <span class="unite">m</span></th><th title="Angle de déviation de la ligne au poteau d'arrivée">Angle à l'arrivée <span class="unite">°</span></th><th title="Puissance raccordée au poteau d'arrivée">Charge à l'arrivée <span class="unite">kVA</span></th><th></th></tr></thead>
+        <tbody id="portees"></tbody></table></div></div>
+      <div id="ligne-resultats" class="liste-circuits"></div>`;
+    $("#ligne").addEventListener("click", (e) => {
+      const bouton = e.target.closest("[data-action]");
+      if (!bouton) return;
+      const portees = etat.projet.ligne.portees;
+      if (bouton.dataset.action === "ajouter-portee") {
+        const derniere = portees[portees.length - 1];
+        portees.push(derniere ? { longueur_m: derniere.longueur_m, angle_deg: 0, charge_kva: derniere.charge_kva } : { longueur_m: 40, angle_deg: 0, charge_kva: 5 });
+      } else if (bouton.dataset.action === "supprimer-portee") {
+        portees.splice(Number(bouton.dataset.k), 1);
+      } else return;
+      rendreLigneSaisie();
+      programmerCalcul();
+    });
+  }
+  function rendreLigneSaisie() {
+    const portees = etat.projet.ligne.portees;
+    const cellule = (k, cle, indication) => `<td><input class="donnee" inputmode="decimal" data-chemin="ligne.portees.${k}.${cle}" data-type="nombre" placeholder="${indication}" autocomplete="off" aria-label="${cle} portée ${k + 1}"></td>`;
+    $("#portees").innerHTML = portees.map((x, k) => `<tr><td class="n">${k + 1} → ${k + 2}</td>${cellule(k, "longueur_m", "40")}${cellule(k, "angle_deg", "0")}${cellule(k, "charge_kva", "0")}
+      <td><button type="button" class="btn btn-discret btn-danger" data-action="supprimer-portee" data-k="${k}" aria-label="Supprimer la portée ${k + 1}">✕</button></td></tr>`).join("");
+    remplirChamps($("#ligne"));
+    majVisibilite($("#ligne"));
+  }
+
+  /** Profil en long : poteaux, conducteur à la température de flèche maximale, hauteur libre minimale. */
+  function profilLigne(l, gardeMin) {
+    const L = largeurGraphique($("#ligne")); const H = 230; const g = 40; const d = 16; const h = 26; const b = 26;
+    const hMax = Math.ceil(l.h_attache_m + 1.5);
+    const xs = (x) => g + (x / l.longueur_m) * (L - g - d);
+    const ys = (y) => H - b - (y / hMax) * (H - b - h);
+    let svg = `<svg viewBox="0 0 ${L} ${H}" role="img" aria-label="Profil de la ligne : poteaux et flèches à chaud">`;
+    for (let y = 0; y <= hMax; y += 2) {
+      svg += `<line x1="${g}" x2="${L - d}" y1="${ys(y)}" y2="${ys(y)}" style="stroke:var(--grille)"/><text class="axe-texte" x="${g - 6}" y="${ys(y) + 4}" text-anchor="end">${y}</text>`;
+    }
+    svg += `<text class="axe-texte" x="${g - 6}" y="12" text-anchor="end">m</text>`;
+    svg += `<line x1="${g}" x2="${L - d}" y1="${ys(0)}" y2="${ys(0)}" style="stroke:var(--axe)" stroke-width="1.5"/>`;
+    svg += `<line x1="${g}" x2="${L - d}" y1="${ys(gardeMin)}" y2="${ys(gardeMin)}" style="stroke:var(--nc)" stroke-width="1" stroke-dasharray="5 4"/>`
+      + `<text class="ref-texte" x="${L - d}" y="${ys(gardeMin) + 14}" text-anchor="end">Hauteur libre mini ${fr(gardeMin, 1)} m</text>`;
+    let x0 = 0;
+    let chemin = "";
+    l.portees.forEach((p) => {
+      for (let i = 0; i <= 20; i++) {
+        const t = i / 20;
+        const y = l.h_attache_m - 4 * p.fleche_chaude_m * t * (1 - t);
+        chemin += `${chemin ? " L" : "M"}${xs(x0 + t * p.longueur_m).toFixed(1)},${ys(y).toFixed(1)}`;
+      }
+      x0 += p.longueur_m;
+    });
+    svg += `<path d="${chemin}" fill="none" style="stroke:var(--accent)" stroke-width="2"/>`;
+    let distance = 0;
+    l.supports.forEach((sup, k) => {
+      const x = xs(distance);
+      svg += `<line x1="${x}" x2="${x}" y1="${ys(0)}" y2="${ys(l.h_attache_m + 0.3)}" style="stroke:var(--ink-2)" stroke-width="${sup.type === "alignement" ? 2 : 3.5}"/>`
+        + `<text class="axe-texte" x="${x}" y="${ys(l.h_attache_m + 0.3) - 6}" text-anchor="middle">${sup.numero}</text>`;
+      if (k < l.portees.length) distance += l.portees[k].longueur_m;
+    });
+    svg += `<text class="axe-texte" x="${g}" y="${H - 8}" text-anchor="start">0 m</text><text class="axe-texte" x="${L - d}" y="${H - 8}" text-anchor="end">${fr(l.longueur_m, 0)} m</text>`;
+    svg += "</svg>";
+    return html(`<div class="graphique">${svg}</div>`);
+  }
+
+  function rendreLigneResultats() {
+    const zone = $("#ligne-resultats");
+    if (!zone || $("#app").dataset.onglet !== "ligne") return;
+    const r = etat.resultat;
+    zone.innerHTML = "";
+    if (!etat.projet.ligne.actif) return;
+    if (!r) {
+      zone.innerHTML = `<div class="bandeau bandeau-nc"><div><strong>Le calcul attend des entrées valides.</strong><ul>${(etat.erreurs || []).map((e) => `<li>${echap(e)}</li>`).join("")}</ul></div></div>`;
+      return;
+    }
+    const l = r.ligne;
+    if (!l) return;
+    const gardeMin = r.projet.ligne.garde_min_m;
+    const verifs = r.verifications.filter((v) => v.rubrique.startsWith("E."));
+    const bloc = html(`<div class="bloc"><div class="bloc-titre"><h2>Résultats de la ligne</h2><span class="discret">${echap(l.conducteur)} · ${echap(l.climat)}</span></div>
+      <div class="tuiles">${[
+        tuile("Longueur", fr(l.longueur_m, 0), "m", `${l.supports.length} supports, portée équivalente ${fr(l.a_eq_m, 1)} m`),
+        tuile("Chute de tension", fr(l.chute_pct, 2), "%", `En bout de ligne, ${fr(l.i_max_a, 0)} A au départ`),
+        tuile("Flèche maximale", fr(l.fleche_max_m, 2), "m", `Hauteur libre ${fr(l.garde_m, 2)} m au point bas`),
+        tuile("Icc mini en bout", fr(l.icc_fin_a, 0), "A", `Protection de départ : ${l.protection}`),
+      ].join("")}</div>${verifsHtml(verifs)}</div>`);
+    bloc.append(html(`<h3>Profil en long à ${fr(l.t_chaud, 1)} °C (flèche maximale)</h3>`));
+    bloc.append(profilLigne(l, gardeMin));
+    zone.append(bloc);
+    const rupture = (t) => pct(t / l.rts_n, 1);
+    zone.append(html(`<div class="bloc"><h2>Tensions mécaniques du porteur</h2><p class="discret">Équation de changement d'état sur la portée équivalente, réglage : ${echap(l.critere)}.</p>
+      <div class="defile"><table class="tableau"><thead><tr><th>État</th><th class="n">Tension daN</th><th class="n">% de la rupture</th></tr></thead>
+      <tbody>${l.etats.map((e) => `<tr><td>${echap(e.nom)}</td><td class="n">${fr(e.tension_n / 10, 0)}</td><td class="n">${rupture(e.tension_n)}</td></tr>`).join("")}</tbody></table></div></div>`));
+    zone.append(html(`<div class="bloc"><h2>Supports</h2><p class="discret">Effort en tête dans l'état le plus défavorable, facteur de charge compris.</p>
+      <div class="defile"><table class="tableau"><thead><tr><th class="n">Poteau</th><th>Fonction</th><th class="n">Effort daN</th><th>Classe retenue</th><th>Hauban</th></tr></thead>
+      <tbody>${l.supports.map((x) => `<tr><td class="n">${x.numero}</td><td>${echap(x.type)}</td><td class="n">${fr(x.effort_dan, 0)}</td><td>${x.classe ? echap(x.classe) : statutHtml("attention", "hors gamme")}</td><td>${x.hauban ? "conseillé" : "—"}</td></tr>`).join("")}</tbody></table></div></div>`));
+    zone.append(html(`<div class="bloc"><h2>Le long de la ligne</h2>
+      <div class="defile"><table class="tableau"><thead><tr><th class="n">Poteau</th><th class="n">Distance m</th><th class="n">Courant A</th><th class="n">ΔU cumulée %</th><th class="n">Flèche à chaud m</th></tr></thead>
+      <tbody>${l.noeuds.map((x, k) => `<tr><td class="n">${x.poteau}</td><td class="n">${fr(x.distance_m, 0)}</td><td class="n">${fr(x.courant_a, 1)}</td><td class="n">${fr(x.chute_pct, 2)}</td><td class="n">${fr(l.portees[k].fleche_chaude_m, 2)}</td></tr>`).join("")}</tbody></table></div></div>`));
   }
 
   // ---------------------------------------------------------------------------
@@ -917,8 +1213,9 @@
     for (const [rub, ls] of rubriques(r)) {
       lignes.push(`<h2>${echap(rub)}</h2><table>${ls.map((l) => `<tr><td>${echap(l.libelle)}</td><td class="v">${echap(valeurNote(l))} ${echap(l.unite || "")}</td><td class="r">${l.n ? `[R${l.n}]` : ""}</td></tr>`).join("")}</table>`);
     }
-    const circuits = p.circuits.map((c) => `<tr><td>${echap(c.nom)}</td><td>${c.triphase ? "Tri 400 V" : "Mono 230 V"}</td><td class="v">${fr(c.longueur_m, 0)} m</td><td>${c.recepteurs.map((x) => `${fr(x.quantite, 0)} × ${echap(x.nom)} ${fr(x.puissance_w, 0)} W (${echap(ecrirePlages(x.plages))})`).join("<br>")}</td></tr>`).join("");
-    const cables = r.cables.map((c) => `<tr><td>${echap(c.liaison)}</td><td class="v">${fr(c.i_b_a, 1)}</td><td class="v">${fr(c.longueur_m, 0)}</td><td class="v">${c.conducteurs_paralleles > 1 ? `${c.conducteurs_paralleles} × ` : ""}${fr(c.section_mm2)}</td><td class="v">${fr(c.chute_cumulee_pct, 2)}</td><td>${echap(c.protection)}</td></tr>`).join("");
+    const res = M.RESEAUX[p.reseau];
+    const circuits = p.circuits.map((c) => `<tr><td>${echap(c.nom)}</td><td>${echap(libelleAlimentation(c.triphase, res))}</td><td class="v">${fr(c.longueur_m, 0)} m</td><td>${c.recepteurs.map((x) => `${fr(x.quantite, 0)} × ${echap(x.nom)} ${fr(x.puissance_w, 0)} W (${echap(ecrirePlages(x.plages))})`).join("<br>")}</td></tr>`).join("");
+    const cables = r.cables.map((c) => `<tr><td>${echap(c.liaison)}</td><td class="v">${fr(c.i_b_a, 1)}</td><td class="v">${fr(c.longueur_m, 0)}</td><td class="v">${echap(c.section)}</td><td class="v">${echap(c.pe)}</td><td class="v">${fr(c.chute_cumulee_pct, 2)}</td><td>${echap(c.protection)}</td></tr>`).join("");
     const date = new Date().toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
     return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Note de calcul — ${echap(p.nom)}</title>
 <style>body{font-family:Arial,Helvetica,sans-serif;color:#16202a;max-width:900px;margin:32px auto;padding:0 20px;font-size:13px;line-height:1.45}
@@ -928,10 +1225,10 @@ td.v{text-align:right;font-family:Consolas,monospace;white-space:nowrap}td.r{wid
 .st{font-weight:bold}.nc{color:#c0392f}.at{color:#9a6400}.ok{color:#0b7d0b}.small{color:#6f7b87;font-size:11px}
 @media print{body{margin:0}h2{break-after:avoid}}</style></head><body>
 <h1>Note de calcul — ${echap(p.nom)}</h1>
-<p class="small">${echap(M.SYSTEMES[p.systeme])} · site ${fr(p.site.latitude, 3)}° / ${fr(p.site.longitude, 3)}°, altitude ${fr(p.site.altitude_m, 0)} m · établie le ${date} · moteur v${echap(r.version)}</p>
+<p class="small">${echap(M.SYSTEMES[p.systeme])} · référentiel ${echap(r.synthese.referentiel)} · réseau ${echap(res.nom)}<br>Site ${fr(p.site.latitude, 3)}° / ${fr(p.site.longitude, 3)}°, altitude ${fr(p.site.altitude_m, 0)} m · établie le ${date} · moteur v${echap(r.version)}</p>
 <h2>Données d'entrée : circuits et récepteurs</h2><table><tr><th>Circuit</th><th>Alimentation</th><th>Longueur</th><th>Récepteurs (plages horaires)</th></tr>${circuits}</table>
 ${lignes.join("\n")}
-<h2>Câbles et protections</h2><table><tr><th>Liaison</th><th>I<sub>B</sub> A</th><th>L m</th><th>S mm²</th><th>ΔU %</th><th>Protection</th></tr>${cables}</table>
+<h2>Câbles et protections</h2><table><tr><th>Liaison</th><th>I<sub>B</sub> A</th><th>L m</th><th>Section</th><th>Protection (PE/EGC)</th><th>ΔU %</th><th>Protection</th></tr>${cables}</table>
 <h2>Vérifications</h2><table>${r.verifications.map((v) => `<tr><td class="st ${{ "NON CONFORME": "nc", ATTENTION: "at", OK: "ok", INFO: "" }[v.statut]}">${echap(v.statut)}</td><td>${echap(v.message)}</td><td class="r">${v.n ? `[R${v.n}]` : ""}</td></tr>`).join("")}</table>
 <h2>Nomenclature principale</h2><ul>${r.nomenclature.map((x) => `<li>${echap(x)}</li>`).join("")}</ul>
 <h2>Justifications</h2><ol>${r.references.map((x) => `<li>${echap(x)}</li>`).join("")}</ol>
@@ -942,10 +1239,12 @@ ${lignes.join("\n")}
   function cablesCsv(r) {
     const champ = (v) => `"${String(v).replace(/"/g, '""')}"`;
     const nombre = (v) => (v === null || v === undefined ? "" : String(v).replace(".", ","));
-    const lignes = [["Liaison", "I_B (A)", "Longueur (m)", "Conducteurs en parallèle", "Section (mm²)", "Iz corrigé (A)", "ΔU cumulée (%)", "Protection", "Critère dimensionnant", "Icc mini onduleur (A)", "Icc mini groupe (A)"].map(champ).join(";")];
+    const lignes = [["Liaison", "I_B (A)", "Longueur (m)", "Conducteurs en parallèle", "Section", "Section (mm²)", "Conducteur de protection", "Iz corrigé (A)", "ΔU cumulée (%)",
+      "Protection", "Critère dimensionnant", "Icc mini réseau (A)", "Icc mini onduleur (A)", "Icc mini groupe (A)", "Zs (Ω)", "Zs max (Ω)"].map(champ).join(";")];
     for (const c of r.cables) {
-      lignes.push([champ(c.liaison), nombre(Math.round(c.i_b_a * 10) / 10), nombre(c.longueur_m), nombre(c.conducteurs_paralleles), nombre(c.section_mm2), nombre(c.iz_corrige_a),
-        nombre(c.chute_cumulee_pct), champ(c.protection), champ(c.critere_dimensionnant), nombre(c.icc_min_onduleur_a), nombre(c.icc_min_groupe_a)].join(";"));
+      lignes.push([champ(c.liaison), nombre(Math.round(c.i_b_a * 10) / 10), nombre(c.longueur_m), nombre(c.conducteurs_paralleles), champ(c.section), nombre(c.section_mm2), champ(c.pe),
+        nombre(c.iz_corrige_a), nombre(c.chute_cumulee_pct), champ(c.protection), champ(c.critere_dimensionnant), nombre(c.icc_min_reseau_a), nombre(c.icc_min_onduleur_a),
+        nombre(c.icc_min_groupe_a), nombre(c.zs_ohm), nombre(c.zs_max_ohm)].join(";"));
     }
     return `﻿${lignes.join("\r\n")}`;
   }
@@ -988,37 +1287,46 @@ ${lignes.join("\n")}
 
   const agent = { tours: [], ctl: null, enCours: false, indisponible: false };
 
-  const CONSIGNES = `Tu es l'assistant d'une application de dimensionnement électrique : bâtiments basse tension 230/400 V, solaire photovoltaïque, batteries, onduleurs/chargeurs et groupes électrogènes. Tu parles à un électricien ou à un porteur de projet, en français simple et précis.
+  const CONSIGNES = `Tu es l'assistant d'une application de dimensionnement électrique basse tension : bâtiments, solaire photovoltaïque, batteries, onduleurs/chargeurs, groupes électrogènes, raccordement au réseau public, compensation de l'énergie réactive et lignes aériennes. Tu parles à un électricien, un bureau d'études ou un porteur de projet, en français simple et précis.
+
+Normes disponibles (champ referentiel) et réseaux compatibles (champ reseau) :
+- nfc15100 : NF C 15-100 (France, Afrique francophone, Maghreb) ; réseaux 400/230-50, 380/220-50, 230-50.
+- iec60364 : IEC 60364 (international) ; réseaux 400/230-50, 380/220-50, 415/240-50, 230-50.
+- bs7671 : BS 7671 (Royaume-Uni et pays du Commonwealth : Nigeria, Ghana, Kenya, Inde…) ; réseaux 400/230-50, 415/240-50, 230-50.
+- nec : NEC / NFPA 70 (États-Unis ; Canada en première approche, la norme CSA C22.1 n'étant pas intégrée) ; réseaux 240/120-60 (logements), 208/120-60 (petit tertiaire), 480/277-60 (industrie, grands bâtiments).
+Choisis la norme du pays du projet et dis-le. Pays non couvert : IEC 60364, en le signalant. Un réseau 60 Hz ne va qu'avec le NEC ; un réseau 50 Hz avec les trois autres. En NEC, les sections sont en AWG/kcmil, les charges continues comptées à 125 %, et les longueurs restent saisies en mètres.
 
 Tes outils agissent sur le projet affiché à l'écran :
-- modifier_projet : crée ou modifie le projet (site, type de système, circuits et récepteurs, hypothèses, module PV, régulateur).
-- calculer : lance le moteur de calcul et renvoie le matériel retenu, les critères et les vérifications.
+- modifier_projet : crée ou modifie le projet (norme, réseau, type de système, site, raccordement au réseau, circuits et récepteurs, hypothèses, module PV, régulateur, ligne aérienne).
+- calculer : lance le moteur et renvoie le matériel retenu, les critères et les vérifications.
 - details_note : renvoie les lignes détaillées d'une rubrique de la note de calcul.
-- comparer_systemes : compare hybride, solaire autonome et groupe seul pour le même bâtiment.
+- comparer_systemes : compare hybride, solaire autonome, groupe seul et réseau public pour le même bâtiment.
 
 Règles :
-1. Ne donne jamais un résultat de dimensionnement (kWc, kWh, kVA, sections, calibres, litres de gasoil) qui ne vient pas d'un outil ou du résumé de résultats fourni.
-2. Quand on te décrit une installation, traduis-la en circuits et récepteurs avec des valeurs typiques (puissance unitaire en W, cos φ, rendement pour les moteurs, plages horaires réalistes [début, fin, taux de marche 0-1], la plage peut passer minuit), appelle modifier_projet en une seule fois (remplacer_circuits=true pour un nouveau projet), puis calculer.
-3. Regroupe par usage : éclairage (eclairage=true), prises (ks 0,2), climatisation, froid, informatique, moteurs. Un moteur : puissance utile en W, moteur=true, rendement 0,75 à 0,9, démarrage progressif ou variateur conseillé au-delà de 2 kW sur solaire. Triphasé pour les moteurs ≥ 3 kW et les gros équipements, monophasé sinon. Longueur de chaque circuit estimée (15 à 60 m dans un bâtiment).
-4. Si le lieu est une ville, mets ses coordonnées et son altitude approximatives et dis-le. N'invente pas d'irradiations mensuelles : laisse ghi_mensuel vide et rappelle qu'on peut saisir les valeurs PVGIS ou NASA POWER dans l'onglet Projet. Ajuste t_amb_max, t_amb_min et t_amb_jour au climat du lieu.
-5. Liste en quelques puces les hypothèses que tu as prises, pour que l'utilisateur les corrige.
-6. Après le calcul, présente le matériel retenu, ce qui dimensionne chaque équipement, puis les non-conformités et points d'attention avec l'action corrective. N'applique une correction que si l'utilisateur l'a demandée ; sinon propose-la.
-7. Pour une question de cours (normes, formules), réponds directement en citant la norme (NF C 15-100, IEC 60364, IEC 62548, ISO 8528...) et rappelle que les valeurs normatives se vérifient dans l'édition en vigueur.
-8. L'application ne calcule pas encore la compensation d'énergie réactive ni les lignes aériennes : dis-le si on te le demande et donne la méthode générale.
-9. Réponds court : quelques phrases et des listes à puces, unités SI, virgule décimale. Pas de tableau Markdown.`;
+1. Ne donne jamais un résultat de dimensionnement (kWc, kWh, kVA, kvar, sections, calibres, litres de gasoil, flèches, classes de poteaux) qui ne vient pas d'un outil ou du résumé de résultats fourni.
+2. Quand on te décrit une installation, traduis-la en circuits et récepteurs avec des valeurs typiques (puissance unitaire en W, cos φ, rendement pour les moteurs, plages horaires réalistes [début, fin, taux de marche 0-1], la plage peut passer minuit), appelle modifier_projet en une seule fois (remplacer_circuits=true pour un nouveau projet, avec referentiel et reseau), puis calculer.
+3. Regroupe par usage : éclairage (eclairage=true), prises (ks 0,2), climatisation, froid, informatique, moteurs. Un moteur : puissance utile en W, moteur=true, rendement 0,75 à 0,9, démarrage progressif ou variateur conseillé au-delà de 2 kW sur solaire. non_lineaire=true pour LED, informatique, variateurs et climatiseurs inverter. triphase=true : triphasé sur un réseau triphasé, 240 V entre phases sur un réseau 120/240 V ; impossible sur 230 V monophasé. Longueur de chaque circuit estimée (15 à 60 m dans un bâtiment).
+4. Systèmes : hybride, solaire, groupe, reseau. Pour reseau : source.type public (branchement du distributeur, Icc à demander au distributeur) ou transfo (poste privé), source.secours=true pour un groupe de secours (part_secourue 0-1, autonomie_h).
+5. Ligne aérienne : ligne.actif=true, portees = [{longueur_m, angle_deg au poteau d'arrivée, charge_kva au poteau d'arrivée}], 30 à 50 m par portée en BT. Le conducteur, le climat et les supports suivent la norme si tu ne les fixes pas.
+6. Si le lieu est une ville, mets ses coordonnées et son altitude approximatives et dis-le. N'invente pas d'irradiations mensuelles : laisse ghi_mensuel vide et rappelle qu'on peut saisir les valeurs PVGIS ou NASA POWER dans l'onglet Projet. Ajuste t_amb_max, t_amb_min et t_amb_jour au climat du lieu.
+7. Liste en quelques puces les hypothèses que tu as prises, pour que l'utilisateur les corrige.
+8. Après le calcul, présente le matériel retenu, ce qui dimensionne chaque équipement, puis les non-conformités et points d'attention avec l'action corrective. N'applique une correction que si l'utilisateur l'a demandée ; sinon propose-la.
+9. Pour une question de cours (normes, formules), réponds directement en citant les articles de la norme du projet (NF C 15-100, IEC 60364, BS 7671, NEC, IEC 62548, ISO 8528, NESC…) et rappelle que les valeurs normatives se vérifient dans l'édition en vigueur.
+10. Réponds court : quelques phrases et des listes à puces, unités SI, virgule décimale. Pas de tableau Markdown.`;
 
   const SCHEMA_RECEPTEUR = { type: "object", properties: {
     nom: { type: "string" }, quantite: { type: "number" }, puissance_w: { type: "number", description: "W par appareil ; puissance utile pour un moteur" },
     cos_phi: { type: "number" }, rendement: { type: "number" }, ku: { type: "number" },
     plages: { type: "array", items: { type: "array", items: { type: "number" } }, description: "[[début h, fin h, taux 0-1], ...]" },
-    moteur: { type: "boolean" }, demarrage: { type: "string", enum: Object.keys(M.MODES_DEMARRAGE) } } };
+    moteur: { type: "boolean" }, demarrage: { type: "string", enum: Object.keys(M.MODES_DEMARRAGE) }, non_lineaire: { type: "boolean" } } };
   const SCHEMA_CIRCUIT = { type: "object", properties: {
     nom: { type: "string" }, triphase: { type: "boolean" }, longueur_m: { type: "number" }, ks: { type: "number" }, eclairage: { type: "boolean" },
     calibre_min: { type: "number" }, section_min: { type: "number" }, recepteurs: { type: "array", items: SCHEMA_RECEPTEUR } } };
 
   function resumeProjet() {
     const p = etat.projet;
-    return p.circuits.map((c, i) => `${i + 1}. ${c.nom} (${c.triphase ? "tri" : "mono"}, ${fr(c.longueur_m, 0)} m) : `
+    const res = M.RESEAUX[p.reseau] || reseauActif();
+    return p.circuits.map((c, i) => `${i + 1}. ${c.nom} (${libelleAlimentation(c.triphase, res)}, ${fr(c.longueur_m, 0)} m) : `
       + c.recepteurs.map((r) => `${fr(r.quantite, 0)} × ${r.nom} ${fr(r.puissance_w, 0)} W [${ecrirePlages(r.plages)}]`).join(", ")).join("\n");
   }
   function resumeResultats() {
@@ -1027,6 +1335,8 @@ Règles :
     const s = r.synthese;
     return {
       systeme: s.systeme_libelle,
+      norme: s.referentiel,
+      reseau: s.reseau,
       consommation: `${fr(s.energie_kwh_j, 2)} kWh/j, pointe ${fr(s.s_dim_kva, 2)} kVA, cos φ ${fr(s.cos_phi, 2)}`,
       solaire: s.pv && `${s.pv.n_modules} modules soit ${fr(s.pv.kwc, 2)} kWc (requis ${fr(s.pv.kwc_requis, 2)} kWc), ${s.pv.n_mppt} régulateur(s) ${s.pv.config}, inclinaison ${s.pv.inclinaison}°, mois critique ${s.pv.mois_critique}`,
       batteries: s.batteries && `${s.batteries.designation} = ${fr(s.batteries.kwh, 1)} kWh`,
@@ -1034,10 +1344,14 @@ Règles :
       groupe: s.groupe && `${fr(s.groupe.kva, 0)} kVA, critère dimensionnant : ${s.groupe.critere}`,
       simulation: s.simulation && { gasoil_l_an: Math.round(s.simulation.carburant_l_an), heures_groupe_an: s.simulation.heures_ge,
         energie_renouvelable: pct(s.simulation.fraction_renouvelable), delestage: pct(s.simulation.llp, 2) },
-      exploitation_groupe: s.exploitation && { gasoil_l_an: Math.round(s.exploitation.carburant_l_an), charge_moyenne: pct(s.exploitation.taux_moyen) },
+      exploitation_groupe: s.systeme === "groupe" ? { gasoil_l_an: Math.round(s.exploitation.carburant_l_an), charge_moyenne: pct(s.exploitation.taux_moyen) } : undefined,
+      raccordement: s.source && (s.source.type === "transfo" ? `transformateur ${fr(s.source.s_kva)} kVA, Icc ${fr(s.source.icc_max_ka, 1)} kA` : `branchement BT, ${fr(s.exploitation.energie_kwh_an, 0)} kWh/an`),
+      groupe_secours: s.systeme === "reseau" && r.groupe ? `${fr(r.groupe.s_kva)} kVA ESP, inverseur ${r.groupe.inverseur_a} A, cuve ${fr(r.groupe.cuve_l, 0)} L` : undefined,
+      compensation: s.compensation.necessaire ? `${fr(s.compensation.q_kvar, 1)} kvar (cos φ ${fr(s.compensation.cos_initial, 3)} → ${fr(s.compensation.cos_cible, 3)}), ${r.compensation.type}` : `non nécessaire (cos φ ${fr(s.compensation.cos_initial, 3)})`,
+      ligne: r.ligne && `${fr(r.ligne.longueur_m, 0)} m, ${r.ligne.conducteur}, ΔU ${fr(r.ligne.chute_pct, 2)} %, flèche max ${fr(r.ligne.fleche_max_m, 2)} m, supports ${r.ligne.supports.map((x) => x.classe || "hors gamme").join(" / ")}, protection ${r.ligne.protection}, Icc fin ${fr(r.ligne.icc_fin_a, 0)} A`,
       non_conformites: r.verifications.filter((v) => v.statut === "NON CONFORME").map((v) => v.message),
       points_attention: r.verifications.filter((v) => v.statut === "ATTENTION").map((v) => v.message),
-      circuits: r.cables.filter((c) => c.seuil_magnetique_a !== undefined).map((c) => `${c.liaison} : ${c.protection}, ${c.section_mm2} mm², ΔU ${fr(c.chute_cumulee_pct, 2)} %`),
+      cables: r.cables.map((c) => `${c.liaison} : ${c.protection}, ${c.section} (PE ${c.pe}), ΔU ${fr(c.chute_cumulee_pct, 2)} %`),
     };
   }
 
@@ -1046,6 +1360,11 @@ Règles :
     const avertissements = [];
     if (typeof entree.nom === "string" && entree.nom.trim()) p.nom = entree.nom.trim();
     if (entree.systeme && M.SYSTEMES[entree.systeme]) p.systeme = entree.systeme;
+    if (entree.referentiel && M.REFERENTIELS[entree.referentiel]) p.referentiel = entree.referentiel;
+    if (entree.reseau && M.RESEAUX[entree.reseau]) p.reseau = entree.reseau;
+    else if (M.RESEAUX[p.reseau].famille !== M.REFERENTIELS[p.referentiel].famille) p.reseau = M.normaliser({ referentiel: p.referentiel }).reseau;
+    if (entree.source && typeof entree.source === "object") p.source = { ...(p.source || {}), ...entree.source };
+    if (entree.ligne && typeof entree.ligne === "object") p.ligne = { ...(p.ligne || {}), ...entree.ligne };
     if (entree.site && typeof entree.site === "object") Object.assign(p.site, entree.site);
     for (const cle of ["hypotheses", "module", "mppt"]) if (entree[cle] && typeof entree[cle] === "object") Object.assign(p[cle], entree[cle]);
     for (const m of Array.isArray(entree.modifier_circuits) ? entree.modifier_circuits : []) {
@@ -1077,12 +1396,16 @@ Règles :
         description: "Modifie le projet affiché. Champs facultatifs : seuls ceux fournis changent. Numéros de circuits à partir de 1. Renvoie le projet résumé, ou les erreurs de saisie à corriger (rien n'est alors appliqué).",
         inputSchema: { type: "object", properties: {
           nom: { type: "string" }, systeme: { type: "string", enum: Object.keys(M.SYSTEMES) },
+          referentiel: { type: "string", enum: Object.keys(M.REFERENTIELS), description: "norme du projet" },
+          reseau: { type: "string", enum: Object.keys(M.RESEAUX), description: "60 Hz avec nec uniquement" },
+          source: { type: "object", description: "système reseau : type (public|transfo), s_transfo_kva, uk_pct, icc_livraison_ka, icc_min_ka, longueur_m, secours (bool), part_secourue (0-1), autonomie_h" },
+          ligne: { type: "object", description: `actif (bool), conducteur (${Object.keys(M.CONDUCTEURS_AERIENS).join("|")}), climat (${Object.keys(M.CLIMATS).join("|")}), poteau (${Object.keys(M.POTEAUX).join("|")}), hauteur_poteau_m, garde_min_m, protection_type (fusible|disjoncteur), protection_a, cos_phi, ks, portees [{longueur_m, angle_deg, charge_kva}]` },
           site: { type: "object", description: "latitude, longitude (degrés décimaux), altitude_m, t_amb_max, t_amb_min, t_amb_jour, t_local_ge (°C), ghi_mensuel (12 valeurs kWh/m²/j ou null)" },
           remplacer_circuits: { type: "boolean", description: "true : circuits remplace tous les circuits ; sinon ils sont ajoutés" },
           circuits: { type: "array", items: SCHEMA_CIRCUIT },
           modifier_circuits: { type: "array", items: { type: "object", properties: { numero: { type: "integer" }, champs: { type: "object", description: "champs du circuit à remplacer ; recepteurs = liste complète" } }, required: ["numero", "champs"] } },
           supprimer_circuits: { type: "array", items: { type: "integer" } },
-          hypotheses: { type: "object", description: "ex. chimie (lifepo4|plomb), jours_autonomie, k_extension, chute_tension_max, inclinaison_deg, longueur_ge_m" },
+          hypotheses: { type: "object", description: "ex. chimie (lifepo4|plomb), jours_autonomie, k_extension, chute_tension_max, inclinaison_deg, longueur_ge_m, methode_pose (E|C|B1), cos_phi_cible" },
           module: { type: "object", description: "p_wc, vmp, imp, voc, isc, coef_p, coef_voc, coef_isc, noct, i_inverse_max, nom" },
           mppt: { type: "object", description: "v_dc_max, v_mppt_min, v_mppt_max, isc_max, i_charge_max, nom" } } },
         execute: (entree, ctx) => {
@@ -1092,7 +1415,7 @@ Règles :
             etape("Saisie refusée par le moteur, l'assistant corrige…");
             throw new Error(`Rien n'a été appliqué. Erreurs : ${res.erreurs.join(" ")}`);
           }
-          etape(`Projet mis à jour : ${etat.projet.circuits.length} circuit(s)`);
+          etape(`Projet mis à jour : ${etat.projet.circuits.length} circuit(s), ${referentielActif().nom}, ${tensionCourte()}`);
           return res;
         },
       },
@@ -1109,7 +1432,7 @@ Règles :
       {
         name: "details_note",
         description: "Renvoie les lignes de la note de calcul d'une rubrique (valeur, unité, justification) pour expliquer un résultat.",
-        inputSchema: { type: "object", properties: { rubrique: { type: "string", description: "ex. « A. Bilan de puissance », « B3. Champ photovoltaïque », « C. Groupe électrogène », « A. Câbles et protections », « Simulation »" } }, required: ["rubrique"] },
+        inputSchema: { type: "object", properties: { rubrique: { type: "string", description: "ex. « A. Bilan de puissance », « B3. Champ photovoltaïque », « C. Groupe électrogène », « A. Câbles et protections », « S. Source réseau », « D. Compensation », « E. Ligne aérienne », « Simulation »" } }, required: ["rubrique"] },
         execute: (entree) => {
           if (!etat.resultat) throw new Error("Aucun résultat : le projet a des entrées invalides.");
           const cherche = String(entree.rubrique || "").toLowerCase();
@@ -1122,15 +1445,15 @@ Règles :
       },
       {
         name: "comparer_systemes",
-        description: "Calcule le même bâtiment en hybride, solaire autonome et groupe seul, et renvoie pour chacun le matériel, le gasoil annuel et les vérifications.",
+        description: "Calcule le même bâtiment en hybride, solaire autonome, groupe seul et réseau public, et renvoie pour chacun le matériel, le gasoil annuel et les vérifications.",
         execute: () => {
-          etape("Comparaison des trois systèmes");
+          etape("Comparaison des quatre systèmes");
           return comparaison().map(({ systeme, res, erreur }) => {
             if (erreur) return { systeme, erreur };
             const s = res.synthese;
             return { systeme, solaire_kwc: s.pv && +s.pv.kwc.toFixed(2), batteries_kwh: s.batteries && +s.batteries.kwh.toFixed(1),
               onduleur_kva: s.onduleur && s.onduleur.kva, groupe_kva: s.groupe && s.groupe.kva,
-              gasoil_l_an: Math.round(s.simulation ? (s.groupe ? s.simulation.carburant_l_an : 0) : s.exploitation.carburant_l_an),
+              gasoil_l_an: Math.round(gasoilAnnuel(s)), reseau_kwh_an: s.systeme === "reseau" ? Math.round(s.exploitation.energie_kwh_an) : undefined,
               delestage: s.simulation && !s.groupe ? pct(s.simulation.llp, 2) : undefined,
               non_conformites: s.verifications.non_conforme, points_attention: s.verifications.attention };
           });
@@ -1205,7 +1528,8 @@ Règles :
     const zoneTexte = $(".texte", bulleAgent);
     const etape = (t) => { etapes.append(html(`<li>${echap(t)}</li>`)); bulleAgent.scrollIntoView({ block: "end" }); };
     const avant = JSON.stringify(etat.projet);
-    const contexte = `[Projet actuel]\nNom : ${etat.projet.nom}\nSystème : ${etat.projet.systeme}\nSite : ${JSON.stringify(etat.projet.site)}\n`
+    const contexte = `[Projet actuel]\nNom : ${etat.projet.nom}\nSystème : ${etat.projet.systeme}\nNorme : ${etat.projet.referentiel} ; réseau : ${etat.projet.reseau}\n`
+      + `Site : ${JSON.stringify(etat.projet.site)}\nRaccordement : ${JSON.stringify(etat.projet.source)}\nLigne aérienne : ${JSON.stringify(etat.projet.ligne)}\n`
       + `Hypothèses modifiées : ${JSON.stringify(etat.projet.hypotheses)}\nCircuits :\n${resumeProjet() || "(aucun)"}\n\n`
       + `[Derniers résultats]\n${JSON.stringify(resumeResultats())}\n\n[Demande]\n${texte}`;
     const entree = [{ role: "user", content: CONSIGNES }, ...agent.tours.slice(-12), { role: "user", content: contexte }];
@@ -1246,15 +1570,17 @@ Règles :
     const resume = s ? [
       s.pv && `${fr(s.pv.kwc, 2)} kWc de panneaux`, s.batteries && `${fr(s.batteries.kwh, 0)} kWh de batteries`,
       s.onduleur && `onduleurs ${s.onduleur.designation}`, s.groupe && `groupe de ${fr(s.groupe.kva, 0)} kVA`,
+      s.source && (s.source.type === "transfo" ? `transformateur ${fr(s.source.s_kva)} kVA` : "branchement au réseau"),
     ].filter(Boolean).join(", ") : "";
     ajouterMessage("agent", `<p>Projet ouvert : <strong>${echap(etat.projet.nom)}</strong>${s ? ` (${fr(s.energie_kwh_j, 1)} kWh/j) : ${echap(resume)}.` : "."}</p>
-      <p>Décrivez votre bâtiment, vos appareils et le lieu : je remplis le projet, je lance le calcul et je vous explique le matériel retenu. Vous pouvez aussi me poser une question sur une norme ou un résultat.</p>`);
+      <p>Décrivez votre bâtiment, vos appareils et le lieu : je choisis la norme du pays (NF C 15-100, IEC 60364, BS 7671 ou NEC), je remplis le projet, je lance le calcul et je vous explique le matériel retenu. Vous pouvez aussi me poser une question sur une norme ou un résultat.</p>`);
     $("#suggestions").hidden = false;
     const suggestions = [
       "Dimensionne une maison de 4 chambres à Bouaké : 12 lampes LED, 2 climatiseurs, un congélateur et une pompe de 1 CV. Solaire avec groupe de secours.",
+      "Petit commerce à Houston (Texas) raccordé au réseau en 120/240 V selon le NEC : éclairage LED, 2 climatiseurs de 3,5 kW, une chambre froide. Ajoute un groupe de secours.",
+      "Ajoute une ligne aérienne de 6 portées de 40 m pour alimenter 6 maisons de 3 kVA, et vérifie la chute de tension et les poteaux.",
       "Pourquoi le groupe électrogène a-t-il cette puissance ?",
-      "Compare hybride, solaire seul et groupe seul pour ce projet.",
-      "Passe les batteries en plomb avec 2 jours d'autonomie et explique ce qui change.",
+      "Compare les quatre systèmes pour ce projet.",
     ];
     $("#suggestions").innerHTML = suggestions.map((t) => `<button type="button">${echap(t)}</button>`).join("");
   }
@@ -1267,13 +1593,14 @@ Règles :
     etat.projet = chargerProjet();
     construireProjet();
     construireChoix();
+    construireLigne();
     $("#bibliotheque").innerHTML = BIBLIOTHEQUE.map((a) => `<option value="${echap(a.nom)}"></option>`).join("");
     rendreFormulaires();
 
     let onglet = null;
     try { onglet = localStorage.getItem(CLE_ONGLET); } catch (e) { /* sans effet */ }
     const hash = location.hash.replace("#", "");
-    if (["assistant", "projet", "charges", "choix", "resultats", "note"].includes(hash)) onglet = hash;
+    if (["assistant", "projet", "charges", "choix", "ligne", "resultats", "note"].includes(hash)) onglet = hash;
     ouvrirOnglet(onglet || (ETROIT.matches ? "assistant" : "resultats"), false);
     calculer();
     accueilAssistant();
@@ -1288,6 +1615,7 @@ Règles :
         if (Math.abs(window.innerWidth - largeurPrecedente) < 40) return;
         largeurPrecedente = window.innerWidth;
         if ($("#app").dataset.onglet === "resultats") rendreResultats();
+        if ($("#app").dataset.onglet === "ligne") rendreLigneResultats();
       }, 200);
     });
     document.addEventListener("input", (e) => {

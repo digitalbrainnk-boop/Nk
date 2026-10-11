@@ -1,11 +1,11 @@
-# 2. Recueil mathématique — Modules A, B et C
+# 2. Recueil mathématique — Modules A à E et référentiels normatifs
 
 Conventions :
 * unités SI sauf mention contraire ;
 * $U$ tension entre phases, $U_0 = V$ tension phase-neutre ;
 * les coefficients notés en %/°C sont divisés par 100 dans les formules.
 
-Toutes ces équations sont codées dans [`demo_hybride.py`](../demo_hybride.py). La référence entre crochets renvoie à la source à consulter pour la justification opposable.
+Les équations des modules A, B et C sont codées dans [`demo_hybride.py`](../demo_hybride.py) et dans le moteur de l'application [`app/moteur.js`](../app/moteur.js). Les référentiels, la source réseau et les modules D et E sont codés dans le moteur de l'application. La référence entre crochets renvoie à la source à consulter pour la justification opposable.
 
 > ⚠️ Les valeurs de tables reproduites ici sont des valeurs usuelles de référence. Avant toute mise en production, chacune doit être vérifiée contre **l'édition en vigueur** de la norme citée et validée par un ingénieur qualifié (voir §1.1, principe 3).
 
@@ -593,24 +593,185 @@ I_{k,\text{maintenu}} \approx 3\,I_{rG}\ (\text{AREP/PMG, environ }10\ \text{s})
 
 ---
 
-## Annexe — Aperçu des Modules D et E (détaillés au prochain livrable)
+## Référentiels normatifs : ce qui change d'une norme à l'autre
 
-**Compensation d'énergie réactive :**
+L'application calcule selon quatre référentiels. Les équations physiques (A.1 à C.9) sont les mêmes ; le référentiel fixe les tables, les règles de choix et les limites.
+
+| Point | NF C 15-100 | IEC 60364 | BS 7671 | NEC (NFPA 70) |
+|---|---|---|---|---|
+| Réseaux | 400/230, 380/220, 230 V – 50 Hz | idem + 415/240 V | 400/230, 415/240, 230 V – 50 Hz | 120/240, 208Y/120, 480Y/277 V – 60 Hz |
+| Sections | mm² | mm² | mm² | AWG / kcmil |
+| Courant admissible | §523 (valeurs IEC 60364-5-52), méthodes E, C, B1 | IEC 60364-5-52 annexe B | Appendix 4 | Table 310.16 (60/75/90 °C), 310.17 pour le PV à l'air libre |
+| Règle de protection | $I_B \le I_n \le I_z$, $I_2 \le 1{,}45\,I_z$ | idem | idem (Reg. 433.1.1) | 125 % des charges continues ; 240.4(B) calibre supérieur ≤ 800 A ; 240.4(D) 14 AWG ≤ 15 A, 12 AWG ≤ 20 A, 10 AWG ≤ 30 A |
+| Chute de tension | 3 % éclairage, 5 % autres (6 / 8 % depuis un poste privé) | idem | idem | recommandation : 3 % par circuit, 5 % au total |
+| Conducteur de protection | §543.1 selon la section de phase | Tab. 54.2 | Table 54.7 | Table 250.122 selon le calibre de la protection |
+| Protection des personnes | coupure ≤ 0,4 s (TN 230 V), DDR 30 mA | idem | $Z_s \le 0{,}95\,U_0/I_a$ (Table 41.3), RCD 30 mA | chemin de défaut 250.4(A)(5), GFCI 210.8, AFCI 210.12 |
+| Moteurs | courant assigné calculé | idem | idem | FLC des Tables 430.248 / 430.250 ; conducteurs 125 % (430.22) ; disjoncteur ≤ 250 % (430.52) ; Art. 440 pour les motocompresseurs |
+| cos φ visé par défaut | 0,928 (tan φ = 0,4) | 0,95 | 0,95 | 0,95 |
+| Lignes aériennes | NF C 11-201, supports béton NF C 67-200 | IEC/EN 50341 | BS EN 50341 | NESC (ANSI C2) Rules 250 et 261, poteaux bois ANSI O5.1 |
+
+**NEC — choix d'un conducteur.** Pour une charge continue $I_B$ protégée par $I_n$ :
 
 ```math
-Q_c = P\,(\tan\varphi_1 - \tan\varphi_2) \qquad
-h_{\text{rés}} = \sqrt{\frac{S_{cc}}{Q_c}} \qquad
-f_{\text{accord}} = \frac{f}{\sqrt{p}}\ \ (p = 7\,\% \Rightarrow 189\ \text{Hz à 50 Hz})
+I_n \ge 1{,}25\,I_B \qquad
+\min\!\big(I_{90\,°C}\cdot k_\theta \cdot k_{adj}\ ;\ I_{bornes\ 75\,°C}\big) \ge 1{,}25\,I_B
 ```
 
-Sur un groupe électrogène, ne laisser aucune batterie de condensateurs fixe : risque d'auto-excitation à faible charge.
+* $k_\theta$ : Table 310.15(B)(1)(1), tranche de 5 °C contenant la température ambiante (ex. 40 °C : 0,91 en colonne 90 °C, 0,88 en 75 °C) ;
+* $k_{adj}$ : Table 310.15(C)(1) au-delà de 3 conducteurs actifs (4-6 : 0,8 ; 7-9 : 0,7 ; 10-20 : 0,5) ;
+* le conducteur doit être protégé par $I_n$ (240.4) : ampacité ≥ $I_n$, ou calibre normalisé immédiatement supérieur ≤ 800 A.
 
-**Lignes aériennes BT.** Flèche (parabole), équation de changement d'état (Blondel), efforts en tête de support :
+Exemple vérifié par les tests : 40 A continus en 120 V donnent un disjoncteur de 50 A et du 8 AWG ; 16 A donnent 20 A et du 12 AWG (240.4(D)) ; un moteur de 10 HP en 480 V (FLC 14 A) donne du 14 AWG et un disjoncteur de 35 A.
+
+**BS 7671 — impédance de boucle.** Avec $I_a$ le courant de déclenchement instantané (B : 5·In, C : 10·In, D : 20·In) :
 
 ```math
-f = \frac{w\,a^2}{8\,T} \qquad
-T_2^2\left[T_2 - T_1 + \frac{E S\,a^2 w_1^2}{24\,T_1^2} + \alpha E S(\theta_2-\theta_1)\right] = \frac{E S\,a^2 w_2^2}{24} \qquad
-F_{\text{angle}} = 2\,T\sin\frac{\alpha_{\text{ligne}}}{2}
+Z_{s,\max} = \frac{0{,}95\,U_0}{I_a} \qquad \text{ex. B32 : } \frac{0{,}95 \times 230}{160} = 1{,}37\ \Omega
 ```
 
-Les intensités de court-circuit et les chutes de tension le long de la ligne reprennent les formules A.6 et A.8, tronçon par tronçon.
+Le moteur calcule $Z_s = 0{,}95\,U_0 / I_{cc,\min}$ en bout de circuit pour chaque source.
+
+**Réseau 120/240 V à point milieu.** Un circuit « entre phases » (240 V) prend $I = S/U$ et $b = 2$ rapporté à $U$ ; un circuit phase-neutre (120 V) prend $I = S/U_0$ et $b = 2$ rapporté à $U_0$. Les circuits 120 V sont répartis sur L1 et L2.
+
+---
+
+## Source réseau [IEC 60076-1, IEEE C57.12.00]
+
+**Transformateur privé.** Puissance $S_T$ prise dans la gamme normalisée (≥ $S_{dim}$), $u_k$ usuel 4 % jusqu'à 630 kVA et 6 % au-delà (IEC), 4,5 à 5,75 % (NEC). Avec la puissance de court-circuit du réseau amont $S''_{kQ}$ :
+
+```math
+I_{cc,\max} = \frac{c_{\max}\, I_n}{u_k + S_T/S''_{kQ}} \qquad c_{\max} = 1{,}05
+```
+
+**Branchement public.** $I_{cc,\max}$ et $I_{cc,\min}$ au point de livraison sont des données du distributeur.
+
+**Groupe de secours.** Régime ESP (ISO 8528-1), dimensionné sur la part secourue de l'installation et sur le démarrage moteur (C.3). Cuve : $V = 1{,}1 \cdot F_{100\,\%} \cdot t_{aut}$. Inverseur de source ≥ max($I_n$ groupe ; $I_B$ du tableau), ×1,25 en NEC.
+
+**Contrainte thermique côté réseau.** Le défaut franc est coupé par le déclencheur instantané en 20 ms ; derrière un disjoncteur modulaire limiteur (≤ 63 A), l'énergie traversante est prise égale à 40 000 A²s jusqu'à 32 A et 80 000 A²s jusqu'à 63 A. Ce sont des valeurs prudentes, à remplacer par la fiche constructeur :
+
+```math
+S \ge \frac{1}{k}\,\max\!\Big(\min(I_{k,\text{maintenu}} ; I_a)\sqrt{5},\ \min\big(I_{cc,\max}\sqrt{0{,}02}\ ;\ \sqrt{I^2t_{\text{lim}}}\big)\Big)
+```
+
+---
+
+## Module D — Compensation de l'énergie réactive et harmoniques
+
+**Puissance à installer** [IEC 60831-1, IEC 61921] :
+
+```math
+Q_c = P\,(\tan\varphi_1 - \tan\varphi_2)
+```
+
+$P$ est la puissance active foisonnée du tableau. La batterie est découpée en gradins ($\approx Q_c/6$, valeurs normalisées 2,5 à 100 kvar).
+
+**Fixe ou automatique.** Batterie fixe si $Q_c \le 15\,\%\,S_n$ (puissance de la source), automatique à gradins au-delà.
+
+**Choix selon la pollution harmonique.** $G_h$ est la puissance des récepteurs non linéaires, cochés « non linéaire » dans l'onglet Charges :
+
+| $G_h/S_n$ | Équipement |
+|---|---|
+| < 15 % | condensateurs standard |
+| 15 à 25 % | condensateurs renforcés (surdimensionnés en tension) |
+| 25 à 50 % | selfs anti-harmoniques, $p = 7\,\%$, accord $f/\sqrt{p}$ (189 Hz à 50 Hz, 227 Hz à 60 Hz) |
+| > 50 % | étude de filtrage (filtre actif) |
+
+**Résonance parallèle.** Avec $S_{cc}$ la puissance de court-circuit au tableau :
+
+```math
+h_r = \sqrt{\frac{S_{cc}}{Q_c}}
+```
+
+Si $h_r$ est à moins de 10 % d'un rang 5, 7, 11 ou 13, des selfs anti-harmoniques sont requises.
+
+**Câble et protection de la batterie.** Courant permanent jusqu'à $1{,}3\,I_n$ (harmoniques) et tolérance de capacité :
+* IEC : $1{,}43\,I_c$ ;
+* NEC 460.8(A) : $1{,}35\,I_c$.
+
+**Gains.** Les pertes Joule amont diminuent dans le rapport $1 - (\cos\varphi_1/\cos\varphi_2)^2$.
+
+**Sources autonomes.**
+* L'onduleur fournit le réactif dans la limite de sa puissance apparente : pas de condensateurs.
+* Sur groupe électrogène, jamais de batterie fixe : risque d'auto-excitation à faible charge.
+* Sur réseau avec groupe de secours, la batterie est déconnectée en marche sur groupe.
+
+---
+
+## Module E — Lignes aériennes basse tension
+
+**Charges sur le conducteur** (porteur en alliage d'aluminium ou ACSR), par mètre :
+
+```math
+w_v = m\,g + \rho_{givre}\,g\,\frac{\pi}{4}\big[(d+2e)^2 - d^2\big] \qquad
+w_h = q_{vent}\,(d + 2e) \qquad
+w = \sqrt{w_v^2 + w_h^2} + K
+```
+
+Dans ces formules :
+* $e$ est l'épaisseur de givre ;
+* $q_{vent}$ est la pression du vent ;
+* $K$ est la constante NESC.
+
+**Hypothèses climatiques.**
+
+| Référentiel | États de calcul | Coefficient de sécurité | Tension journalière (EDS) maximale |
+|---|---|---|---|
+| NF C 11-201 (valeurs usuelles) | A : +15 °C, vent 480 Pa ; B : −10 °C, vent 180 Pa | 3 | 15 % de la charge de rupture |
+| IEC (paramètres usuels) | +15 °C, vent 500 Pa ; −5 °C, vent 200 Pa | 3 | 15 % |
+| NESC Heavy | −17,8 °C, givre 12,7 mm, 190 Pa, K = 4,38 N/m | 1/0,6 (Rule 261) | 25 % |
+| NESC Medium | −9,4 °C, givre 6,35 mm, 190 Pa, K = 2,92 N/m | 1/0,6 | 25 % |
+| NESC Light | −1,1 °C, 430 Pa, K = 0,73 N/m | 1/0,6 | 25 % |
+
+**Portée équivalente** (canton de portées $a_i$) :
+
+```math
+a_{eq} = \sqrt{\frac{\sum a_i^3}{\sum a_i}}
+```
+
+**Équation de changement d'état** (Blondel), résolue par dichotomie pour $T_2$ :
+
+```math
+T_2^2\left[T_2 - T_1 + \frac{E S\,a^2 w_1^2}{24\,T_1^2} + \alpha E S(\theta_2-\theta_1)\right] = \frac{E S\,a^2 w_2^2}{24}
+```
+
+**Réglage.** La tension de pose à $\theta_{EDS}$ vaut EDS·RTS. Elle est abaissée si un état chargé dépasse RTS/$c_s$.
+
+**Flèche et hauteur libre.** À la température de flèche maximale (40 °C NF/IEC, 50 °C NESC) :
+
+```math
+f = \frac{w_v\,a^2}{8\,T_{chaud}} \qquad h_{libre} = H - (0{,}1\,H + 0{,}6) - 0{,}3 - f_{\max} \ge h_{min}
+```
+
+**Efforts en tête de support**, dans chaque état chargé, multipliés par le facteur de charge (1 en NF/IEC, 2 en NESC) :
+* alignement : $F = q\,d\,\dfrac{a_1+a_2}{2} + F_{vent,poteau}$ ;
+* angle $\beta$ : $F = q\,d\,\dfrac{a_1+a_2}{2} + 2\,T\sin\dfrac{\beta}{2} + F_{vent,poteau}$ ;
+* arrêt : $F = \sqrt{T^2 + F_h^2}$, hauban conseillé ;
+* vent sur le poteau ramené au point d'attache : $F_{vent,poteau} = q\,D\,h^2/(2\,h_a)$.
+
+La classe retenue est la première dont l'effort nominal dépasse $F$ :
+* béton : classes en daN, NF C 67-200 ;
+* bois : classes ANSI O5.1, de la classe 7 (534 daN) à la classe 1 (2 002 daN).
+
+**Électrique, tronçon par tronçon.** Les charges sont placées aux poteaux d'arrivée, multipliées par $k_s$ :
+
+```math
+\Delta u_k = \frac{100\, b\,(r\,\ell_k\cos\varphi + x\,\ell_k\sin\varphi)\,I_k}{U_{ref}} \qquad r = 1{,}25\,r_{20}
+```
+
+```math
+I_{cc,\min,fin} = \frac{0{,}95\,U_0}{U_0/I_{cc,origine} + 1{,}5\,(r_{ph} + r_N)\,L}
+```
+
+$I_{cc,origine}$ provient de la source :
+* réseau : $I_{cc,\min}$ du distributeur ;
+* groupe : courant maintenu ;
+* onduleur : $k_{cc}\,I_n$.
+
+**Vérifications de la ligne.**
+* Courant admissible du conducteur à la température ambiante.
+* Protection contre les surcharges : $I_{max} \le I_n \le I_z$, et $1{,}1\,I_n \le I_z$ pour un fusible gG en IEC.
+* $I_{cc,\min,fin} \ge 5\,I_n$ (fusible gG, fusion en 5 s) ou $10\,I_n$ (disjoncteur).
+* Chute de tension ≤ 80 % de la tolérance de tension :
+  * ±10 % en EN 50160 ;
+  * +10/−6 % en ESQCR (Royaume-Uni) ;
+  * ±5 % en ANSI C84.1.

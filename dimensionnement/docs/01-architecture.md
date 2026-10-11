@@ -249,7 +249,7 @@ flowchart LR
 
 ### Bibliothèque de normes et justification des résultats
 
-* **Droits d'auteur :** les textes AFNOR, IEC et IEEE sont protégés. Le logiciel ne doit pas les redistribuer. Le référentiel partagé ne contient que des **références** (code, édition, article ou tableau) et les tables numériques saisies sous licence. Les PDF des normes sont déposés par chaque organisation à partir de ses propres abonnements et restent isolés par organisation.
+* **Droits d'auteur :** les textes AFNOR, IEC, BSI/IET, NFPA et IEEE sont protégés. Le logiciel ne doit pas les redistribuer. Le référentiel partagé ne contient que des **références** (code, édition, article ou tableau) et les tables numériques saisies sous licence. Les PDF des normes sont déposés par chaque organisation à partir de ses propres abonnements et restent isolés par organisation.
 * Chaque valeur tracée renvoie à une ou plusieurs clauses. La note PDF comprend une annexe « Justifications » : normes avec éditions, formules, hypothèses, données d'entrée et vérifications. Le démonstrateur la produit déjà sous forme de liste `[Rn]`.
 * Sources ouvertes à intégrer dès le départ :
   * PVGIS (JRC) et NASA POWER pour le gisement solaire ;

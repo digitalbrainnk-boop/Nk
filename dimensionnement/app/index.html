@@ -120,6 +120,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .app[data-onglet="projet"] [data-panneau="projet"],
 .app[data-onglet="charges"] [data-panneau="charges"],
 .app[data-onglet="choix"] [data-panneau="choix"],
+.app[data-onglet="ligne"] [data-panneau="ligne"],
 .app[data-onglet="resultats"] [data-panneau="resultats"],
 .app[data-onglet="note"] [data-panneau="note"] { display: flex; }
 
@@ -263,6 +264,17 @@ table.tableau { width: 100%; font-size: 0.88rem; }
 .bulle-info div { display: flex; justify-content: space-between; gap: 12px; font-family: var(--f-donnee); }
 .bulle-info div span:first-child { font-family: var(--f-texte); color: var(--ink-2); }
 
+/* Ligne aérienne */
+.portees input { width: 100%; min-width: 58px; }
+.portees th { white-space: normal; }
+#champs-normes { grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); }
+.portees td { vertical-align: middle; }
+.profil-ligne .sol { stroke: var(--line-fort); }
+.profil-ligne .garde { stroke: var(--nc); }
+.profil-ligne .poteau { stroke: var(--ink-2); }
+.profil-ligne .conducteur { stroke: var(--accent); }
+.profil-ligne .etiquette-poteau { fill: var(--ink-2); font-family: var(--f-donnee); font-size: 11px; }
+
 /* Note de calcul */
 .note-rubrique table { width: 100%; }
 .note-rubrique td.lib { color: var(--ink-2); }
@@ -307,9 +319,9 @@ table.tableau { width: 100%; font-size: 0.88rem; }
       <svg width="34" height="34" viewBox="0 0 34 34" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
         <path d="M17 2v8M17 24v8M17 10l7 13"/><path d="M13.5 6.5l7 7M20.5 6.5l-7 7" stroke-width="1.8"/><circle cx="17" cy="24" r="1.6" fill="currentColor" stroke="none"/>
       </svg>
-      <div><strong>Agent de dimensionnement</strong><span>Bâtiment · Solaire · Batteries · Groupe électrogène</span></div>
+      <div><strong>Agent de dimensionnement</strong><span>Bâtiment · Solaire · Batteries · Groupe · Réseau · Lignes aériennes</span></div>
     </div>
-    <div class="etat-projet"><span class="nom" id="entete-nom"></span><span class="statut statut-info" id="entete-systeme"></span><span id="entete-etat"></span></div>
+    <div class="etat-projet"><span class="nom" id="entete-nom"></span><span class="statut statut-info" id="entete-norme"></span><span class="statut statut-info" id="entete-systeme"></span><span id="entete-etat"></span></div>
   </header>
 
   <nav class="onglets" role="tablist" aria-label="Sections">
@@ -317,6 +329,7 @@ table.tableau { width: 100%; font-size: 0.88rem; }
     <button type="button" role="tab" data-onglet="projet">Projet</button>
     <button type="button" role="tab" data-onglet="charges">Charges</button>
     <button type="button" role="tab" data-onglet="choix">Choix techniques</button>
+    <button type="button" role="tab" data-onglet="ligne">Ligne aérienne</button>
     <button type="button" role="tab" data-onglet="resultats">Résultats<span class="compteur" id="compteur-verifs" hidden></span></button>
     <button type="button" role="tab" data-onglet="note">Note de calcul</button>
   </nav>
@@ -349,9 +362,20 @@ table.tableau { width: 100%; font-size: 0.88rem; }
           <div class="systemes" id="systemes">
             <label class="systeme"><input type="radio" name="systeme" id="sys-hybride" value="hybride"><div><strong>Hybride</strong><span>Solaire + batteries, groupe électrogène d'appoint pour les jours sans soleil.</span></div></label>
             <label class="systeme"><input type="radio" name="systeme" id="sys-solaire" value="solaire"><div><strong>Solaire autonome</strong><span>Solaire + batteries uniquement. Le calcul mesure le délestage éventuel.</span></div></label>
-            <label class="systeme"><input type="radio" name="systeme" id="sys-groupe" value="groupe"><div><strong>Groupe électrogène seul</strong><span>Groupe en continu ou en secours, sans solaire ni batteries.</span></div></label>
+            <label class="systeme"><input type="radio" name="systeme" id="sys-groupe" value="groupe"><div><strong>Groupe électrogène seul</strong><span>Groupe en continu, sans solaire ni batteries.</span></div></label>
+            <label class="systeme"><input type="radio" name="systeme" id="sys-reseau" value="reseau"><div><strong>Réseau public</strong><span>Branchement ou poste de transformation, groupe de secours facultatif.</span></div></label>
           </div>
         </fieldset>
+      </div>
+      <div class="bloc">
+        <div class="bloc-titre"><h2>Normes et réseau</h2><span class="discret">Le référentiel fixe les tables, les règles de protection et les références de la note.</span></div>
+        <div class="grille-champs" id="champs-normes"></div>
+        <p class="discret" id="description-norme"></p>
+        <p class="discret" id="message-reseau" role="status"></p>
+      </div>
+      <div class="bloc" id="bloc-source" hidden>
+        <div class="bloc-titre"><h2>Raccordement au réseau</h2><span class="discret">Données du distributeur ou du poste de transformation privé.</span></div>
+        <div class="grille-champs" id="champs-source"></div>
       </div>
       <div class="bloc">
         <div class="bloc-titre"><h2>Site</h2><span class="discret">Coordonnées en degrés décimaux : latitude Nord positive, longitude Est positive.</span></div>
@@ -396,6 +420,9 @@ table.tableau { width: 100%; font-size: 0.88rem; }
 
     <!-- CHOIX TECHNIQUES -->
     <section class="panneau" data-panneau="choix" aria-label="Choix techniques" id="choix"></section>
+
+    <!-- LIGNE AÉRIENNE -->
+    <section class="panneau" data-panneau="ligne" aria-label="Ligne aérienne" id="ligne"></section>
 
     <!-- RÉSULTATS -->
     <section class="panneau" data-panneau="resultats" aria-label="Résultats" id="resultats"></section>

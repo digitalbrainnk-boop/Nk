@@ -35,11 +35,24 @@ gantt
 
 * [`demo_hybride.py`](../demo_hybride.py) : chaîne complète bilan → PV → batteries → onduleur → groupe → simulation 8760 h → câbles et protections, avec note de calcul justifiée.
 * [`app/`](../app/) : **application de dimensionnement avec son agent IA**.
-  * Le moteur JavaScript donne les mêmes résultats que le démonstrateur Python ; un test le vérifie.
-  * Trois types de système : hybride, solaire autonome, groupe seul.
-  * Onglets : projet, charges avec bibliothèque d'appareils, choix techniques, résultats et comparaison des systèmes, note de calcul téléchargeable.
-  * L'assistant Claude remplit le projet, calcule et explique.
-* 26 tests automatiques : 18 sur le démonstrateur Python, 8 sur le moteur de l'application (parité, conservation de l'énergie, trois systèmes, validation des saisies).
+  * Quatre référentiels : NF C 15-100, IEC 60364, BS 7671 et NEC (NFPA 70).
+  * Sept réseaux : 50 Hz (400/230, 380/220, 415/240 V, 230 V mono) et 60 Hz (120/240, 208Y/120, 480Y/277 V). Sections en mm² ou en AWG/kcmil selon la norme.
+  * Le moteur JavaScript donne, en NF C 15-100, les mêmes résultats que le démonstrateur Python ; un test le vérifie.
+  * Quatre types de système : hybride, solaire autonome, groupe seul, réseau public avec groupe de secours facultatif.
+  * Modules D et E en première version :
+    * compensation de l'énergie réactive, choix selon les harmoniques, rang de résonance ;
+    * ligne aérienne BT : changement d'état, flèches, classes de poteaux, ΔU et Icc le long de la ligne.
+  * Onglets :
+    * projet ;
+    * charges avec bibliothèque d'appareils ;
+    * choix techniques ;
+    * ligne aérienne ;
+    * résultats et comparaison des systèmes ;
+    * note de calcul téléchargeable.
+  * L'assistant Claude choisit la norme du pays, remplit le projet, calcule et explique.
+* 41 tests automatiques :
+  * 18 sur le démonstrateur Python ;
+  * 23 sur le moteur de l'application : parité, conservation de l'énergie, systèmes, validation des saisies, cas types NEC et BS 7671, compensation, ligne aérienne, toutes les combinaisons norme × réseau × système.
 * Documents : architecture, recueil d'équations, cette feuille de route.
 
 ---
@@ -79,8 +92,8 @@ gantt
 
 | Domaine | Contenu |
 |---|---|
-| Module D | Bilan réactif, compensation fixe ou automatique à gradins, selfs anti-harmoniques (accord 189 Hz / 135 Hz), contrôle de la résonance ($h = \sqrt{S_{cc}/Q_c}$), THD avec import des mesures d'un analyseur de réseau. |
-| Module E | Lignes aériennes BT en câbles torsadés : flèches et tensions selon la température et le vent (équation de changement d'état), efforts en tête et choix des supports (béton, bois, métal), ΔU et Icc le long de la ligne, protection en bout de réseau. Tracé sur carte avec PostGIS. |
+| Module D | Le prototype calcule déjà la compensation, le type de condensateurs et la résonance. À ajouter : selfs anti-harmoniques au choix (accord 189 Hz / 135 Hz), calcul du THD, import des mesures d'un analyseur de réseau, validation sur cas réels. |
+| Module E | Le prototype calcule déjà le changement d'état, les flèches, les supports béton et bois, ΔU et Icc. À ajouter : <ul><li>lignes ramifiées ;</li><li>catalogue certifié de conducteurs et de poteaux ;</li><li>supports métalliques et haubans calculés ;</li><li>tracé sur carte avec PostGIS.</li></ul> |
 | Réseau | Schéma unifilaire éditable (React Flow) relié au modèle de calcul, répartition des charges et courts-circuits IEC 60909 avec `pandapower`, sélectivité à partir des courbes temps-courant des constructeurs. |
 | Moteur documentaire | Ingestion de PDF, extraction structurée par IA avec provenance, contrôles physiques, validation humaine, catalogue certifié, recherche hybride avec citations. |
 | Agent IA | Assistant conversationnel (Claude) dont les outils sont le moteur, la recherche documentaire et le catalogue. Il ne publie aucun chiffre sans outil et cite chaque clause. |
@@ -125,7 +138,7 @@ gantt
 
 ## Prochaines actions (2 premières semaines)
 
-1. **Choisir les marchés cibles** et leurs normes de référence (France, pays utilisant la NF C 15-100, pays IEC ou NEC). Cela fixe le contenu du référentiel v1.
+1. **Choisir les marchés cibles parmi les quatre référentiels déjà en place** (NF C 15-100, IEC 60364, BS 7671, NEC). Ajouter si besoin les variantes nationales, par exemple CSA C22.1 au Canada ou les règles du distributeur local. Cela fixe le contenu du référentiel v1.
 2. **Faire relire par l'ingénieur référent** toutes les tables et hypothèses du démonstrateur, et consigner les corrections.
 3. **Réunir 5 à 10 projets réels déjà réalisés**, avec leurs notes de calcul, pour constituer les cas de validation croisée.
 4. **Découper le démonstrateur** en paquet `moteur/` avec des modèles d'entrée Pydantic, sans changer les formules, et garder les tests verts.
