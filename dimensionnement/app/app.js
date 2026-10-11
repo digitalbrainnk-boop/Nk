@@ -1838,8 +1838,10 @@ Règles :
         <form class="cle-formulaire" data-cle-form>
           <div class="choix-cerveau">${choix}</div>
           <small data-cle-aide>${echap(CERVEAUX[c].aide)}</small>
-          <div class="rangee"><input type="password" autocomplete="off" spellcheck="false" placeholder="${echap(CERVEAUX[c].indication)}" aria-label="Clé API" data-cle-saisie>
-          <button type="submit" class="btn btn-primaire">Activer l'assistant</button></div>
+          <div class="rangee"><input type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="${echap(CERVEAUX[c].indication)}" aria-label="Clé API" data-cle-saisie>
+          <button type="button" class="btn" data-cle="coller">Coller</button></div>
+          <small data-cle-retour role="status">Copiez la clé sur kie.ai, puis touchez « Coller ». Vous pouvez aussi la taper.</small>
+          <div class="rangee"><button type="submit" class="btn btn-primaire">Activer l'assistant</button></div>
           <details class="avance" data-kie-avance${c === "kie" ? "" : " hidden"}><summary>Réglages avancés Kie.ai</summary>
             <label class="champ"><span>Adresse de l'API</span><input type="text" data-kie-url placeholder="${echap(KIE_URL)}" value="${echap(lireStockage(CLE_KIE_URL))}" autocomplete="off" spellcheck="false"></label>
             <label class="champ"><span>Modèle</span><input type="text" data-kie-modele placeholder="${echap(KIE_MODELE)}" value="${echap(lireStockage(CLE_KIE_MODELE))}" autocomplete="off" spellcheck="false"></label>
@@ -1861,6 +1863,28 @@ Règles :
       zone.textContent = `Échec : ${MESSAGES_ERREUR[e && e.code] || ""} ${e && e.detail ? `(${e.detail})` : ""}`.trim();
     }
   }
+  /** Clé copiée telle quelle : on retire espaces, retours à la ligne, guillemets et un éventuel « Bearer ». */
+  function nettoyerCle(texte) {
+    return String(texte || "").trim().replace(/^Bearer\s+/i, "").replace(/[\s"'`«»]/g, "");
+  }
+  /** Bouton « Coller » : presse-papiers lu par Android dans l'application, sinon par le navigateur. */
+  async function collerCle() {
+    const champ = $("[data-cle-saisie]");
+    const retour = $("[data-cle-retour]");
+    let texte = "";
+    try {
+      if (window.AndroidApp && typeof window.AndroidApp.lirePressePapiers === "function") texte = window.AndroidApp.lirePressePapiers();
+      else if (navigator.clipboard && navigator.clipboard.readText) texte = await navigator.clipboard.readText();
+    } catch (e) { texte = ""; }
+    const cle = nettoyerCle(texte);
+    if (cle) {
+      champ.value = cle;
+      retour.textContent = `Clé collée (${cle.length} caractères, se termine par …${cle.slice(-4)}). Touchez « Activer l'assistant ».`;
+    } else {
+      retour.textContent = "Le presse-papiers est vide ou inaccessible : copiez d'abord la clé sur kie.ai, ou appuyez longuement dans le champ puis « Coller », ou tapez la clé.";
+      champ.focus();
+    }
+  }
   function brancherCleApi() {
     const zone = $("#cle-api");
     zone.addEventListener("change", (e) => {
@@ -1872,7 +1896,7 @@ Règles :
     });
     zone.addEventListener("submit", (e) => {
       e.preventDefault();
-      const cle = $("[data-cle-saisie]", zone).value.trim();
+      const cle = nettoyerCle($("[data-cle-saisie]", zone).value);
       // Une clé Anthropic se reconnaît à son préfixe : le bon cerveau est choisi d'office
       const c = cle.startsWith("sk-ant-") ? "anthropic" : $("[data-cerveau]:checked", zone).value;
       if (!cle && cleCerveau(c)) { // changement de cerveau avec une clé déjà enregistrée
@@ -1884,8 +1908,8 @@ Règles :
         rendreCleApi("Cette clé ne ressemble pas à une clé API Anthropic (elle commence par « sk-ant- »).");
         return;
       }
-      if (c === "kie" && !/^[A-Za-z0-9_-]{16,}$/.test(cle)) {
-        rendreCleApi("Cette clé ne ressemble pas à une clé API Kie.ai (au moins 16 lettres et chiffres, sans espace).");
+      if (c === "kie" && cle.length < 16) {
+        rendreCleApi(cle ? "Cette clé est trop courte : copiez la clé complète depuis kie.ai (rubrique API Key)." : "Collez ou tapez d'abord la clé API Kie.ai.");
         return;
       }
       if (c === "kie") {
@@ -1908,6 +1932,7 @@ Règles :
       const b = e.target.closest("[data-cle]");
       if (!b) return;
       if (b.dataset.cle === "tester") { testerConnexion(); return; }
+      if (b.dataset.cle === "coller") { collerCle(); return; }
       if (b.dataset.cle === "supprimer") {
         if (cerveau() === "kie") ecrireStockage(CLE_KIE, ""); else ecrireCle("");
         rendreCleApi("Clé retirée de cet appareil.");

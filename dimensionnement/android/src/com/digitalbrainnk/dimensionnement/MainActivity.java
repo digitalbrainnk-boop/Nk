@@ -4,6 +4,7 @@ import android.Manifest;
 import android.app.Activity;
 import android.content.ActivityNotFoundException;
 import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.ContentResolver;
 import android.content.ContentValues;
 import android.content.Intent;
@@ -36,6 +37,8 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.Charset;
 import java.util.Collections;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Affiche l'application web embarquée (assets/www) dans une WebView.
@@ -320,6 +323,40 @@ public class MainActivity extends Activity {
                     });
                 }
             }).start();
+        }
+
+        /** Bouton « Coller » de la clé API : texte du presse-papiers (lu sur le fil principal, application au premier plan). */
+        @JavascriptInterface
+        public String lirePressePapiers() {
+            final String[] texte = {""};
+            final CountDownLatch fin = new CountDownLatch(1);
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        ClipboardManager pressePapiers = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+                        if (pressePapiers != null && pressePapiers.hasPrimaryClip()) {
+                            ClipData contenu = pressePapiers.getPrimaryClip();
+                            if (contenu != null && contenu.getItemCount() > 0) {
+                                CharSequence t = contenu.getItemAt(0).coerceToText(MainActivity.this);
+                                if (t != null) {
+                                    texte[0] = t.toString();
+                                }
+                            }
+                        }
+                    } catch (Exception e) {
+                        // presse-papiers inaccessible : la page propose de taper la clé
+                    } finally {
+                        fin.countDown();
+                    }
+                }
+            });
+            try {
+                fin.await(3, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            return texte[0];
         }
 
         /** Partage d'un texte (message et liens de l'application). */
