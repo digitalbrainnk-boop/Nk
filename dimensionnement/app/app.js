@@ -11,9 +11,10 @@
   const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
   const CLE_PROJET = "agent-dimensionnement:projet";
   const CLE_ONGLET = "agent-dimensionnement:onglet";
+  const CLE_DONNEES = "agent-dimensionnement:donnees"; // version du format des données enregistrées
   const ETROIT = window.matchMedia("(max-width: 1179px)");
 
-  const etat = { projet: null, resultat: null, erreurs: null, comparaison: null, minuterie: null, supprime: null };
+  const etat = { projet: null, resultat: null, erreurs: null, manquants: [], comparaison: null, minuterie: null, supprime: null };
 
   // ---------------------------------------------------------------------------
   // Utilitaires
@@ -139,7 +140,7 @@
   function projetVide() {
     const actuel = etat.projet || {};
     return { nom: "Nouveau projet", systeme: "hybride", referentiel: actuel.referentiel || "nfc15100", reseau: actuel.reseau || "400/230-50",
-      site: { ...M.SITE }, circuits: [], module: { ...M.MODULE_PV }, mppt: { ...M.REGULATEUR }, hypotheses: {}, source: {}, ligne: { actif: false } };
+      site: {}, circuits: [], module: { ...M.MODULE_PV }, mppt: { ...M.REGULATEUR }, hypotheses: {}, source: {}, ligne: { actif: false } };
   }
   function completer(p) {
     const base = projetVide();
@@ -155,28 +156,116 @@
     return { ...base, ...p, referentiel, reseau, site: { ...base.site, ...(p.site || {}) }, module: { ...base.module, ...(p.module || {}) },
       mppt: { ...base.mppt, ...(p.mppt || {}) }, hypotheses, source: { ...(p.source || {}) }, ligne, circuits: Array.isArray(p.circuits) ? p.circuits : [] };
   }
+  /**
+   * Projet enregistré sur l'appareil, sinon projet vide. Une seule fois (données au format 2), le projet d'exemple
+   * que les versions précédentes chargeaient d'office est effacé pour repartir d'un projet vierge.
+   */
   function chargerProjet() {
     try {
+      if (localStorage.getItem(CLE_DONNEES) !== "2") {
+        const ancien = JSON.parse(localStorage.getItem(CLE_PROJET) || "null");
+        if (ancien && ancien.nom === M.projetExemple().nom) {
+          localStorage.removeItem(CLE_PROJET);
+          localStorage.removeItem(CLE_ONGLET);
+        }
+        localStorage.setItem(CLE_DONNEES, "2");
+      }
       const t = localStorage.getItem(CLE_PROJET);
       if (t) return completer(JSON.parse(t));
-    } catch (e) { /* stockage indisponible : on part de l'exemple */ }
-    return completer(M.projetExemple());
+    } catch (e) { /* stockage indisponible : projet vide */ }
+    return completer(projetVide());
+  }
+  function reinitialiserApplication() {
+    try {
+      for (const cle of [CLE_PROJET, CLE_ONGLET, CLE_API]) localStorage.removeItem(cle);
+    } catch (e) { /* sans effet */ }
+    etat.projet = null;
+    etat.supprime = null;
+    remplacerProjet(projetVide());
+    if (!window.claude) rendreCleApi();
+    allerA("projet");
+  }
+
+  // ---------------------------------------------------------------------------
+  // Informations nécessaires au dimensionnement
+  // ---------------------------------------------------------------------------
+
+  const defini = (v) => v !== null && v !== undefined && v !== "" && Number.isFinite(Number(v));
+  /** Étapes du dimensionnement et ce qu'il manque : tant qu'une information requise manque, rien n'est calculé. */
+  function etapesDimensionnement(p = etat.projet) {
+    const site = p.site || {};
+    const solaire = p.systeme === "hybride" || p.systeme === "solaire";
+    const manqueSite = [];
+    if (solaire && !(defini(site.latitude) && defini(site.longitude))) manqueSite.push("le lieu (latitude et longitude)");
+    if (!defini(site.altitude_m)) manqueSite.push("l'altitude");
+    if (!defini(site.t_amb_max) || !defini(site.t_amb_min)) manqueSite.push("les températures maximale et minimale");
+    const appareils = p.circuits.some((c) => (c.recepteurs || []).some((r) => Number(r.puissance_w) > 0 && Number(r.quantite ?? 1) > 0));
+    const ghi = Array.isArray(site.ghi_mensuel) && site.ghi_mensuel.filter(defini).length === 12;
+    const nomDonne = p.nom && p.nom.trim() && p.nom !== "Nouveau projet";
+    const etapes = [
+      { cle: "projet", titre: "Projet", detail: `${NOMS_SYSTEMES[p.systeme]} · ${referentielActif().nom} · ${tensionCourte()}`,
+        etat: nomDonne ? "ok" : "conseille", manque: nomDonne ? "" : "Donnez un nom au projet ; vérifiez le type de système, la norme et le réseau." },
+      { cle: "site", titre: "Site", detail: solaire ? "Lieu, altitude, températures" : "Altitude, températures",
+        etat: manqueSite.length ? "requis" : "ok", manque: manqueSite.length ? `À saisir : ${manqueSite.join(", ")}.` : "" },
+      { cle: "charges", titre: "Charges", detail: "Circuits et appareils : puissance, nombre, heures d'utilisation",
+        etat: appareils ? "ok" : "requis", manque: appareils ? "" : "Ajoutez vos circuits et les appareils à alimenter." },
+    ];
+    if (solaire) {
+      etapes.push({ cle: "ghi", titre: "Ensoleillement", detail: "12 valeurs mensuelles du site (PVGIS ou NASA POWER)",
+        etat: ghi ? "ok" : "conseille", manque: ghi ? "" : "Conseillé : sans ces valeurs, le calcul prend un ensoleillement forfaitaire prudent." });
+    }
+    etapes.push({ cle: "choix", titre: "Choix techniques", detail: "Batteries, matériel, câbles, hypothèses",
+      etat: "facultatif", manque: "Facultatif : valeurs par défaut prudentes et matériel générique, à remplacer par vos fiches constructeur." });
+    return etapes;
+  }
+  function informationsManquantes(p = etat.projet) {
+    return etapesDimensionnement(p).filter((e) => e.etat === "requis").map((e) => `${e.titre} : ${e.manque}`);
+  }
+  function guideHtml(titre = "Votre dimensionnement") {
+    const libelles = { ok: ["ok", "Fait"], requis: ["nc", "À compléter"], conseille: ["attention", "Conseillé"], facultatif: ["info", "Facultatif"] };
+    const etapes = etapesDimensionnement();
+    return `<div class="bloc guide"><div class="bloc-titre"><h2>${echap(titre)}</h2><span class="discret">Renseignez ces informations : le calcul se lance tout seul dès que l'essentiel est saisi.</span></div>
+      <ol class="guide-etapes">${etapes.map((e, i) => `<li>${statutHtml(...libelles[e.etat])}<div><strong>${i + 1}. ${echap(e.titre)}</strong> <span class="discret">${echap(e.detail)}</span>${e.manque ? `<small>${echap(e.manque)}</small>` : ""}</div>
+        <button type="button" class="btn${e.etat === "requis" ? " btn-primaire" : ""}" data-aller="${e.cle}">${e.etat === "ok" ? "Voir" : "Compléter"}</button></li>`).join("")}</ol>
+      <p class="discret">Vous pouvez aussi décrire votre installation à l'assistant IA : il remplit ces informations pour vous.</p></div>`;
+  }
+  function allerA(cible) {
+    const onglet = { projet: "projet", site: "projet", ghi: "projet", charges: "charges", choix: "choix" }[cible] || "projet";
+    ouvrirOnglet(onglet);
+    if (cible === "projet") { window.scrollTo(0, 0); return; }
+    const zone = { site: "#btn-gps", ghi: "#champs-ghi", charges: "#btn-ajout-circuit", choix: "#choix" }[cible];
+    const el = zone && $(zone);
+    if (el) el.scrollIntoView({ block: "center" });
+    if (cible === "charges" && !etat.projet.circuits.length) $("#btn-ajout-circuit").focus();
+  }
+  function rendreGuideProjet() {
+    const zone = $("#guide-projet");
+    const reste = etapesDimensionnement().some((e) => e.etat === "requis" || e.etat === "conseille");
+    zone.hidden = !reste;
+    if (reste) zone.innerHTML = guideHtml("Pour un dimensionnement complet");
   }
   function enregistrer() {
     try { localStorage.setItem(CLE_PROJET, JSON.stringify(etat.projet)); } catch (e) { /* sans effet */ }
   }
   function calculer() {
     clearTimeout(etat.minuterie);
-    try {
-      etat.resultat = M.executer(etat.projet);
-      etat.erreurs = null;
-    } catch (e) {
+    etat.manquants = informationsManquantes();
+    if (etat.manquants.length) {
       etat.resultat = null;
-      etat.erreurs = e.erreurs || [e.message];
+      etat.erreurs = null;
+    } else {
+      try {
+        etat.resultat = M.executer(etat.projet);
+        etat.erreurs = null;
+      } catch (e) {
+        etat.resultat = null;
+        etat.erreurs = e.erreurs || [e.message];
+      }
     }
     etat.comparaison = null;
     enregistrer();
     rendreEntete();
+    rendreGuideProjet();
     majChiffresCircuits();
     rendreResultats();
     rendreLigneResultats();
@@ -246,6 +335,11 @@
     $("#entete-systeme").innerHTML = `<i aria-hidden="true">≡</i>${echap(NOMS_SYSTEMES[etat.projet.systeme] || "Hybride")}`;
     $("#entete-norme").innerHTML = `<i aria-hidden="true">§</i>${echap(referentielActif().nom)} · ${echap(tensionCourte())}`;
     const compteur = $("#compteur-verifs");
+    if (etat.manquants.length) {
+      $("#entete-etat").innerHTML = statutHtml("attention", `${etat.manquants.length} information${etat.manquants.length > 1 ? "s" : ""} à compléter`);
+      compteur.hidden = false; compteur.textContent = etat.manquants.length; compteur.dataset.niveau = "attention";
+      return;
+    }
     if (!etat.resultat && !etat.erreurs) { $("#entete-etat").innerHTML = ""; compteur.hidden = true; return; }
     if (etat.erreurs) {
       $("#entete-etat").innerHTML = statutHtml("nc", "Entrées à compléter");
@@ -273,7 +367,7 @@
   function attributsVisibilite({ famille: fam, systemes }) {
     return `${fam ? ` data-famille="${fam}"` : ""}${systemes ? ` data-systemes="${systemes.join(" ")}"` : ""}`;
   }
-  function champHtml({ chemin, libelle, unite = "", aide = "", type = "nombre", options = null, classe = "", famille: fam, systemes }) {
+  function champHtml({ chemin, libelle, unite = "", aide = "", type = "nombre", options = null, classe = "", famille: fam, systemes, indication: indicationImposee }) {
     const id = `f-${chemin.replace(/\./g, "-")}`;
     let controle;
     if (type === "bool") {
@@ -283,7 +377,7 @@
       controle = `<select id="${id}" data-chemin="${chemin}" data-type="texte">${options.map(([v, l]) => `<option value="${echap(v)}">${echap(l)}</option>`).join("")}</select>`;
     } else {
       const defaut = valeurParDefaut(chemin);
-      const indication = defaut === null || defaut === undefined ? "auto" : type === "pct" ? fr(defaut * 100, 2) : fr(defaut, 4);
+      const indication = indicationImposee || (defaut === null || defaut === undefined ? "auto" : type === "pct" ? fr(defaut * 100, 2) : fr(defaut, 4));
       controle = `<input id="${id}" class="${type === "texte" ? "" : "donnee"}" ${type === "texte" ? "" : 'inputmode="decimal"'} data-chemin="${chemin}" data-type="${type}" placeholder="${echap(indication)}" autocomplete="off">`;
     }
     return `<label class="champ ${classe}"${attributsVisibilite({ famille: fam, systemes })}><span>${echap(libelle)}${unite ? ` <span class="unite">${echap(unite)}</span>` : ""}</span>${controle}${aide ? `<small>${echap(aide)}</small>` : ""}</label>`;
@@ -350,17 +444,38 @@
     programmerCalcul();
   }
 
+  /** Position GPS du téléphone ou de l'ordinateur : latitude, longitude et, si l'appareil la donne, altitude. */
+  function utiliserPosition() {
+    const message = $("#gps-message");
+    if (!navigator.geolocation) { message.textContent = "Cet appareil ne donne pas sa position : saisissez les coordonnées."; return; }
+    message.textContent = "Recherche de la position…";
+    navigator.geolocation.getCurrentPosition((pos) => {
+      const c = pos.coords;
+      etat.projet.site.latitude = Math.round(c.latitude * 1e4) / 1e4;
+      etat.projet.site.longitude = Math.round(c.longitude * 1e4) / 1e4;
+      const altitude = Number.isFinite(c.altitude) && c.altitude !== null;
+      if (altitude) etat.projet.site.altitude_m = Math.max(0, Math.round(c.altitude));
+      remplirChamps($("#champs-site"));
+      message.textContent = `Position enregistrée (précision ${fr(c.accuracy, 0)} m)${altitude ? "" : " ; saisissez l'altitude"}.`;
+      calculer();
+    }, (err) => {
+      message.textContent = err && err.code === 1
+        ? "Accès à la position refusé : autorisez-le dans les réglages, ou saisissez les coordonnées."
+        : "Position introuvable pour l'instant : réessayez dehors, ou saisissez les coordonnées.";
+    }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 600000 });
+  }
+
   // ---------------------------------------------------------------------------
   // Onglet Projet
   // ---------------------------------------------------------------------------
 
   const CHAMPS_SITE = [
-    { chemin: "site.latitude", libelle: "Latitude", unite: "°" },
-    { chemin: "site.longitude", libelle: "Longitude", unite: "°" },
-    { chemin: "site.altitude_m", libelle: "Altitude", unite: "m" },
-    { chemin: "site.t_amb_max", libelle: "Température maximale", unite: "°C", aide: "Câbles, onduleurs, modules à chaud." },
-    { chemin: "site.t_amb_min", libelle: "Température minimale", unite: "°C", aide: "Tension à vide des modules au froid." },
-    { chemin: "site.t_amb_jour", libelle: "Température moyenne de jour", unite: "°C" },
+    { chemin: "site.latitude", libelle: "Latitude", unite: "°", indication: "à saisir", aide: "Ex. Abidjan 5,35 ; Bouaké 7,69." },
+    { chemin: "site.longitude", libelle: "Longitude", unite: "°", indication: "à saisir", aide: "Ex. Abidjan −4,01 ; Bouaké −5,03." },
+    { chemin: "site.altitude_m", libelle: "Altitude", unite: "m", indication: "à saisir" },
+    { chemin: "site.t_amb_max", libelle: "Température maximale", unite: "°C", indication: "à saisir", aide: "Jour le plus chaud (câbles, onduleurs, modules)." },
+    { chemin: "site.t_amb_min", libelle: "Température minimale", unite: "°C", indication: "à saisir", aide: "Nuit la plus froide (tension des modules)." },
+    { chemin: "site.t_amb_jour", libelle: "Température moyenne de jour", unite: "°C", aide: "Vide : 31 °C." },
   ];
   const CHAMPS_SOURCE = [
     { chemin: "source.type", libelle: "Alimentation", type: "select", options: [["public", "Branchement BT"], ["transfo", "Poste privé (transformateur)"]] },
@@ -821,6 +936,10 @@
 
   function rendreResultats() {
     const zone = $("#resultats");
+    if (etat.manquants.length) {
+      zone.innerHTML = guideHtml();
+      return;
+    }
     if (!etat.resultat && !etat.erreurs) return;
     if ($("#app").dataset.onglet !== "resultats" && zone.childElementCount) return;
     if (etat.erreurs) {
@@ -1183,12 +1302,16 @@
   function rendreNote() {
     const zone = $("#note");
     const r = etat.resultat;
-    if (!r && !etat.erreurs) return;
+    if (!r && !etat.erreurs && !etat.manquants.length) return;
     const boutons = r ? `<button type="button" class="btn btn-primaire" data-export="note">Télécharger la note (.html)</button>
       <button type="button" class="btn" data-export="cables">Carnet de câbles (.csv)</button>` : "";
     const entete = `<div class="bloc"><div class="bloc-titre"><h2>Note de calcul</h2>
       <span class="rangee">${boutons}<button type="button" class="btn" data-export="projet">Projet (.json)</button></span></div>
       <p class="discret" id="export-message">Chaque valeur renvoie à sa justification [Rn]. Outil d'aide à la conception : tables et hypothèses à valider contre l'édition en vigueur des normes et les fiches constructeurs ; toute note remise à un bureau de contrôle est validée par un ingénieur qualifié.</p></div>`;
+    if (!r && etat.manquants.length) {
+      zone.innerHTML = entete + guideHtml("La note sera prête quand ces informations seront saisies");
+      return;
+    }
     if (!r) {
       zone.innerHTML = entete
         + `<div class="bandeau bandeau-nc"><div><strong>Pas de note tant que les entrées sont incomplètes.</strong><ul>${(etat.erreurs || []).map((e) => `<li>${echap(e)}</li>`).join("")}</ul></div></div>`;
@@ -1450,7 +1573,8 @@ Règles :
 7. Liste en quelques puces les hypothèses que tu as prises, pour que l'utilisateur les corrige.
 8. Après le calcul, présente le matériel retenu, ce qui dimensionne chaque équipement, puis les non-conformités et points d'attention avec l'action corrective. N'applique une correction que si l'utilisateur l'a demandée ; sinon propose-la.
 9. Pour une question de cours (normes, formules), réponds directement en citant les articles de la norme du projet (NF C 15-100, IEC 60364, BS 7671, NEC, IEC 62548, ISO 8528, NESC…) et rappelle que les valeurs normatives se vérifient dans l'édition en vigueur.
-10. Réponds court : quelques phrases et des listes à puces, unités SI, virgule décimale. Pas de tableau Markdown.`;
+10. Réponds court : quelques phrases et des listes à puces, unités SI, virgule décimale. Pas de tableau Markdown.
+11. Le calcul attend que l'essentiel soit saisi : lieu (pour le solaire), altitude, températures maximale et minimale, au moins un appareil. Si le résumé indique des informations_manquantes, remplis-les avec modifier_projet à partir de ce que l'utilisateur a dit (une ville donne coordonnées, altitude et températures typiques de son climat, en le signalant), sinon pose-lui des questions courtes et précises.`;
 
   const SCHEMA_RECEPTEUR = { type: "object", properties: {
     nom: { type: "string" }, quantite: { type: "number" }, puissance_w: { type: "number", description: "W par appareil ; puissance utile pour un moteur" },
@@ -1468,6 +1592,7 @@ Règles :
       + c.recepteurs.map((r) => `${fr(r.quantite, 0)} × ${r.nom} ${fr(r.puissance_w, 0)} W [${ecrirePlages(r.plages)}]`).join(", ")).join("\n");
   }
   function resumeResultats() {
+    if (etat.manquants.length) return { calcul: "en attente", informations_manquantes: etat.manquants };
     if (!etat.resultat) return { erreurs: etat.erreurs };
     const r = etat.resultat;
     const s = r.synthese;
@@ -1519,12 +1644,13 @@ Règles :
       const nouveaux = entree.circuits.filter((c) => c && typeof c === "object").map((c) => ({ ...c, recepteurs: Array.isArray(c.recepteurs) ? c.recepteurs : [] }));
       p.circuits = entree.remplacer_circuits ? nouveaux : p.circuits.concat(nouveaux);
     }
-    const { erreurs } = M.valider(p);
+    // Un projet en cours de saisie peut ne pas encore avoir de circuit : seule une saisie invalide est refusée
+    const erreurs = M.valider(p).erreurs.filter((e) => p.circuits.length || !/au moins un circuit/.test(e));
     if (erreurs.length) return { applique: false, erreurs };
     etat.projet = completer(p);
     rendreFormulaires();
     calculer();
-    return { applique: true, avertissements, circuits: resumeProjet() };
+    return { applique: true, avertissements, circuits: resumeProjet() || "(aucun circuit)", informations_manquantes: etat.manquants };
   }
 
   function outilsAgent(etape) {
@@ -1563,7 +1689,7 @@ Règles :
         execute: () => {
           calculer();
           const r = resumeResultats();
-          etape(r.erreurs ? "Calcul impossible : entrées incomplètes" : "Calcul effectué");
+          etape(r.informations_manquantes ? "Calcul en attente : informations à compléter" : r.erreurs ? "Calcul impossible : entrées incomplètes" : "Calcul effectué");
           return r;
         },
       },
@@ -1864,7 +1990,10 @@ Règles :
       s.onduleur && `onduleurs ${s.onduleur.designation}`, s.groupe && `groupe de ${fr(s.groupe.kva, 0)} kVA`,
       s.source && (s.source.type === "transfo" ? `transformateur ${fr(s.source.s_kva)} kVA` : "branchement au réseau"),
     ].filter(Boolean).join(", ") : "";
-    ajouterMessage("agent", `<p>Projet ouvert : <strong>${echap(etat.projet.nom)}</strong>${s ? ` (${fr(s.energie_kwh_j, 1)} kWh/j) : ${echap(resume)}.` : "."}</p>
+    const intro = etat.projet.circuits.length
+      ? `<p>Projet ouvert : <strong>${echap(etat.projet.nom)}</strong>${s ? ` (${fr(s.energie_kwh_j, 1)} kWh/j) : ${echap(resume)}.` : "."}</p>`
+      : `<p>Nouveau projet, vide. Dites-moi le lieu (ville), le type d'installation et les appareils à alimenter avec leurs heures d'utilisation.</p>`;
+    ajouterMessage("agent", `${intro}
       <p>Décrivez votre bâtiment, vos appareils et le lieu : je choisis la norme du pays (NF C 15-100, IEC 60364, BS 7671 ou NEC), je remplis le projet, je lance le calcul et je vous explique le matériel retenu. Vous pouvez aussi me poser une question sur une norme ou un résultat.</p>`);
     $("#suggestions").hidden = false;
     const suggestions = [
@@ -1893,7 +2022,7 @@ Règles :
     try { onglet = localStorage.getItem(CLE_ONGLET); } catch (e) { /* sans effet */ }
     const hash = location.hash.replace("#", "");
     if (["assistant", "projet", "charges", "choix", "ligne", "resultats", "note"].includes(hash)) onglet = hash;
-    ouvrirOnglet(onglet || (ETROIT.matches ? "assistant" : "resultats"), false);
+    ouvrirOnglet(onglet || (informationsManquantes().length ? "projet" : ETROIT.matches ? "assistant" : "resultats"), false);
     calculer();
     accueilAssistant();
 
@@ -1937,7 +2066,20 @@ Règles :
     $("#btn-vide-oui").addEventListener("click", () => {
       $("#confirmation-vide").hidden = true;
       remplacerProjet(projetVide());
-      $("#fichier-message").textContent = "Projet vide créé : ajoutez vos circuits dans l'onglet Charges ou décrivez-les à l'assistant.";
+      $("#fichier-message").textContent = "Projet vide créé : suivez les étapes ci-dessus ou décrivez votre installation à l'assistant.";
+      allerA("projet");
+    });
+    $("#btn-reinit").addEventListener("click", () => { $("#confirmation-reinit").hidden = false; });
+    $("#btn-reinit-non").addEventListener("click", () => { $("#confirmation-reinit").hidden = true; });
+    $("#btn-reinit-oui").addEventListener("click", () => {
+      $("#confirmation-reinit").hidden = true;
+      reinitialiserApplication();
+      $("#fichier-message").textContent = "Application réinitialisée : toutes les données de cet appareil ont été effacées.";
+    });
+    $("#btn-gps").addEventListener("click", utiliserPosition);
+    document.addEventListener("click", (e) => {
+      const b = e.target.closest("[data-aller]");
+      if (b) allerA(b.dataset.aller);
     });
     $("#btn-exporter").addEventListener("click", () => exporter("projet", $("#fichier-message")));
     $("#fichier-import").addEventListener("change", async (e) => {

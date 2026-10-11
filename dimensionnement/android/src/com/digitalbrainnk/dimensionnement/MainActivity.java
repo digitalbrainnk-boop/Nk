@@ -1,16 +1,19 @@
 package com.digitalbrainnk.dimensionnement;
 
+import android.Manifest;
 import android.app.Activity;
 import android.content.ActivityNotFoundException;
 import android.content.ClipData;
 import android.content.ContentResolver;
 import android.content.ContentValues;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.provider.MediaStore;
+import android.webkit.GeolocationPermissions;
 import android.webkit.JavascriptInterface;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
@@ -40,10 +43,13 @@ public class MainActivity extends Activity {
     static final String HOTE = "appassets.androidplatform.net";
     static final String ACCUEIL = "https://" + HOTE + "/index.html";
     private static final int CHOIX_FICHIER = 1;
+    private static final int DEMANDE_POSITION = 2;
     private static final Charset UTF8 = Charset.forName("UTF-8");
 
     private WebView vue;
     private ValueCallback<Uri[]> rappelFichier;
+    private GeolocationPermissions.Callback rappelPosition;
+    private String originePosition;
 
     @Override
     protected void onCreate(Bundle etat) {
@@ -58,6 +64,7 @@ public class MainActivity extends Activity {
         reglages.setSupportMultipleWindows(false);
         reglages.setTextZoom(100);
         reglages.setCacheMode(WebSettings.LOAD_NO_CACHE);
+        reglages.setGeolocationEnabled(true);
 
         vue.addJavascriptInterface(new Pont(), "AndroidApp");
         vue.setWebViewClient(new Client());
@@ -84,6 +91,27 @@ public class MainActivity extends Activity {
             return;
         }
         super.onActivityResult(code, resultat, donnees);
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int code, String[] permissions, int[] resultats) {
+        if (code == DEMANDE_POSITION && rappelPosition != null) {
+            boolean accordee = false;
+            for (int r : resultats) {
+                if (r == PackageManager.PERMISSION_GRANTED) {
+                    accordee = true;
+                }
+            }
+            rappelPosition.invoke(originePosition, accordee, false);
+            rappelPosition = null;
+            originePosition = null;
+        }
+    }
+
+    boolean positionAutorisee() {
+        return Build.VERSION.SDK_INT < 23
+                || checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                || checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED;
     }
 
     /** Liens externes (PVGIS, NASA POWER, téléchargements) : navigateur du téléphone. */
@@ -149,6 +177,21 @@ public class MainActivity extends Activity {
     }
 
     private class Chrome extends WebChromeClient {
+        /** « Utiliser ma position » : autorisation Android demandée au premier usage. */
+        @Override
+        public void onGeolocationPermissionsShowPrompt(String origine, GeolocationPermissions.Callback rappel) {
+            if (positionAutorisee()) {
+                rappel.invoke(origine, true, false);
+                return;
+            }
+            if (rappelPosition != null) {
+                rappelPosition.invoke(originePosition, false, false);
+            }
+            rappelPosition = rappel;
+            originePosition = origine;
+            requestPermissions(new String[] {Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION}, DEMANDE_POSITION);
+        }
+
         /** « Importer un projet (.json) » : sélecteur de fichiers du téléphone. */
         @Override
         public boolean onShowFileChooser(WebView v, ValueCallback<Uri[]> rappel, FileChooserParams parametres) {

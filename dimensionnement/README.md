@@ -40,7 +40,18 @@ Dans l'application installée, l'assistant IA fonctionne avec une clé API Anthr
 
 ## Utiliser l'application
 
-Vous décrivez l'installation à l'assistant avec vos mots, par exemple :
+L'application démarre sur un **projet vide**. Un guide indique les informations nécessaires :
+
+| Information | Statut |
+|---|---|
+| Lieu (bouton « Utiliser ma position »), altitude, températures | Obligatoire |
+| Circuits et appareils | Obligatoire |
+| Ensoleillement mensuel | Conseillé pour le solaire |
+| Choix techniques | Facultatif |
+
+Le calcul se lance dès que l'essentiel est saisi. Il n'utilise jamais de lieu ou d'appareils d'exemple à votre insu. Le bouton « Charger l'exemple » montre un projet complet. « Réinitialiser l'application » efface toutes les données de l'appareil.
+
+Vous pouvez aussi tout décrire à l'assistant avec vos mots, par exemple :
 
 > « Maison de 4 chambres à Bouaké, 12 lampes, 2 climatiseurs, un congélateur et une pompe de 1 CV. Solaire avec groupe de secours. »
 >

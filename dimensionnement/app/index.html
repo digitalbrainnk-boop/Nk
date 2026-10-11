@@ -151,7 +151,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .champ { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .champ > span:first-child { font-size: 0.84rem; color: var(--ink-2); font-weight: 500; }
 .champ small { color: var(--muted); font-size: 0.78rem; line-height: 1.35; }
-input[type="text"], input[type="number"], input:not([type]), select, textarea {
+input[type="text"], input[type="number"], input[type="password"], input:not([type]), select, textarea {
   width: 100%; min-width: 0; border: 1px solid var(--line-fort); border-radius: 6px; background: var(--surface);
   padding: 7px 9px; font-size: 0.95rem;
 }
@@ -272,6 +272,17 @@ table.tableau { width: 100%; font-size: 0.88rem; }
 .bulle-info div { display: flex; justify-content: space-between; gap: 12px; font-family: var(--f-donnee); }
 .bulle-info div span:first-child { font-family: var(--f-texte); color: var(--ink-2); }
 
+/* Guide des informations nécessaires */
+.guide-etapes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.guide-etapes li { display: grid; grid-template-columns: 124px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.guide-etapes li:last-child { border-bottom: 0; }
+.guide-etapes li > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.guide-etapes small { color: var(--ink-2); font-size: 0.84rem; }
+@media (max-width: 560px) {
+  .guide-etapes li { grid-template-columns: minmax(0, 1fr) auto; }
+  .guide-etapes li > .statut { grid-column: 1 / -1; justify-self: start; }
+}
+
 /* Installation */
 .btn-installer { padding: 6px 12px; }
 .bandeau-maj { margin-bottom: 16px; justify-content: space-between; align-items: center; flex-wrap: wrap; }
@@ -373,6 +384,7 @@ table.tableau { width: 100%; font-size: 0.88rem; }
     <div class="bandeau bandeau-info bandeau-maj" id="bandeau-maj" role="status" hidden><span>Une nouvelle version de l'application est prête.</span><button type="button" class="btn btn-primaire" id="btn-maj">Mettre à jour</button></div>
     <!-- PROJET -->
     <section class="panneau" data-panneau="projet" aria-label="Projet">
+      <div id="guide-projet" hidden></div>
       <div class="bloc">
         <div class="bloc-titre"><h2>Projet</h2><span class="discret">Le projet est enregistré dans ce navigateur.</span></div>
         <label class="champ"><span>Nom du projet</span><input type="text" id="p-nom" data-chemin="nom" data-type="texte"></label>
@@ -397,6 +409,7 @@ table.tableau { width: 100%; font-size: 0.88rem; }
       </div>
       <div class="bloc">
         <div class="bloc-titre"><h2>Site</h2><span class="discret">Coordonnées en degrés décimaux : latitude Nord positive, longitude Est positive.</span></div>
+        <div class="rangee"><button type="button" class="btn" id="btn-gps">Utiliser ma position (GPS)</button><span class="discret" id="gps-message" role="status"></span></div>
         <div class="grille-champs" id="champs-site"></div>
         <div class="champ">
           <span>Irradiation horizontale moyenne par mois <span class="unite">kWh/m²/j</span> (facultatif)</span>
@@ -420,6 +433,12 @@ table.tableau { width: 100%; font-size: 0.88rem; }
           <span>Effacer tous les circuits et repartir d'un projet vide ?</span>
           <button type="button" class="btn btn-primaire" id="btn-vide-oui">Effacer</button>
           <button type="button" class="btn" id="btn-vide-non">Garder le projet</button>
+        </div>
+        <div class="rangee"><button type="button" class="btn btn-discret btn-danger" id="btn-reinit">Réinitialiser l'application</button></div>
+        <div class="rangee" id="confirmation-reinit" hidden>
+          <span>Effacer toutes les données de l'application sur cet appareil (projet, réglages, clé de l'assistant) ? Exportez d'abord le projet pour le garder.</span>
+          <button type="button" class="btn btn-primaire" id="btn-reinit-oui">Tout effacer</button>
+          <button type="button" class="btn" id="btn-reinit-non">Annuler</button>
         </div>
         <p class="discret" id="fichier-message"></p>
       </div>

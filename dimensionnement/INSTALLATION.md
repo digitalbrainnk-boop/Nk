@@ -41,6 +41,19 @@ L'application fonctionne sur Android 5.0 et plus. Les notes de calcul, carnets d
 
 Sans clé, tous les onglets de calcul restent disponibles.
 
+## Premier dimensionnement
+
+L'application s'ouvre sur un projet vide, avec un guide des informations à saisir :
+1. **Projet** : nom, type de système, norme et réseau.
+2. **Site** : lieu, altitude, températures. Le bouton **Utiliser ma position (GPS)** remplit le lieu.
+3. **Charges** : circuits et appareils, avec leurs heures d'utilisation.
+4. **Ensoleillement mensuel** : conseillé pour le solaire.
+5. **Choix techniques** : facultatif.
+
+Le calcul se lance tout seul dès que les étapes 2 et 3 sont remplies.
+
+Pour tout effacer et repartir de zéro : onglet **Projet**, **Réinitialiser l'application**.
+
 ## Projets
 
 Chaque appareil garde ses propres projets. Pour transmettre un projet à un collègue :

@@ -4,6 +4,11 @@
     package="com.digitalbrainnk.dimensionnement">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- « Utiliser ma position » : coordonnées du site (demandées seulement au premier usage) -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-feature android:name="android.hardware.location" android:required="false" />
+    <uses-feature android:name="android.hardware.location.gps" android:required="false" />
 
     <application
         android:label="@string/nom_app"
