@@ -1,0 +1,13 @@
+; Gold Liquidity Scalper v1.00 - protocole de comparaison
+; Famille F1 : Balayage de liquidité + réintégration + CHOCH
+; Tous les autres paramètres restent aux valeurs par défaut (identiques pour les 4 familles).
+; A copier dans <dossier de données MT5>\MQL5\Profiles\Tester\
+InpFamily=1
+InpAutoStartInTester=true
+InpWriteFiles=true
+InpNewsMode=1
+; Ajuster au décalage réel du serveur (heures) et à la commission de votre compte :
+InpServerOffsetMode=1
+InpServerUTCOffsetHours=0
+InpServerDST=0
+InpCommissionPerLotSide=0.0

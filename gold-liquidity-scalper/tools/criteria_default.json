@@ -1,0 +1,13 @@
+{
+  "_commentaire": "Critères pré-enregistrés. A fixer AVANT les tests et à ne plus modifier pendant l'étude.",
+  "min_trades": {"dev": 100, "val": 50, "test": 50},
+  "min_expectancy_r": 0.05,
+  "min_profit_factor": 1.15,
+  "max_drawdown_r": 15.0,
+  "min_positive_period_ratio": 0.6,
+  "period": "quarter",
+  "min_trades_per_period": 5,
+  "max_adjusted_p_value": 0.05,
+  "stress_extra_cost_price": 0.20,
+  "min_stressed_expectancy_r": 0.0
+}

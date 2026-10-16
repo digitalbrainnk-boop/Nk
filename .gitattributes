@@ -1,1 +1,5 @@
 *.bat text eol=crlf
+gold-liquidity-scalper/MQL5/**/*.mq5 text eol=crlf
+gold-liquidity-scalper/MQL5/**/*.mqh text eol=crlf
+gold-liquidity-scalper/tester/**/*.set text eol=crlf
+gold-liquidity-scalper/tester/**/*.ini text eol=crlf

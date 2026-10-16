@@ -1,0 +1,11 @@
+; Gold Liquidity Scalper v1.00 - passage de RECHERCHE (calibration du score)
+; Seuil de score à 0 : toutes les configurations complètes passant les autres
+; contrôles sont exécutées, pour mesurer la relation score -> résultat
+; (rapport "par tranche de score"). NE PAS utiliser en réel.
+InpFamily=1
+InpMinScore=0
+InpAutoStartInTester=true
+InpWriteFiles=true
+InpServerOffsetMode=1
+InpServerUTCOffsetHours=0
+InpServerDST=0
