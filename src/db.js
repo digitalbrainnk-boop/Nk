@@ -60,9 +60,35 @@ CREATE TABLE IF NOT EXISTS knowledge (
 `);
 
 // Migrations légères pour les bases créées par une version précédente.
-try {
-  db.exec("ALTER TABLE messages ADD COLUMN media_url TEXT");
-} catch {}
+for (const sql of [
+  "ALTER TABLE messages ADD COLUMN media_url TEXT",
+  "ALTER TABLE contacts ADD COLUMN followups INTEGER NOT NULL DEFAULT 0",
+  "ALTER TABLE contacts ADD COLUMN last_followup_at INTEGER NOT NULL DEFAULT 0",
+  "ALTER TABLE contacts ADD COLUMN demo_at INTEGER NOT NULL DEFAULT 0",
+]) {
+  try {
+    db.exec(sql);
+  } catch {}
+}
+
+// Commandes : une ligne par chanson commandée.
+db.exec(`
+CREATE TABLE IF NOT EXISTS orders (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  contact_id INTEGER NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
+  stage TEXT NOT NULL DEFAULT 'nouveau', -- nouveau | devis | acompte | creation | livree | annulee
+  title TEXT NOT NULL DEFAULT '',
+  occasion TEXT NOT NULL DEFAULT '',
+  price REAL NOT NULL DEFAULT 0,
+  paid REAL NOT NULL DEFAULT 0,
+  due_date TEXT NOT NULL DEFAULT '',
+  notes TEXT NOT NULL DEFAULT '',
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  delivered_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_orders_contact ON orders(contact_id);
+`);
 
 const now = () => Date.now();
 
@@ -81,6 +107,13 @@ export const DEFAULT_SETTINGS = {
   max_reply_delay_seconds: 20,
   typing_chars_per_second: 7,
   owner_takeover_hours: 6,
+  currency: "FCFA",
+  followup_enabled: true,
+  followup_hours: 20, // < 24 h : Messenger/Instagram n'autorisent pas les messages après 24 h sans réponse
+  followup_max: 2,
+  voice_replies: "off", // off | mirror (vocal quand le client envoie un vocal) | always
+  tts_voice: "Brian",
+  auto_demo: false,
   history_messages: 40,
   whatsapp_learning_only: false,
   whatsapp_enabled: false,
@@ -163,7 +196,17 @@ export function getContact(id) {
 }
 
 export function updateContact(id, patch) {
-  const allowed = ["name", "memory", "paused_until", "needs_human", "needs_human_reason", "unread"];
+  const allowed = [
+    "name",
+    "memory",
+    "paused_until",
+    "needs_human",
+    "needs_human_reason",
+    "unread",
+    "followups",
+    "last_followup_at",
+    "demo_at",
+  ];
   const keys = Object.keys(patch).filter((k) => allowed.includes(k));
   if (!keys.length) return;
   const sql = `UPDATE contacts SET ${keys.map((k) => `${k} = ?`).join(", ")} WHERE id = ?`;
@@ -183,6 +226,7 @@ export function listContacts() {
 }
 
 export function deleteContact(id) {
+  db.prepare("DELETE FROM orders WHERE contact_id = ?").run(id);
   db.prepare("DELETE FROM messages WHERE contact_id = ?").run(id);
   db.prepare("DELETE FROM contacts WHERE id = ?").run(id);
 }
@@ -309,4 +353,111 @@ export function saveKnowledge({ id, title, content }) {
 
 export function deleteKnowledge(id) {
   db.prepare("DELETE FROM knowledge WHERE id = ?").run(id);
+}
+
+// ---------- Commandes ----------
+export const STAGES = ["nouveau", "devis", "acompte", "creation", "livree", "annulee"];
+const OPEN_STAGES = ["nouveau", "devis", "acompte", "creation"];
+
+export function getOrder(id) {
+  return db.prepare("SELECT * FROM orders WHERE id = ?").get(id);
+}
+
+/** Commande en cours du client (la plus récente non livrée / non annulée). */
+export function activeOrder(contactId) {
+  return db
+    .prepare(
+      `SELECT * FROM orders WHERE contact_id = ? AND stage IN (${OPEN_STAGES.map(() => "?").join(",")}) ORDER BY id DESC LIMIT 1`,
+    )
+    .get(contactId, ...OPEN_STAGES);
+}
+
+export function listOrders({ contactId } = {}) {
+  if (contactId) return db.prepare("SELECT * FROM orders WHERE contact_id = ? ORDER BY id DESC").all(contactId);
+  return db
+    .prepare(
+      `SELECT o.*, c.name AS contact_name, c.channel, c.external_id
+       FROM orders o JOIN contacts c ON c.id = o.contact_id
+       ORDER BY o.updated_at DESC LIMIT 500`,
+    )
+    .all();
+}
+
+export function saveOrder(o) {
+  const fields = ["stage", "title", "occasion", "price", "paid", "due_date", "notes"];
+  if (o.stage && !STAGES.includes(o.stage)) throw new Error(`Étape inconnue : ${o.stage}`);
+  if (o.id) {
+    const cur = getOrder(o.id);
+    if (!cur) throw new Error("Commande introuvable");
+    const next = { ...cur };
+    for (const f of fields) if (o[f] !== undefined && o[f] !== null) next[f] = o[f];
+    const delivered = next.stage === "livree" && cur.stage !== "livree" ? now() : cur.delivered_at;
+    db.prepare(
+      `UPDATE orders SET stage=?, title=?, occasion=?, price=?, paid=?, due_date=?, notes=?, updated_at=?, delivered_at=? WHERE id=?`,
+    ).run(next.stage, next.title, next.occasion, Number(next.price) || 0, Number(next.paid) || 0, next.due_date, next.notes, now(), delivered, o.id);
+    return getOrder(o.id);
+  }
+  const r = db
+    .prepare(
+      `INSERT INTO orders(contact_id, stage, title, occasion, price, paid, due_date, notes, created_at, updated_at, delivered_at)
+       VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
+    )
+    .run(
+      o.contact_id,
+      o.stage || "nouveau",
+      o.title || "",
+      o.occasion || "",
+      Number(o.price) || 0,
+      Number(o.paid) || 0,
+      o.due_date || "",
+      o.notes || "",
+      now(),
+      now(),
+      o.stage === "livree" ? now() : null,
+    );
+  return getOrder(Number(r.lastInsertRowid));
+}
+
+export function deleteOrder(id) {
+  db.prepare("DELETE FROM orders WHERE id = ?").run(id);
+}
+
+/** Chiffres pour l'onglet Ventes. */
+export function salesStats() {
+  const monthStart = new Date();
+  monthStart.setDate(1);
+  monthStart.setHours(0, 0, 0, 0);
+  const m = monthStart.getTime();
+  const week = now() - 7 * 86400_000;
+  const one = (sql, ...a) => Object.values(db.prepare(sql).get(...a))[0] || 0;
+  const byStage = Object.fromEntries(STAGES.map((st) => [st, 0]));
+  for (const r of db.prepare("SELECT stage, COUNT(*) AS n FROM orders GROUP BY stage").all()) byStage[r.stage] = r.n;
+  // Encaissements par semaine (8 dernières semaines), d'après la date de mise à jour des commandes payées.
+  const weeks = [];
+  for (let i = 7; i >= 0; i--) {
+    const end = now() - i * 7 * 86400_000;
+    const start = end - 7 * 86400_000;
+    weeks.push({
+      start,
+      paid: one("SELECT SUM(paid) FROM orders WHERE paid > 0 AND updated_at > ? AND updated_at <= ?", start, end),
+      delivered: one("SELECT COUNT(*) FROM orders WHERE delivered_at > ? AND delivered_at <= ?", start, end),
+    });
+  }
+  return {
+    clients: one("SELECT COUNT(*) FROM contacts WHERE channel != 'test'"),
+    new_clients_week: one("SELECT COUNT(*) FROM contacts WHERE channel != 'test' AND created_at > ?", week),
+    active_week: one(
+      "SELECT COUNT(DISTINCT m.contact_id) FROM messages m JOIN contacts c ON c.id = m.contact_id WHERE c.channel != 'test' AND m.author = 'client' AND m.created_at > ?",
+      week,
+    ),
+    open_orders: OPEN_STAGES.reduce((a, st) => a + byStage[st], 0),
+    delivered_month: one("SELECT COUNT(*) FROM orders WHERE delivered_at > ?", m),
+    paid_month: one("SELECT SUM(paid) FROM orders WHERE updated_at > ? AND paid > 0", m),
+    paid_total: one("SELECT SUM(paid) FROM orders"),
+    due_total: one(`SELECT SUM(price - paid) FROM orders WHERE price > paid AND stage IN (${OPEN_STAGES.map(() => "?").join(",")})`, ...OPEN_STAGES),
+    songs_made: one("SELECT COUNT(*) FROM messages WHERE kind = 'audio' AND author = 'agent' AND media_path IS NOT NULL"),
+    needs_human: one("SELECT COUNT(*) FROM contacts WHERE needs_human = 1 AND channel != 'test'"),
+    by_stage: byStage,
+    weeks,
+  };
 }

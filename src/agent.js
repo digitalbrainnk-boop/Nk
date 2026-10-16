@@ -5,16 +5,19 @@ import fs from "node:fs";
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
-import { allExamples, getSettings, listKnowledge, listMessages } from "./db.js";
+import { activeOrder, allExamples, getSettings, listKnowledge, listMessages } from "./db.js";
 import { LLMError, chatJSON } from "./openai-compat.js";
 
 // "claude" (par défaut) ou "openai" (service compatible : Kie.ai, DeepSeek...).
 const useCompat = () => ["openai", "kie"].includes(getSettings().brain);
 
-const REPLY_SHAPE = `{"messages": ["bulle 1", "bulle 2"], "memory": "mémoire à jour sur ce client", "needs_human": false, "reason": ""}
+const REPLY_SHAPE = `{"messages": ["bulle 1", "bulle 2"], "memory": "mémoire à jour sur ce client", "needs_human": false, "reason": "",
+ "order": {"stage": null, "title": null, "occasion": null, "price": null, "due_date": null}, "demo": false}
 - messages : 1 à 4 messages courts à envoyer (tableau vide si aucune réponse n'est nécessaire)
 - memory : prénom, occasion, chanson demandée, budget, délais, étape de la commande, préférences (concis)
-- needs_human : true si le propriétaire doit intervenir ; reason : pourquoi (vide sinon)`;
+- needs_human : true si le propriétaire doit intervenir ; reason : pourquoi (vide sinon)
+- order : ce que tu sais de la commande (null si inconnu) ; stage = "nouveau" (demande en cours) ou "devis" (prix annoncé au client)
+- demo : true seulement si le client hésite et qu'un extrait de chanson pourrait le convaincre`;
 
 let client = null;
 let clientKey = null;
@@ -42,6 +45,21 @@ const ReplySchema = z.object({
     .boolean()
     .describe("true si le propriétaire doit intervenir lui-même."),
   reason: z.string().describe("Pourquoi le propriétaire doit intervenir (vide sinon)."),
+  order: z
+    .object({
+      stage: z.enum(["nouveau", "devis"]).nullable().describe("nouveau = demande en cours ; devis = un prix a été annoncé au client."),
+      title: z.string().nullable().describe("Sujet court de la chanson (ex : « Anniversaire d'Ibrahim »)."),
+      occasion: z.string().nullable().describe("Occasion (anniversaire, mariage, déclaration...)."),
+      price: z.number().nullable().describe("Prix annoncé au client, en nombre (sans devise)."),
+      due_date: z.string().nullable().describe("Date souhaitée par le client, telle qu'il l'a dite."),
+    })
+    .nullable()
+    .optional()
+    .describe("Informations de commande déduites de la conversation (null si le client ne commande rien)."),
+  demo: z
+    .boolean()
+    .optional()
+    .describe("true si le client hésite et qu'un court extrait de chanson pourrait le convaincre."),
 });
 
 export const CHANNEL_LABELS = {
@@ -129,7 +147,8 @@ function imageBlock(m) {
 }
 
 function describe(m, ownerName) {
-  if (m.kind === "audio") return `[message vocal] ${m.text || "(inaudible)"}`;
+  if (m.kind === "audio" && m.author !== "client") return `[chanson envoyée en audio] ${m.text}`;
+  if (m.kind === "audio" || m.kind === "voice") return `[message vocal] ${m.text || "(inaudible)"}`;
   if (m.kind === "image") return `[photo]${m.text ? " " + m.text : ""}`;
   if (m.kind === "other") return `[pièce jointe]${m.text ? " " + m.text : ""}`;
   if (m.author === "owner") return m.text;
@@ -186,7 +205,7 @@ function formatExamples(examples) {
  * Génère la réponse pour un contact.
  * @returns {Promise<{messages: string[], memory: string, needs_human: boolean, reason: string}>}
  */
-export async function generateReply(contact) {
+export async function generateReply(contact, { followup = false } = {}) {
   const s = getSettings();
   const turns = buildHistory(contact, s);
   const lastClientText = turns
@@ -197,18 +216,32 @@ export async function generateReply(contact) {
   const examples = pickExamples(lastClientText);
   const channel = CHANNEL_LABELS[contact.channel] || contact.channel;
   const date = new Date().toLocaleString("fr-FR", { dateStyle: "full", timeStyle: "short" });
+  const order = activeOrder(contact.id);
+  const orderText = order
+    ? `étape « ${order.stage} »${order.title ? `, « ${order.title} »` : ""}${order.occasion ? `, ${order.occasion}` : ""}${order.price ? `, prix ${order.price} ${s.currency}` : ""}${order.paid ? `, déjà payé ${order.paid} ${s.currency}` : ""}${order.due_date ? `, pour le ${order.due_date}` : ""}`
+    : "aucune commande en cours";
+  const instruction = followup
+    ? `Le client n'a pas répondu depuis un moment (relance n°${(contact.followups || 0) + 1}). Écris UNE relance courte, chaleureuse et naturelle, dans le style de ${s.owner_name || "le propriétaire"}, adaptée à l'étape de la commande (ex : rappeler l'offre, demander s'il a pu réfléchir, rappeler l'acompte). Jamais insistant. Si une relance n'a pas de sens ici (conversation close, client a dit non), renvoie messages vide.`
+    : "Écris maintenant la prochaine réponse au client.";
+  const demoHint = s.auto_demo
+    ? `\n- Démo : si le client hésite, mets demo à true ; tu peux lui dire que tu vas lui préparer un petit extrait (${s.owner_name || "le propriétaire"} le validera avant envoi).`
+    : "";
 
   const context = `Contexte de cette conversation (non visible par le client) :
 - Canal : ${channel}${contact.channel === "facebook_comment" ? " — réponse PUBLIQUE et brève ; propose de continuer en message privé si besoin de détails" : ""}
 - Nom affiché du client : ${contact.name || "inconnu"}
 - Date et heure : ${date}
+- Commande : ${orderText} (devise : ${s.currency})
 - Mémoire sur ce client :
 ${contact.memory || "(nouveau contact, rien en mémoire)"}
 
 Exemples réels de la façon dont ${s.owner_name || "le propriétaire"} répond :
 ${formatExamples(examples)}
 
-Écris maintenant la prochaine réponse au client.`;
+Rappels :
+- Remplis « order » avec ce que tu sais de la commande. Ne marque jamais un paiement comme reçu : si le client dit avoir payé, mets needs_human à true pour que ${s.owner_name || "le propriétaire"} vérifie.${demoHint}
+
+${instruction}`;
 
   if (useCompat()) {
     const r = await chatJSON({

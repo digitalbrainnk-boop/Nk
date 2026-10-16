@@ -27,6 +27,7 @@
       <button data-tab="test">Tester</button>
       <button data-tab="learn">Apprentissage</button>
       <button data-tab="business">Mon activité</button>
+      <button data-tab="sales">Ventes</button>
       <button data-tab="channels">Canaux</button>
       <button data-tab="settings">Réglages</button>
     </nav>
@@ -93,6 +94,24 @@
         <p class="muted">Tarifs, délais, étapes de commande, moyens de paiement, FAQ… L'agent ne promettra jamais rien qui n'est pas écrit ici ou dans tes conversations.</p>
         <div id="knowledge"></div>
         <button id="add-knowledge">+ Ajouter une fiche</button>
+      </div>
+    </section>
+
+    <!-- Ventes -->
+    <section id="tab-sales" class="tab hidden">
+      <div class="sales">
+        <div class="kpis" id="kpis"></div>
+        <div class="card">
+          <h2>Encaissé par semaine</h2>
+          <p class="muted">Montants payés enregistrés sur les commandes, 8 dernières semaines.</p>
+          <div id="chart-paid" class="chart"></div>
+        </div>
+        <div class="card">
+          <div class="head-row"><h2>Commandes</h2>
+            <div class="btns" style="margin:0"><button id="run-followups" class="small">Relancer maintenant les clients silencieux</button></div></div>
+          <div id="stage-filter" class="chips"></div>
+          <div class="table-wrap"><table class="orders" id="orders-table"></table></div>
+        </div>
       </div>
     </section>
 
@@ -200,12 +219,28 @@
         <div class="row"><label>Vitesse de frappe simulée (caractères / seconde)</label><input type="number" id="typing_chars_per_second" /></div>
         <div class="row"><label>Quand tu réponds toi-même, l'agent se tait pendant (heures)</label><input type="number" id="owner_takeover_hours" /></div>
         <div class="row"><label>Nombre de messages d'historique lus par l'agent</label><input type="number" id="history_messages" /></div>
-        <h2>Messages vocaux</h2>
+        <h2>Commandes et relances</h2>
+        <div class="row"><label>Devise</label><input id="currency" placeholder="FCFA" /></div>
+        <label class="check"><input type="checkbox" id="followup_enabled" /> Relancer automatiquement les clients qui ne répondent plus (demande ou devis en cours)</label>
+        <div class="row"><label>Relancer après (heures sans réponse) — moins de 24 h pour Messenger/Instagram</label><input type="number" id="followup_hours" /></div>
+        <div class="row"><label>Nombre maximum de relances par client</label><input type="number" id="followup_max" /></div>
+        <label class="check"><input type="checkbox" id="auto_demo" /> Démo automatique : quand un client hésite, préparer un extrait avec Suno (tu l'écoutes avant de l'envoyer)</label>
+        <h2>Répondre en vocal</h2>
+        <p class="muted">Voix synthétique (ElevenLabs via ta clé Kie.ai). Si ffmpeg est installé (Termux : <code>pkg install ffmpeg</code>), le vocal s'affiche comme une vraie note vocale.</p>
+        <div class="row"><label>Quand répondre en vocal</label>
+          <select id="voice_replies">
+            <option value="off">Jamais (texte uniquement)</option>
+            <option value="mirror">Quand le client envoie un vocal</option>
+            <option value="always">Toujours</option>
+          </select></div>
+        <div class="row"><label>Voix</label><select id="tts_voice"></select></div>
+        <button id="tts-preview" class="small">Écouter cette voix</button> <audio id="tts-audio" controls class="hidden"></audio>
+        <h2>Comprendre les vocaux des clients</h2>
         <p class="muted">Pour comprendre les vocaux, il faut un service de transcription (Whisper). Groq est rapide et peu cher : crée une clé sur console.groq.com.</p>
         <div class="row"><label>Clé API transcription</label><input id="transcription_api_key" /></div>
         <div class="row"><label>Adresse du service</label><input id="transcription_url" /></div>
         <div class="row"><label>Modèle</label><input id="transcription_model" /></div>
-        <button class="primary save-settings" data-keys="brain,kie_api_key,kie_chat_model,suno_model,llm_url,llm_api_key,llm_model,anthropic_api_key,model,effort,debounce_seconds,min_reply_delay_seconds,max_reply_delay_seconds,typing_chars_per_second,owner_takeover_hours,history_messages,transcription_api_key,transcription_url,transcription_model">Enregistrer</button>
+        <button class="primary save-settings" data-keys="currency,followup_enabled,followup_hours,followup_max,auto_demo,voice_replies,tts_voice,brain,kie_api_key,kie_chat_model,suno_model,llm_url,llm_api_key,llm_model,anthropic_api_key,model,effort,debounce_seconds,min_reply_delay_seconds,max_reply_delay_seconds,typing_chars_per_second,owner_takeover_hours,history_messages,transcription_api_key,transcription_url,transcription_model">Enregistrer</button>
       </div>
     </section>
   </div>

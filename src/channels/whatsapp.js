@@ -235,9 +235,18 @@ registerAdapter({
   async typing(contact) {
     await sock?.sendPresenceUpdate("composing", contact.external_id);
   },
-  async sendAudio(contact, { path: file, mime }) {
+  async recording(contact) {
+    await sock?.sendPresenceUpdate("recording", contact.external_id);
+  },
+  async sendAudio(contact, { path: file, mime, voice, voiceNote }) {
     if (!sock || state.status !== "connecté") throw new Error("WhatsApp n'est pas connecté");
-    const r = await sock.sendMessage(contact.external_id, { audio: fs.readFileSync(file), mimetype: mime || "audio/mpeg" });
+    // ptt = note vocale (micro vert) ; WhatsApp l'exige en OGG/Opus.
+    const r = await sock.sendMessage(contact.external_id, {
+      audio: fs.readFileSync(file),
+      mimetype: mime || "audio/mpeg",
+      ptt: !!(voice && voiceNote),
+    });
+    await sock.sendPresenceUpdate("paused", contact.external_id).catch(() => {});
     return r?.key?.id;
   },
   async markRead(contact, msgs) {

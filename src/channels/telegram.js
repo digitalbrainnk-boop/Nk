@@ -113,12 +113,21 @@ registerAdapter({
     await tick();
     const t = setInterval(() => (Date.now() < until - 1000 ? tick() : clearInterval(t)), 4500);
   },
-  async sendAudio(contact, { path: file, mime, title }) {
+  async recording(contact) {
+    await api("sendChatAction", { chat_id: contact.external_id, action: "record_voice" });
+  },
+  async sendAudio(contact, { path: file, mime, title, voice, voiceNote }) {
+    // Note vocale (OGG/Opus) -> sendVoice ; sinon fichier audio.
+    const asVoice = voice && voiceNote;
     const form = new FormData();
     form.append("chat_id", contact.external_id);
-    form.append("audio", new Blob([fs.readFileSync(file)], { type: mime || "audio/mpeg" }), "chanson.mp3");
-    if (title) form.append("title", title.replace(/^🎵\s*/, "").slice(0, 60));
-    const res = await fetch(`https://api.telegram.org/bot${token}/sendAudio`, { method: "POST", body: form });
+    form.append(
+      asVoice ? "voice" : "audio",
+      new Blob([fs.readFileSync(file)], { type: (mime || "audio/mpeg").split(";")[0] }),
+      asVoice ? "vocal.ogg" : voice ? "vocal.mp3" : "chanson.mp3",
+    );
+    if (title && !voice) form.append("title", title.replace(/^🎵\s*/, "").slice(0, 60));
+    const res = await fetch(`https://api.telegram.org/bot${token}/${asVoice ? "sendVoice" : "sendAudio"}`, { method: "POST", body: form });
     const data = await res.json();
     if (!data.ok) throw new Error(data.description || "Telegram sendAudio a échoué");
     return String(data.result.message_id);

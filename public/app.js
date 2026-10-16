@@ -70,6 +70,7 @@ $$(".tabs button").forEach((b) =>
     $$(".tabs button").forEach((x) => x.classList.toggle("active", x === b));
     $$(".tab").forEach((t) => t.classList.toggle("hidden", t.id !== `tab-${b.dataset.tab}`));
     if (b.dataset.tab === "channels") loadChannels();
+    if (b.dataset.tab === "sales") loadSales();
     if (b.dataset.tab === "learn") loadLearn();
     if (b.dataset.tab === "business") loadKnowledge();
   }),
@@ -106,8 +107,8 @@ function bubble(m, { actions = true } = {}) {
   const cls = m.status === "draft" ? "draft" : m.status === "rejected" ? "rejected" : m.status === "generating" ? "draft" : m.author;
   let media = "";
   if (m.media_path && m.kind === "image") media = `<img src="/api/media/${m.id}" alt="photo" />`;
-  if (m.media_path && m.kind === "audio") media = `<audio controls src="/api/media/${m.id}"></audio>`;
-  const label = m.kind === "audio" && m.author === "client" ? "🎤 " : m.kind === "comment" ? "💬 " : "";
+  if (m.media_path && (m.kind === "audio" || m.kind === "voice")) media = `<audio controls src="/api/media/${m.id}"></audio>`;
+  const label = (m.kind === "audio" && m.author === "client") || m.kind === "voice" ? "🎤 " : m.kind === "comment" ? "💬 " : "";
   const isSong = m.kind === "audio" && m.author === "agent";
   const draftUi =
     m.status === "draft" && actions && isSong
@@ -161,6 +162,7 @@ async function openContact(id) {
           <button class="primary small" id="song-go">Lancer Suno</button>
           <hr />
         </div>
+        <div id="order-box"></div>
         <h3>🧠 Mémoire sur ce client</h3>
         <textarea id="memory" rows="14">${esc(c.memory)}</textarea>
         <button class="small" id="save-memory">Enregistrer</button>
@@ -238,6 +240,7 @@ async function openContact(id) {
     }
   };
   bindDraftActions($("#bubbles"), () => openContact(id));
+  loadOrderBox(id);
 }
 
 function bindDraftActions(root, refresh) {
@@ -265,6 +268,148 @@ function bindDraftActions(root, refresh) {
   });
 }
 
+// ---------- Commande du client ----------
+const STAGES = {
+  nouveau: "Nouvelle demande",
+  devis: "Devis envoyé",
+  acompte: "Acompte payé",
+  creation: "Chanson en création",
+  livree: "Livrée",
+  annulee: "Annulée",
+};
+const money = (n) => `${Math.round(Number(n) || 0).toLocaleString("fr-FR")} ${settings.currency || "FCFA"}`;
+
+async function loadOrderBox(contactId) {
+  const box = $("#order-box");
+  if (!box) return;
+  const orders = await api(`/api/orders?contact=${contactId}`);
+  const o = orders.find((x) => !["livree", "annulee"].includes(x.stage)) || orders[0];
+  const field = (k, label, type = "text") =>
+    `<div class="row"><label>${label}</label><input data-k="${k}" type="${type}" value="${esc(o?.[k] ?? "")}" /></div>`;
+  box.innerHTML = `<h3>📦 Commande</h3>
+    ${o ? "" : '<p class="muted">Aucune commande. Elle se crée toute seule quand le client demande une chanson.</p>'}
+    <div class="row"><label>Étape</label><select data-k="stage">${Object.entries(STAGES)
+      .map(([k, v]) => `<option value="${k}" ${(o?.stage || "nouveau") === k ? "selected" : ""}>${v}</option>`)
+      .join("")}</select></div>
+    ${field("title", "Chanson")}${field("occasion", "Occasion")}
+    <div class="pair">${field("price", `Prix (${esc(settings.currency || "FCFA")})`, "number")}${field("paid", "Déjà payé", "number")}</div>
+    ${field("due_date", "Pour quand")}${field("notes", "Notes")}
+    <div class="btns"><button class="small primary" id="order-save">${o ? "Enregistrer" : "Créer la commande"}</button>
+    ${orders.length > 1 ? `<span class="muted">${orders.length} commandes au total</span>` : ""}</div>
+    <p class="muted">Seul toi peux marquer un paiement : l'agent ne le fait jamais.</p><hr />`;
+  $("#order-save").onclick = async () => {
+    const body = { id: o?.id, contact_id: contactId };
+    for (const el of $$("#order-box [data-k]")) body[el.dataset.k] = el.type === "number" ? Number(el.value) || 0 : el.value;
+    try {
+      await api("/api/orders", { method: "POST", body });
+      toast("Commande enregistrée");
+      loadOrderBox(contactId);
+    } catch (err) {
+      toast(err.message);
+    }
+  };
+}
+
+// ---------- Ventes ----------
+let salesFilter = "open";
+async function loadSales() {
+  const [st, orders] = await Promise.all([api("/api/sales"), api("/api/orders")]);
+  const tile = (label, value, sub = "", hero = false) =>
+    `<div class="kpi ${hero ? "hero" : ""}"><div class="kpi-label">${label}</div><div class="kpi-value">${value}</div>${sub ? `<div class="kpi-sub">${sub}</div>` : ""}</div>`;
+  $("#kpis").innerHTML =
+    tile("Encaissé ce mois", money(st.paid_month), `Total : ${money(st.paid_total)}`, true) +
+    tile("Reste à encaisser", money(st.due_total), "sur les commandes en cours") +
+    tile("Commandes en cours", st.open_orders, `${st.by_stage.devis} devis · ${st.by_stage.acompte + st.by_stage.creation} payées`) +
+    tile("Livrées ce mois", st.delivered_month, `${st.songs_made} chansons créées au total`) +
+    tile("Clients", st.clients, `+${st.new_clients_week} cette semaine · ${st.active_week} actifs`) +
+    tile("Besoin de toi", st.needs_human, st.needs_human ? "voir Conversations" : "tout est géré ✓");
+  drawPaidChart(st.weeks);
+
+  const groups = { open: "En cours", ...STAGES, all: "Toutes" };
+  const counts = { open: st.open_orders, all: orders.length, ...st.by_stage };
+  $("#stage-filter").innerHTML = Object.entries(groups)
+    .filter(([k]) => !["nouveau", "devis", "acompte", "creation"].includes(k) || counts[k])
+    .map(([k, v]) => `<button class="chip ${salesFilter === k ? "on" : ""}" data-f="${k}">${v} <b>${counts[k] ?? 0}</b></button>`)
+    .join("");
+  $$("#stage-filter .chip").forEach((b) => (b.onclick = () => ((salesFilter = b.dataset.f), loadSales())));
+  const shown = orders.filter((o) =>
+    salesFilter === "all" ? true : salesFilter === "open" ? !["livree", "annulee"].includes(o.stage) : o.stage === salesFilter,
+  );
+  $("#orders-table").innerHTML =
+    `<thead><tr><th>Client</th><th>Chanson</th><th>Étape</th><th class="num">Prix</th><th class="num">Payé</th><th>Pour quand</th></tr></thead><tbody>` +
+    (shown
+      .map(
+        (o) => `<tr data-contact="${o.contact_id}">
+          <td>${esc(o.contact_name || o.external_id)} <span class="tag">${CHANNELS[o.channel] || o.channel}</span></td>
+          <td>${esc(o.title || o.occasion || "—")}</td>
+          <td><span class="stage stage-${o.stage}">${STAGES[o.stage]}</span></td>
+          <td class="num">${o.price ? money(o.price) : "—"}</td>
+          <td class="num">${o.paid ? money(o.paid) : "—"}</td>
+          <td>${esc(o.due_date || "—")}</td></tr>`,
+      )
+      .join("") || `<tr><td colspan="6" class="muted">Aucune commande ici.</td></tr>`) +
+    "</tbody>";
+  $$("#orders-table tr[data-contact]").forEach(
+    (tr) =>
+      (tr.onclick = () => {
+        $('.tabs button[data-tab="conversations"]').click();
+        openContact(Number(tr.dataset.contact));
+      }),
+  );
+}
+
+// Colonnes simples en SVG : une seule série, valeur au survol.
+function drawPaidChart(weeks) {
+  const el = $("#chart-paid");
+  const W = Math.max(280, el.clientWidth || 600);
+  const H = 180;
+  const pad = { l: 8, r: 8, t: 22, b: 26 };
+  const max = Math.max(1, ...weeks.map((w) => w.paid));
+  const band = (W - pad.l - pad.r) / weeks.length;
+  const bw = Math.min(24, band * 0.6);
+  const y = (v) => pad.t + (H - pad.t - pad.b) * (1 - v / max);
+  const fmtDay = (t) => new Date(t).toLocaleDateString("fr-FR", { day: "2-digit", month: "short" });
+  const bars = weeks
+    .map((w, i) => {
+      const x = pad.l + band * i + (band - bw) / 2;
+      const top = y(w.paid);
+      const h = H - pad.b - top;
+      const r = Math.min(4, h);
+      const path = h > 0
+        ? `M${x},${H - pad.b} V${top + r} Q${x},${top} ${x + r},${top} H${x + bw - r} Q${x + bw},${top} ${x + bw},${top + r} V${H - pad.b} Z`
+        : "";
+      const isLast = i === weeks.length - 1;
+      return `<g class="col" data-i="${i}">
+        <rect class="hit" x="${pad.l + band * i}" y="${pad.t}" width="${band}" height="${H - pad.t - pad.b}" />
+        ${path ? `<path class="bar" d="${path}" />` : ""}
+        ${isLast && w.paid ? `<text class="val" x="${x + bw / 2}" y="${top - 6}" text-anchor="middle">${Math.round(w.paid).toLocaleString("fr-FR")}</text>` : ""}
+        ${i % 2 === 1 || isLast ? `<text class="axis" x="${x + bw / 2}" y="${H - 8}" text-anchor="middle">${isLast ? "Cette sem." : fmtDay(w.start + 7 * 86400_000)}</text>` : ""}
+      </g>`;
+    })
+    .join("");
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" role="img" aria-label="Montants encaissés par semaine">
+    <line class="base" x1="${pad.l}" x2="${W - pad.r}" y1="${H - pad.b}" y2="${H - pad.b}" />${bars}</svg>
+    <div class="tip hidden" id="chart-tip"></div>`;
+  const tip = $("#chart-tip");
+  $$("#chart-paid .col").forEach((g) => {
+    g.addEventListener("mouseenter", () => {
+      const w = weeks[g.dataset.i];
+      tip.innerHTML = `<b>Semaine du ${fmtDay(w.start)}</b><br>Encaissé : ${money(w.paid)}<br>Livrées : ${w.delivered}`;
+      tip.classList.remove("hidden");
+      const box = g.getBoundingClientRect();
+      const host = el.getBoundingClientRect();
+      tip.style.left = `${Math.min(host.width - 170, Math.max(0, box.left - host.left + box.width / 2 - 85))}px`;
+      tip.style.top = "0px";
+    });
+    g.addEventListener("mouseleave", () => tip.classList.add("hidden"));
+  });
+}
+$("#run-followups").addEventListener("click", async () => {
+  const r = await api("/api/followups/run", { method: "POST" });
+  toast(r.sent ? `${r.sent} relance(s) envoyée(s) ou préparée(s)` : "Personne à relancer pour l'instant");
+  loadSales();
+});
+
 // ---------- Temps réel ----------
 function listen() {
   const es = new EventSource("/api/events");
@@ -277,6 +422,10 @@ function listen() {
       if (ev.contact_id === testContactId) loadTest();
     }
     if (ev.type === "error") toast(`⚠️ ${ev.message}`);
+    if (ev.type === "order") {
+      if (ev.contact_id === currentId && !$("#order-box :focus")) loadOrderBox(currentId);
+      if (!$("#tab-sales").classList.contains("hidden")) loadSales();
+    }
     if (ev.type === "thinking") {
       if (ev.contact_id === currentId) $("#thinking")?.classList.toggle("hidden", !ev.on);
       if (ev.contact_id === testContactId) $("#test-thinking").classList.toggle("hidden", !ev.on);
@@ -558,6 +707,33 @@ $$(".save-settings").forEach((b) =>
   }),
 );
 
+// ---------- Voix ----------
+async function loadVoices() {
+  try {
+    const voices = await api("/api/tts/voices");
+    $("#tts_voice").innerHTML = voices.map((v) => `<option value="${v}">${v}</option>`).join("");
+    $("#tts_voice").value = settings.tts_voice || "Brian";
+  } catch {}
+}
+$("#tts-preview").addEventListener("click", async () => {
+  const btn = $("#tts-preview");
+  await saveSettings({ tts_voice: $("#tts_voice").value });
+  btn.disabled = true;
+  btn.textContent = "Création de la voix…";
+  try {
+    const r = await api("/api/tts/preview", { method: "POST" });
+    const a = $("#tts-audio");
+    a.src = r.url;
+    a.classList.remove("hidden");
+    a.play().catch(() => {});
+  } catch (err) {
+    toast(err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Écouter cette voix";
+  }
+});
+
 // ---------- Démarrage ----------
 async function start() {
   try {
@@ -567,6 +743,7 @@ async function start() {
   }
   $("#login").classList.add("hidden");
   $("#app").classList.remove("hidden");
+  await loadVoices();
   fillSettings();
   bindDraftActions($("#test-thread"), loadTest);
   await loadContacts();

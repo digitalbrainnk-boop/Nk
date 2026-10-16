@@ -12,9 +12,13 @@ import {
   deleteContact,
   deleteKnowledge,
   exampleStats,
+  deleteOrder,
   getContact,
   getMessage,
   getSettings,
+  listOrders,
+  salesStats,
+  saveOrder,
   listContacts,
   listKnowledge,
   listMessages,
@@ -25,7 +29,8 @@ import {
   upsertContact,
 } from "./db.js";
 import { bus } from "./events.js";
-import { approveDraft, createSong, handleIncoming, rejectDraft, schedule, sendManual } from "./router.js";
+import { approveDraft, createSong, handleIncoming, rejectDraft, runFollowups, schedule, sendManual } from "./router.js";
+import { TTS_VOICES } from "./tts.js";
 import { buildStyleProfile, friendlyError, songBrief } from "./agent.js";
 import { chatText, probeKie } from "./openai-compat.js";
 import { buildPairs, parseWhatsAppExport, participants } from "./learning.js";
@@ -139,6 +144,27 @@ app.get("/api/media/:id", (req, res) => {
   if (!m?.media_path) return res.sendStatus(404);
   res.type(m.media_type || "application/octet-stream").sendFile(m.media_path);
 });
+// ---------- Commandes & ventes ----------
+app.get("/api/orders", (req, res) => res.json(listOrders({ contactId: Number(req.query.contact) || undefined })));
+app.post("/api/orders", wrap(async (req, res) => {
+  const o = req.body || {};
+  if (!o.id && !o.contact_id) throw new Error("Client manquant");
+  res.json(saveOrder(o));
+}));
+app.delete("/api/orders/:id", (req, res) => {
+  deleteOrder(Number(req.params.id));
+  res.json({ ok: true });
+});
+app.get("/api/sales", (req, res) => res.json({ ...salesStats(), currency: getSettings().currency }));
+app.post("/api/followups/run", wrap(async (req, res) => res.json({ sent: await runFollowups() })));
+app.get("/api/tts/voices", (req, res) => res.json(TTS_VOICES));
+app.post("/api/tts/preview", wrap(async (req, res) => {
+  const { textToSpeech } = await import("./tts.js");
+  const name = getSettings().owner_name || "moi";
+  const audio = await textToSpeech(`Bonjour ! C'est ${name}. Merci pour ton message, je te prépare ta chanson avec plaisir.`);
+  res.json({ url: audio.url });
+}));
+
 app.post("/api/contacts/:id/song/brief", wrap(async (req, res) => {
   try {
     res.json(await songBrief(getContact(Number(req.params.id))));
@@ -300,4 +326,6 @@ app.listen(port, () => {
   }
   startTelegram();
   maybeAutoStartWhatsApp();
+  // Relances automatiques : vérification toutes les 15 minutes.
+  setInterval(() => runFollowups().catch((e) => console.error("Relances :", e.message)), 15 * 60_000);
 });

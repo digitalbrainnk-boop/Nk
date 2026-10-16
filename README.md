@@ -49,6 +49,17 @@ Réglages → **Cerveau de l'agent** → « Kie.ai — DeepSeek V4.1 Flash », c
 
 Dans une conversation, bouton **🎵 Créer la chanson** : l'IA écrit titre, style et paroles à partir de la discussion, tu corriges, puis **Lancer Suno**. 1 à 5 minutes plus tard, les versions apparaissent dans la conversation : tu les écoutes et tu cliques **Envoyer au client** (WhatsApp, Telegram, Messenger, Instagram).
 
+### Commandes, relances et ventes
+
+- Chaque client qui demande une chanson a une **commande** (panneau 📦 dans la conversation) : étape, prix, payé, date. L'agent remplit lui-même l'occasion, le prix annoncé et la date ; **seul toi** marques un paiement.
+- **Relances automatiques** : un client silencieux avec une demande ou un devis en cours reçoit une relance douce après X heures (Réglages → Commandes et relances).
+- Onglet **Ventes** : encaissé du mois, reste à encaisser, commandes en cours, livrées, clients, graphique par semaine et liste des commandes.
+
+### Réponses en vocal et démo automatique
+
+- Réglages → **Répondre en vocal** : jamais, quand le client envoie un vocal, ou toujours. Voix ElevenLabs via ta clé Kie.ai (bouton « Écouter cette voix »). Avec ffmpeg installé, c'est une vraie note vocale.
+- **Démo automatique** : quand un client hésite, l'agent prépare un extrait avec Suno (une fois par client) ; tu l'écoutes avant de l'envoyer.
+
 ### Utiliser un autre cerveau que Claude (DeepSeek, OpenRouter…)
 
 Réglages → **Cerveau de l'agent** → « Autre service compatible OpenAI », puis colle l'adresse de l'API (`…/chat/completions`), ta clé et le nom du modèle (ex. `deepseek-v4-flash`). Le bouton **Tester la connexion** vérifie que tout marche. Les photos ne sont pas vues par ces modèles (seulement signalées).

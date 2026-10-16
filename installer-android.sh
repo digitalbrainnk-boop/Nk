@@ -9,6 +9,8 @@ DOSSIER="$HOME/Nk"
 echo "=== Installation de l'agent IA (3 à 10 minutes) ==="
 pkg update -y -o Dpkg::Options::="--force-confnew"
 pkg install -y nodejs-lts git procps || pkg install -y nodejs git procps
+# ffmpeg : pour envoyer les réponses vocales comme de vraies notes vocales (facultatif)
+pkg install -y ffmpeg || echo "ffmpeg non installé : les vocaux seront envoyés comme fichiers audio."
 
 if [ -d "$DOSSIER/.git" ]; then
   echo "Mise à jour du projet..."

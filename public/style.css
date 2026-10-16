@@ -121,3 +121,43 @@ code { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: 1
 }
 .pairing { font: 700 32px/1.2 ui-monospace, monospace; letter-spacing: 4px; text-align: center; padding: 14px; margin: 10px 0; border: 2px dashed var(--accent); border-radius: 12px; }
 .card h3 { font-size: 15px; margin: 16px 0 4px; }
+
+/* Ventes */
+.sales { max-width: 1100px; margin: 16px auto; display: grid; gap: 16px; }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+.kpi { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; }
+.kpi-label { font-size: 13px; color: var(--muted); }
+.kpi-value { font-size: 24px; font-weight: 700; margin-top: 4px; font-variant-numeric: tabular-nums; }
+.kpi.hero .kpi-value { font-size: 30px; }
+.kpi-sub { font-size: 12px; color: var(--muted); margin-top: 4px; }
+.chart { position: relative; }
+.chart .bar { fill: var(--accent); }
+.chart .hit { fill: transparent; cursor: default; }
+.chart .col:hover .bar { opacity: .8; }
+.chart .base { stroke: var(--line); stroke-width: 1; }
+.chart .axis { fill: var(--muted); font-size: 11px; }
+.chart .val { fill: var(--text); font-size: 12px; font-weight: 600; }
+.tip { position: absolute; width: 170px; background: var(--text); color: var(--bg); font-size: 12px; padding: 8px 10px; border-radius: 8px; pointer-events: none; }
+.head-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; margin: 6px 0 10px; }
+.chip { border-radius: 999px; font-size: 13px; padding: 4px 10px; }
+.chip.on { background: var(--accent-soft); border-color: var(--accent); }
+.table-wrap { overflow-x: auto; }
+table.orders { width: 100%; border-collapse: collapse; font-size: 14px; }
+table.orders th { text-align: left; font-weight: 600; color: var(--muted); font-size: 12px; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+table.orders td { padding: 8px; border-bottom: 1px solid var(--line); }
+table.orders tr[data-contact] { cursor: pointer; }
+table.orders tr[data-contact]:hover { background: var(--accent-soft); }
+table.orders .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.stage { font-size: 12px; padding: 2px 8px; border-radius: 6px; background: var(--bg); white-space: nowrap; }
+.stage-livree { background: var(--accent-soft); color: var(--accent); }
+.stage-acompte, .stage-creation { background: var(--owner); }
+.stage-annulee { opacity: .6; text-decoration: line-through; }
+#order-box .pair .row { flex: 1; margin: 6px 0; }
+.sales > * { min-width: 0; }
+@media (max-width: 800px) {
+  .sales { margin: 12px 0; }
+  .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .kpi.hero { grid-column: 1 / -1; }
+  .kpi-value { font-size: 20px; }
+}
