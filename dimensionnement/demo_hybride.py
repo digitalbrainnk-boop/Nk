@@ -693,9 +693,12 @@ def u_charge_bus(u_bus: int, chimie: dict) -> float:
 
 
 def plus_gros_demarrage(circuits: list[Circuit]) -> tuple[Recepteur, Circuit, float] | None:
-    """Moteur dont l'appel de puissance au démarrage S_d = (Id/In)·Pu/(η·cos φ) est le plus élevé."""
-    moteurs = [(r, c, r.quantite * r.puissance_w / (r.rendement * r.cos_phi) * MODES_DEMARRAGE[r.demarrage]["id_in"])
-               for c in circuits for r in c.recepteurs if r.moteur]
+    """Moteur dont l'appel de puissance au démarrage S_d = (Id/In)·Pu/(η·cos φ) est le plus élevé.
+
+    Démarrages décalés : un seul appareil démarre à la fois, les autres (même identiques) tournent déjà.
+    """
+    moteurs = [(r, c, r.puissance_w / (r.rendement * r.cos_phi) * MODES_DEMARRAGE[r.demarrage]["id_in"])
+               for c in circuits for r in c.recepteurs if r.moteur and r.quantite > 0]
     return max(moteurs, key=lambda m: m[2]) if moteurs else None
 
 
@@ -729,7 +732,7 @@ def dimensionner_onduleur(note: NoteDeCalcul, bilan: dict, circuits: list[Circui
                 "s_demarrage_va": demarrage[2] if demarrage else 0.0, "moteur": demarrage[0] if demarrage else None}
     if demarrage:
         r, c, s_d = demarrage
-        s_marche = r.quantite * r.puissance_w / (r.rendement * r.cos_phi) * r.ku
+        s_marche = r.puissance_w / (r.rendement * r.cos_phi) * r.ku
         part = 3 if c.triphase else 1
         besoin_surcharge = s_ph - s_marche / part + s_d / part
         capacite = hyp.surcharge_onduleur * unite * n_par
@@ -993,7 +996,7 @@ def dimensionner_groupe(note: NoteDeCalcul, site: Site, hyp: Hypotheses, bilan: 
                       f"Chute de tension au démarrage {dip:.1%} > {hyp.chute_tension_max:.0%}", R_GE_DIP)
         moteur = onduleur["moteur"]
         p_d = s_d * MODES_DEMARRAGE[moteur.demarrage]["cos_phi_d"]
-        p_avant = bilan["p_dim_w"] - moteur.quantite * moteur.puissance_w / moteur.rendement * moteur.ku
+        p_avant = bilan["p_dim_w"] - moteur.puissance_w / moteur.rendement * moteur.ku
         note.verifier(rub, p_avant + p_d <= p_ge_site_w,
                       f"Échelon de charge au démarrage {(p_avant + p_d) / 1000:.1f} kW ≤ {p_ge_site_w / 1000:.1f} kW",
                       f"Échelon {(p_avant + p_d) / 1000:.1f} kW > puissance du moteur thermique : séquencer les démarrages",
@@ -1226,7 +1229,8 @@ def choisir_courbe(c: Circuit, in_c: float) -> str:
     """Courbe la plus basse compatible avec l'appel de courant (Im,min > 1,2·Id), B par défaut."""
     if c.courbe:
         return c.courbe
-    i_appel = max((courant_nominal_moteur(r, c.triphase) * r.quantite * MODES_DEMARRAGE[r.demarrage]["id_in"]
+    # Un appareil démarre pendant que les autres appareils identiques du circuit tournent
+    i_appel = max((courant_nominal_moteur(r, c.triphase) * (MODES_DEMARRAGE[r.demarrage]["id_in"] + max(0, r.quantite - 1))
                    for r in c.recepteurs if r.moteur), default=0.0)
     return next((k for k in ("B", "C", "D") if MAGNETIQUE_MIN[k] * in_c > 1.2 * i_appel), "D")
 

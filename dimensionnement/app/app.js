@@ -14,7 +14,8 @@
   const CLE_DONNEES = "agent-dimensionnement:donnees"; // version du format des données enregistrées
   const ETROIT = window.matchMedia("(max-width: 1179px)");
 
-  const etat = { projet: null, resultat: null, erreurs: null, manquants: [], comparaison: null, minuterie: null, supprime: null };
+  const etat = { projet: null, resultat: null, erreurs: null, manquants: [], comparaison: null, minuterie: null, supprime: null, annonce: "",
+    prix: null, materiel: null };
 
   // ---------------------------------------------------------------------------
   // Utilitaires
@@ -56,7 +57,7 @@
     else o[k] = valeur;
   }
   const DEFAUT_CIRCUIT = { longueur_m: 30, ks: 1, calibre_min: 10, section_min: 1.5 };
-  const DEFAUT_RECEPTEUR = { quantite: 1, rendement: 1, ku: 1, cos_phi: 0.9 };
+  const DEFAUT_RECEPTEUR = { quantite: 1, rendement: 1, ku: 1, cos_phi: 0.9, unite: "W" };
   function valeurParDefaut(chemin) {
     let m = chemin.match(/^circuits\.\d+\.recepteurs\.\d+\.(\w+)$/);
     if (m) return DEFAUT_RECEPTEUR[m[1]];
@@ -97,41 +98,10 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Bibliothèque d'appareils (valeurs typiques à ajuster selon la plaque signalétique)
+  // Catalogue d'équipements (catalogue.js) : valeurs typiques à ajuster selon la plaque signalétique
   // ---------------------------------------------------------------------------
 
-  const BIBLIOTHEQUE = [
-    ["Lampe LED 10 W", 10, 0.9, { plages: [[18, 23, 1]] }],
-    ["Tube LED 18 W", 18, 0.9, { plages: [[18, 23, 1]] }],
-    ["Projecteur LED extérieur 50 W", 50, 0.9, { plages: [[18, 6, 1]] }],
-    ["Ventilateur de plafond 75 W", 75, 0.85, { plages: [[11, 17, 0.8], [20, 6, 0.6]] }],
-    ["Climatiseur split 9 000 BTU (0,8 kW)", 800, 0.95, { plages: [[11, 18, 0.7]] }],
-    ["Climatiseur split 12 000 BTU (1,1 kW)", 1100, 0.95, { plages: [[11, 18, 0.7]] }],
-    ["Climatiseur split 18 000 BTU (1,7 kW)", 1700, 0.95, { plages: [[11, 18, 0.7]] }],
-    ["Réfrigérateur 150 W", 150, 0.8, { plages: [[0, 24, 0.5]] }],
-    ["Congélateur 200 W", 200, 0.8, { plages: [[0, 24, 0.5]] }],
-    ["Téléviseur LED 100 W", 100, 0.95, { plages: [[18, 23, 1]] }],
-    ["Ordinateur portable 60 W", 60, 0.95, { plages: [[8, 17, 0.8]] }],
-    ["Ordinateur de bureau 150 W", 150, 0.95, { plages: [[8, 17, 0.8]] }],
-    ["Imprimante laser 400 W", 400, 0.95, { plages: [[8, 17, 0.1]] }],
-    ["Box internet / routeur 15 W", 15, 0.9, { plages: [[0, 24, 1]] }],
-    ["Caméra de surveillance 10 W", 10, 0.9, { plages: [[0, 24, 1]] }],
-    ["Micro-ondes 1 000 W", 1000, 0.95, { plages: [[12, 13, 0.2], [19, 20, 0.2]] }],
-    ["Bouilloire 2 000 W", 2000, 1, { plages: [[7, 8, 0.15]] }],
-    ["Fer à repasser 1 000 W", 1000, 1, { plages: [[18, 19, 0.3]] }],
-    ["Chauffe-eau électrique 1 500 W", 1500, 1, { plages: [[5, 7, 0.6]] }],
-    ["Lave-linge 500 W", 500, 0.8, { plages: [[9, 11, 0.5]] }],
-    ["Prise de courant (usages divers) 250 W", 250, 0.9, { plages: [[8, 18, 0.1]] }],
-    ["Pompe de surface 0,75 kW (1 CV)", 750, 0.8, { rendement: 0.75, moteur: true, demarrage: "direct", plages: [[7, 9, 1]] }],
-    ["Pompe immergée 1,5 kW (2 CV)", 1500, 0.82, { rendement: 0.78, moteur: true, demarrage: "progressif", plages: [[10, 14, 1]] }],
-    ["Pompe immergée 3 kW (4 CV)", 3000, 0.83, { rendement: 0.82, moteur: true, demarrage: "progressif", plages: [[10, 14, 1]] }],
-    ["Moulin à grains 7,5 kW", 7500, 0.85, { rendement: 0.88, ku: 0.8, moteur: true, demarrage: "etoile_triangle", plages: [[8, 12, 0.7], [15, 18, 0.7]] }],
-    ["Compresseur d'air 2,2 kW", 2200, 0.82, { rendement: 0.84, ku: 0.75, moteur: true, demarrage: "direct", plages: [[8, 17, 0.4]] }],
-    ["Moteur triphasé 5,5 kW", 5500, 0.85, { rendement: 0.87, ku: 0.75, moteur: true, demarrage: "progressif", plages: [[8, 17, 0.6]] }],
-    ["Autoclave 2 000 W", 2000, 1, { plages: [[10, 12, 0.8]] }],
-    ["Concentrateur d'oxygène 350 W", 350, 0.95, { plages: [[0, 24, 0.5]] }],
-  ].map(([nom, puissance_w, cos_phi, extra]) => ({ nom, puissance_w, cos_phi, rendement: 1, ku: 1, moteur: false, demarrage: "direct",
-    non_lineaire: /LED|Ordinateur|Imprimante|Box|Caméra|Micro-ondes|Téléviseur|inverter/i.test(nom), ...extra }));
+  const K = window.Catalogue;
 
   // ---------------------------------------------------------------------------
   // Projet : chargement, enregistrement, calcul
@@ -175,8 +145,9 @@
   }
   function reinitialiserApplication() {
     try {
-      for (const cle of [CLE_PROJET, CLE_ONGLET, CLE_API, CLE_KIE, CLE_CERVEAU, CLE_KIE_URL, CLE_KIE_MODELE]) localStorage.removeItem(cle);
+      for (const cle of [CLE_PROJET, CLE_ONGLET, CLE_API, CLE_KIE, CLE_CERVEAU, CLE_KIE_URL, CLE_KIE_MODELE, CLE_PRIX]) localStorage.removeItem(cle);
     } catch (e) { /* sans effet */ }
+    etat.prix = lirePrix();
     etat.projet = null;
     etat.supprime = null;
     remplacerProjet(projetVide());
@@ -205,8 +176,8 @@
         etat: nomDonne ? "ok" : "conseille", manque: nomDonne ? "" : "Donnez un nom au projet ; vérifiez le type de système, la norme et le réseau." },
       { cle: "site", titre: "Site", detail: solaire ? "Lieu, altitude, températures" : "Altitude, températures",
         etat: manqueSite.length ? "requis" : "ok", manque: manqueSite.length ? `À saisir : ${manqueSite.join(", ")}.` : "" },
-      { cle: "charges", titre: "Charges", detail: "Circuits et appareils : puissance, nombre, heures d'utilisation",
-        etat: appareils ? "ok" : "requis", manque: appareils ? "" : "Ajoutez vos circuits et les appareils à alimenter." },
+      { cle: "charges", titre: "Charges", detail: "Appareils du catalogue ou de la plaque : puissance, nombre, heures d'utilisation",
+        etat: appareils ? "ok" : "requis", manque: appareils ? "" : "Choisissez vos appareils dans le catalogue : les circuits sont créés automatiquement." },
     ];
     if (solaire) {
       etapes.push({ cle: "ghi", titre: "Ensoleillement", detail: "12 valeurs mensuelles du site (PVGIS ou NASA POWER)",
@@ -231,10 +202,10 @@
     const onglet = { projet: "projet", site: "projet", ghi: "projet", charges: "charges", choix: "choix" }[cible] || "projet";
     ouvrirOnglet(onglet);
     if (cible === "projet") { window.scrollTo(0, 0); return; }
-    const zone = { site: "#btn-gps", ghi: "#champs-ghi", charges: "#btn-ajout-circuit", choix: "#choix" }[cible];
+    const zone = { site: "#btn-gps", ghi: "#champs-ghi", charges: "#btn-catalogue", choix: "#choix" }[cible];
     const el = zone && $(zone);
     if (el) el.scrollIntoView({ block: "center" });
-    if (cible === "charges" && !etat.projet.circuits.length) $("#btn-ajout-circuit").focus();
+    if (cible === "charges" && !etat.projet.circuits.length) $("#btn-catalogue").focus();
   }
   function rendreGuideProjet() {
     const zone = $("#guide-projet");
@@ -247,6 +218,7 @@
   }
   function calculer() {
     clearTimeout(etat.minuterie);
+    synchroniserPuissances();
     etat.manquants = informationsManquantes();
     if (etat.manquants.length) {
       etat.resultat = null;
@@ -267,6 +239,7 @@
     majChiffresCircuits();
     rendreResultats();
     rendreLigneResultats();
+    rendreMateriel();
     rendreNote();
   }
   function programmerCalcul() {
@@ -318,6 +291,7 @@
     if (memoriser) try { localStorage.setItem(CLE_ONGLET, nom); } catch (e) { /* sans effet */ }
     if (nom === "resultats") rendreResultats();
     if (nom === "ligne") rendreLigneResultats();
+    if (nom === "materiel") rendreMateriel(true);
   }
 
   // ---------------------------------------------------------------------------
@@ -403,6 +377,7 @@
       if (input.type === "radio") { input.checked = input.value === v; return; }
       if (v === undefined && input.tagName === "SELECT") v = valeurParDefaut(chemin);
       if (type === "plages") input.value = ecrirePlages(v);
+      else if (type === "puissance") { const x = recepteurDuChemin(chemin); input.value = versSaisie(x ? puissanceAffichee(x.r) : v); }
       else if (type === "pct") input.value = v === null || v === undefined ? "" : versSaisie(Math.round(v * 10000) / 100);
       else if (type === "triphase") input.value = v ? "1" : "0";
       else if (input.tagName === "SELECT") input.value = v === null || v === undefined ? "" : String(v);
@@ -421,6 +396,8 @@
     else if (input.type === "radio") valeur = input.value;
     else if (type === "triphase") valeur = input.value === "1";
     else if (type === "texte") valeur = input.value;
+    else if (type === "type-circuit") valeur = input.value || undefined;
+    else if (type === "unite-p") { changerUnite(chemin, input.value); programmerCalcul(); return; }
     else if (type === "plages") {
       valeur = lirePlages(input.value);
       if (valeur === null) { input.setAttribute("aria-invalid", "true"); return; }
@@ -430,7 +407,17 @@
       if (type === "pct" && valeur !== undefined) valeur = valeur / 100;
     }
     input.removeAttribute("aria-invalid");
+    if (type === "puissance") {
+      saisirPuissance(chemin, valeur);
+      majAidesRecepteurs();
+      programmerCalcul();
+      return;
+    }
     ecrire(chemin, valeur);
+    if (type === "type-circuit" || type === "triphase") {
+      const c = etat.projet.circuits[Number(chemin.split(".")[1])];
+      if (c && c.type) { appliquerTypeCircuit(c); remplirChamps(input.closest(".circuit")); }
+    }
     if (chemin.endsWith(".moteur")) {
       const ligne = input.closest(".recepteur");
       if (ligne) $(".choix-demarrage", ligne).hidden = !valeur;
@@ -504,6 +491,7 @@
   }
   function surChangementReferentiel() {
     if (reseauActif().famille !== famille()) etat.projet.reseau = M.normaliser({ referentiel: etat.projet.referentiel }).reseau;
+    etat.projet.circuits.forEach(appliquerTypeCircuit); // protections minimales de la nouvelle famille de normes
     remplirNormes();
     surChangementReseau();
     majVisibilite();
@@ -512,7 +500,7 @@
     let message = "";
     if (reseauActif().nph === 1) {
       const tri = etat.projet.circuits.filter((c) => c.triphase);
-      tri.forEach((c) => { c.triphase = false; });
+      tri.forEach((c) => { c.triphase = false; appliquerTypeCircuit(c); });
       if (tri.length) message = `${tri.length} circuit${tri.length > 1 ? "s" : ""} triphasé${tri.length > 1 ? "s" : ""} passé${tri.length > 1 ? "s" : ""} en monophasé : le réseau choisi est monophasé.`;
     }
     $("#message-reseau").textContent = message;
@@ -543,22 +531,94 @@
   // ---------------------------------------------------------------------------
 
   const OPTIONS_DEMARRAGE = Object.entries(M.MODES_DEMARRAGE).map(([cle, m]) => `<option value="${cle}">${m.libelle[0].toUpperCase()}${m.libelle.slice(1)}</option>`).join("");
+  const OPTIONS_UNITES = Object.keys(K.UNITES_PUISSANCE).map((u) => `<option value="${u}">${u}</option>`).join("");
+  const OPTIONS_TYPES = `<option value="">Type de circuit…</option>${Object.entries(K.TYPES_CIRCUITS).map(([cle, t]) => `<option value="${cle}">${echap(t.nom)}</option>`).join("")}`;
+
+  // --- Puissance saisie dans l'unité de la plaque (W, kW, CV, HP, kVA, A) ---
+
+  /** Contexte de conversion d'une puissance de plaque : cos φ, rendement, moteur, alimentation et réseau du circuit. */
+  function contexteConversion(c, r, reseau = reseauActif()) {
+    return { cos_phi: Number(r.cos_phi ?? 0.9) || 0.9, rendement: Number(r.rendement ?? 1) || 1, moteur: Boolean(r.moteur), triphase: Boolean(c.triphase), reseau };
+  }
+  const uniteDe = (r) => (r.unite && K.UNITES_PUISSANCE[r.unite] ? r.unite : "W");
+  /** Recalcule la puissance en W des récepteurs saisis dans une autre unité (le cos φ, le rendement ou l'alimentation ont pu changer). */
+  function synchroniserPuissances(p = etat.projet) {
+    const reseau = M.RESEAUX[p.reseau] || reseauActif();
+    for (const c of p.circuits) {
+      for (const r of c.recepteurs || []) {
+        if (uniteDe(r) === "W" || !Number.isFinite(Number(r.valeur_saisie))) continue;
+        r.puissance_w = Math.round(K.versWatts(Number(r.valeur_saisie), r.unite, contexteConversion(c, r, reseau)) * 10) / 10;
+      }
+    }
+  }
+  function recepteurDuChemin(chemin) {
+    const m = chemin.match(/^circuits\.(\d+)\.recepteurs\.(\d+)\./);
+    if (!m) return null;
+    const c = etat.projet.circuits[Number(m[1])];
+    return c && c.recepteurs[Number(m[2])] ? { c, r: c.recepteurs[Number(m[2])], i: Number(m[1]), j: Number(m[2]) } : null;
+  }
+  function puissanceAffichee(r) {
+    return uniteDe(r) !== "W" && Number.isFinite(Number(r.valeur_saisie)) ? Math.round(Number(r.valeur_saisie) * 1000) / 1000 : r.puissance_w;
+  }
+  function equivalentPuissance(r) {
+    if (uniteDe(r) === "W" || !(Number(r.puissance_w) > 0)) return "";
+    return `= ${fr(r.puissance_w, 0)} W${r.moteur ? " utiles" : ""}`;
+  }
+  function saisirPuissance(chemin, valeur) {
+    const x = recepteurDuChemin(chemin);
+    if (!x) return;
+    const { c, r } = x;
+    if (uniteDe(r) === "W") {
+      delete r.valeur_saisie;
+      if (valeur === undefined) delete r.puissance_w; else r.puissance_w = valeur;
+    } else if (valeur === undefined) {
+      delete r.valeur_saisie;
+      delete r.puissance_w;
+    } else {
+      r.valeur_saisie = valeur;
+      r.puissance_w = Math.round(K.versWatts(valeur, r.unite, contexteConversion(c, r)) * 10) / 10;
+    }
+  }
+  /** Changement d'unité : la puissance est conservée et réaffichée dans la nouvelle unité. */
+  function changerUnite(chemin, unite) {
+    const x = recepteurDuChemin(chemin);
+    if (!x) return;
+    const { c, r } = x;
+    r.unite = K.UNITES_PUISSANCE[unite] ? unite : "W";
+    if (r.unite === "W") delete r.valeur_saisie;
+    else if (Number(r.puissance_w) > 0) r.valeur_saisie = Math.round(K.depuisWatts(Number(r.puissance_w), r.unite, contexteConversion(c, r)) * 1000) / 1000;
+    const ligne = $(`.circuit[data-circuit="${x.i}"] .recepteur[data-recepteur="${x.j}"]`);
+    if (ligne) {
+      $('[data-type="puissance"]', ligne).value = versSaisie(puissanceAffichee(r));
+      $("[data-equivalent]", ligne).textContent = equivalentPuissance(r);
+      $('[data-type="puissance"]', ligne).title = K.UNITES_PUISSANCE[r.unite].aide || "";
+    }
+  }
+
+  // --- Types de circuits ---
+
+  /** Protection et section minimales usuelles du type de circuit, selon la famille de normes et l'alimentation. */
+  function appliquerTypeCircuit(c) {
+    const preset = c.type && K.presetCircuit(c.type, famille(), c.triphase);
+    if (preset) Object.assign(c, preset);
+  }
 
   function recepteurHtml(i, j) {
     const b = `circuits.${i}.recepteurs.${j}`;
     return `<div class="recepteur" data-recepteur="${j}">
-      <label class="champ r-nom"><span>Appareil</span><input list="bibliotheque" data-chemin="${b}.nom" data-type="texte" data-bibliotheque="${i}.${j}" autocomplete="off"></label>
+      <label class="champ r-nom"><span>Appareil</span><input list="bibliotheque" data-chemin="${b}.nom" data-type="texte" data-bibliotheque="${i}.${j}" autocomplete="off" placeholder="Nom ou choix dans la liste"></label>
       <label class="champ r-qte"><span>Qté</span><input class="donnee" inputmode="decimal" data-chemin="${b}.quantite" data-type="nombre"></label>
-      <label class="champ r-p"><span>P unitaire <span class="unite">W</span></span><input class="donnee" inputmode="decimal" data-chemin="${b}.puissance_w" data-type="nombre"></label>
+      <div class="champ r-p"><span>P unitaire (plaque)</span><span class="saisie-unite"><input class="donnee" inputmode="decimal" data-chemin="${b}.puissance_w" data-type="puissance" aria-label="Puissance unitaire"><select data-chemin="${b}.unite" data-type="unite-p" aria-label="Unité de la puissance">${OPTIONS_UNITES}</select></span><small data-equivalent></small></div>
       <label class="champ r-cos"><span>cos φ</span><input class="donnee" inputmode="decimal" data-chemin="${b}.cos_phi" data-type="nombre"></label>
       <label class="champ r-eta"><span>Rendement</span><input class="donnee" inputmode="decimal" data-chemin="${b}.rendement" data-type="nombre" placeholder="1"></label>
       <label class="champ r-ku"><span>ku</span><input class="donnee" inputmode="decimal" data-chemin="${b}.ku" data-type="nombre" placeholder="1"></label>
       <label class="champ r-plages"><span>Plages horaires</span><input class="donnee" data-chemin="${b}.plages" data-type="plages" placeholder="8-17 60%; 18-23" autocomplete="off"></label>
       <button type="button" class="btn btn-discret btn-danger r-suppr" data-action="supprimer-recepteur" data-i="${i}" data-j="${j}" aria-label="Supprimer ce récepteur">✕</button>
       <div class="recepteur-moteur">
-        <label class="case"><input type="checkbox" data-chemin="${b}.moteur" data-type="bool"> Moteur (P = puissance utile)</label>
+        <label class="case"><input type="checkbox" data-chemin="${b}.moteur" data-type="bool"> Moteur ou compresseur</label>
         <label class="case choix-demarrage"><span class="discret">Démarrage</span><select data-chemin="${b}.demarrage" data-type="texte">${OPTIONS_DEMARRAGE}</select></label>
         <label class="case" title="LED, informatique, variateurs, onduleurs : courants harmoniques"><input type="checkbox" data-chemin="${b}.non_lineaire" data-type="bool"> Non linéaire (électronique)</label>
+        <span class="discret r-heures" data-heures></span>
       </div>
     </div>`;
   }
@@ -569,6 +629,7 @@
     return `<article class="circuit" data-circuit="${i}">
       <div class="circuit-tete">
         <input class="nom-circuit" data-chemin="${b}.nom" data-type="texte" aria-label="Nom du circuit" autocomplete="off">
+        <select data-chemin="${b}.type" data-type="type-circuit" aria-label="Type de circuit">${OPTIONS_TYPES}</select>
         <select data-chemin="${b}.triphase" data-type="triphase" aria-label="Alimentation">${alimentation}</select>
         <span class="rangee"><button type="button" class="btn btn-discret" data-action="dupliquer-circuit" data-i="${i}">Dupliquer</button>
         <button type="button" class="btn btn-discret btn-danger" data-action="supprimer-circuit" data-i="${i}">Supprimer</button></span>
@@ -586,18 +647,20 @@
         </div>
         <div class="circuit-chiffres" data-chiffres="${i}"></div>
         ${(c.recepteurs || []).map((r, j) => recepteurHtml(i, j)).join("")}
-        <div><button type="button" class="btn" data-action="ajouter-recepteur" data-i="${i}">Ajouter un récepteur</button></div>
+        <div class="rangee"><button type="button" class="btn" data-action="catalogue" data-i="${i}">Ajouter depuis le catalogue</button>
+          <button type="button" class="btn btn-discret" data-action="ajouter-recepteur" data-i="${i}">Ajouter un récepteur vide</button></div>
       </div>
     </article>`;
   }
   function rendreCharges() {
     const liste = $("#liste-circuits");
-    const annuler = etat.supprime
+    const bandeaux = (etat.supprime
       ? `<div class="bandeau bandeau-info"><span>Circuit « ${echap(etat.supprime.circuit.nom)} » supprimé.</span><button type="button" class="btn" data-action="restaurer-circuit">Annuler la suppression</button></div>`
-      : "";
-    liste.innerHTML = annuler + (etat.projet.circuits.length
+      : "") + (etat.annonce ? `<div class="bandeau bandeau-info" role="status"><span>${echap(etat.annonce)}</span></div>` : "");
+    liste.innerHTML = bandeaux + (etat.projet.circuits.length
       ? etat.projet.circuits.map(circuitHtml).join("")
-      : `<div class="bloc"><p>Aucun circuit pour l'instant. Ajoutez un circuit, ou décrivez l'installation à l'assistant.</p></div>`);
+      : `<div class="bloc vide-charges"><p>Aucun circuit pour l'instant. Choisissez vos appareils dans le catalogue : l'application crée les circuits (éclairage, prises, climatisation, moteurs…) avec leurs protections minimales. Vous pouvez aussi ajouter un circuit vide, ou décrire l'installation à l'assistant.</p>
+        <div class="rangee"><button type="button" class="btn btn-primaire" data-action="catalogue">Choisir dans le catalogue d'équipements</button></div></div>`);
     remplirChamps(liste);
     majVisibilite(liste);
     $$(".recepteur", liste).forEach((ligne) => {
@@ -606,7 +669,19 @@
     });
     majChiffresCircuits();
   }
+  /** Texte d'aide sous un récepteur : puissance convertie et heures équivalentes par jour. */
+  function majAidesRecepteurs() {
+    etat.projet.circuits.forEach((c, i) => (c.recepteurs || []).forEach((r, j) => {
+      const ligne = $(`.circuit[data-circuit="${i}"] .recepteur[data-recepteur="${j}"]`);
+      if (!ligne) return;
+      $("[data-equivalent]", ligne).textContent = equivalentPuissance(r);
+      const h = K.heuresParJour(r.plages);
+      const pAbs = (Number(r.quantite ?? 1) * Number(r.puissance_w || 0)) / (Number(r.rendement) || 1) * (Number(r.ku) || 1);
+      $("[data-heures]", ligne).textContent = h > 0 && pAbs > 0 ? `≈ ${fr(h, 1)} h/j à pleine puissance · ${fr((pAbs * h) / 1000, 2)} kWh/j` : "";
+    }));
+  }
   function majChiffresCircuits() {
+    majAidesRecepteurs();
     const total = $("#resume-charges");
     const res = etat.resultat;
     if (!res) {
@@ -642,6 +717,9 @@
     const i = Number(bouton.dataset.i);
     const circuits = etat.projet.circuits;
     switch (bouton.dataset.action) {
+      case "catalogue":
+        ouvrirCatalogue(bouton.dataset.i === undefined ? "auto" : String(i));
+        return;
       case "ajouter-recepteur":
         circuits[i].recepteurs.push({ nom: "", quantite: 1, puissance_w: 100, cos_phi: 0.9, plages: [[18, 23, 1]] });
         break;
@@ -665,6 +743,7 @@
         return;
     }
     if (bouton.dataset.action !== "supprimer-circuit") etat.supprime = null;
+    etat.annonce = "";
     rendreCharges();
     programmerCalcul();
   }
@@ -672,19 +751,174 @@
     const n = etat.projet.circuits.length + 1;
     etat.projet.circuits.push({ nom: `C${n} Nouveau circuit`, longueur_m: 25, recepteurs: [{ nom: "", quantite: 1, puissance_w: 100, cos_phi: 0.9, plages: [[18, 23, 1]] }] });
     etat.supprime = null;
+    etat.annonce = "";
     rendreCharges();
     programmerCalcul();
     const dernier = $$(".circuit").pop();
     if (dernier) { dernier.scrollIntoView({ block: "center" }); $(".nom-circuit", dernier).select(); }
   }
+  /** Appareil choisi dans la liste du champ « Appareil » : valeurs typiques du catalogue, et type du circuit s'il n'en a pas. */
   function surChoixBibliotheque(input) {
-    const appareil = BIBLIOTHEQUE.find((a) => a.nom === input.value);
+    const appareil = K.APPAREILS.find((a) => a.nom === input.value);
     if (!appareil) return;
     const [i, j] = input.dataset.bibliotheque.split(".").map(Number);
-    const r = etat.projet.circuits[i].recepteurs[j];
-    Object.assign(r, cloner({ ...appareil, quantite: r.quantite || 1 }));
+    const c = etat.projet.circuits[i];
+    const r = c.recepteurs[j];
+    delete r.unite;
+    delete r.valeur_saisie;
+    Object.assign(r, K.recepteur(appareil, r.quantite || 1));
+    if (c.recepteurs.length === 1) {
+      if (appareil.triphase && reseauActif().nph === 3) c.triphase = true;
+      if (!c.type) { c.type = appareil.circuit; appliquerTypeCircuit(c); }
+    }
     rendreCharges();
     programmerCalcul();
+  }
+
+  // --- Fenêtre du catalogue d'équipements ---
+
+  const catalogue = { selection: new Map(), categorie: "", recherche: "", destination: "auto", retour: null };
+
+  function ouvrirCatalogue(destination = "auto") {
+    catalogue.selection.clear();
+    catalogue.destination = destination;
+    catalogue.retour = document.activeElement;
+    const fenetre = $("#fenetre-catalogue");
+    fenetre.hidden = false;
+    document.body.classList.add("fenetre-ouverte");
+    $("#catalogue-recherche").value = catalogue.recherche;
+    rendreCategoriesCatalogue();
+    rendreListeCatalogue();
+    rendreDestinationsCatalogue();
+    majPiedCatalogue();
+    if (!ETROIT.matches) $("#catalogue-recherche").focus();
+  }
+  function fermerCatalogue() {
+    $("#fenetre-catalogue").hidden = true;
+    document.body.classList.remove("fenetre-ouverte");
+    if (catalogue.retour && document.contains(catalogue.retour)) catalogue.retour.focus();
+  }
+  function rendreCategoriesCatalogue() {
+    const puce = (cle, nom, n) => `<button type="button" class="puce" data-categorie="${cle}" aria-pressed="${catalogue.categorie === cle}">${echap(nom)} <span class="discret">${n}</span></button>`;
+    $("#catalogue-categories").innerHTML = puce("", "Tout", K.APPAREILS.length)
+      + K.CATEGORIES.map((c) => puce(c.cle, c.nom, K.APPAREILS.filter((a) => a.categorie === c.cle).length)).join("");
+  }
+  function descriptionAppareil(a) {
+    const p = a.puissance_w >= 1000 ? `${fr(a.puissance_w / 1000, 2)} kW` : `${fr(a.puissance_w, 0)} W`;
+    const morceaux = [a.moteur && a.rendement < 1 ? `${p} utiles (${fr(a.puissance_w / a.rendement / 1000, 2)} kW absorbés)` : p, `cos φ ${fr(a.cos_phi, 2)}`];
+    if (a.moteur) morceaux.push(`démarrage ${M.MODES_DEMARRAGE[a.demarrage].libelle.replace(/^démarrage /, "")}`);
+    if (a.non_lineaire) morceaux.push("électronique");
+    if (a.triphase) morceaux.push("triphasé");
+    morceaux.push(`≈ ${fr(K.heuresParJour(a.plages), 1)} h/j`);
+    return morceaux.join(" · ");
+  }
+  function rendreListeCatalogue() {
+    const trouves = K.chercher(catalogue.recherche, catalogue.categorie || null);
+    const zone = $("#catalogue-liste");
+    if (!trouves.length) {
+      zone.innerHTML = `<p class="discret">Aucun appareil ne correspond. Essayez un autre mot, ou ajoutez un récepteur vide et saisissez la plaque signalétique.</p>`;
+      return;
+    }
+    let categoriePrecedente = null;
+    zone.innerHTML = trouves.map((a) => {
+      const titre = a.categorie !== categoriePrecedente && !catalogue.categorie
+        ? `<h3 class="catalogue-categorie">${echap(K.CATEGORIES.find((c) => c.cle === a.categorie).nom)}</h3>` : "";
+      categoriePrecedente = a.categorie;
+      const q = catalogue.selection.get(a.id) || 0;
+      return `${titre}<div class="article${q ? " choisi" : ""}" data-id="${a.id}">
+        <div class="article-texte"><strong>${echap(a.nom)}</strong><span class="discret">${echap(descriptionAppareil(a))}</span>${a.note ? `<span class="discret">${echap(a.note)}</span>` : ""}</div>
+        <div class="quantite"><button type="button" class="btn" data-moins aria-label="Un de moins">−</button><input class="donnee" inputmode="numeric" value="${q}" data-qte aria-label="Quantité : ${echap(a.nom)}"><button type="button" class="btn" data-plus aria-label="Un de plus">+</button></div>
+      </div>`;
+    }).join("");
+  }
+  function rendreDestinationsCatalogue() {
+    const options = [["auto", "Nouveaux circuits, créés automatiquement"], ...etat.projet.circuits.map((c, i) => [String(i), `Circuit ${c.nom}`])];
+    const select = $("#catalogue-destination");
+    select.innerHTML = options.map(([v, l]) => `<option value="${v}">${echap(l)}</option>`).join("");
+    select.value = options.some(([v]) => v === catalogue.destination) ? catalogue.destination : "auto";
+  }
+  function majPiedCatalogue() {
+    const n = [...catalogue.selection.values()].reduce((s, q) => s + q, 0);
+    const lignes = catalogue.selection.size;
+    $("#catalogue-compte").textContent = n ? `${n} appareil${n > 1 ? "s" : ""} choisi${n > 1 ? "s" : ""} (${lignes} type${lignes > 1 ? "s" : ""})` : "Aucun appareil choisi";
+    $("#catalogue-ajouter").disabled = !n;
+  }
+  function changerQuantiteCatalogue(id, q) {
+    const quantite = Math.max(0, Math.min(999, Math.round(Number(q) || 0)));
+    if (quantite) catalogue.selection.set(id, quantite); else catalogue.selection.delete(id);
+    const article = $(`#catalogue-liste .article[data-id="${id}"]`);
+    if (article) {
+      article.classList.toggle("choisi", quantite > 0);
+      const champ = $("[data-qte]", article);
+      if (document.activeElement !== champ) champ.value = quantite;
+    }
+    majPiedCatalogue();
+  }
+  function ajouterDepuisCatalogue() {
+    const selection = [...catalogue.selection].map(([id, quantite]) => ({ appareil: K.APPAREILS.find((a) => a.id === id), quantite })).filter((x) => x.appareil);
+    if (!selection.length) return;
+    const circuits = etat.projet.circuits;
+    const destination = $("#catalogue-destination").value;
+    let premier;
+    if (destination === "auto") {
+      const nouveaux = K.repartirEnCircuits(selection, { reseau: reseauActif(), famille: famille(), numero: circuits.length + 1 });
+      premier = circuits.length;
+      circuits.push(...nouveaux);
+      etat.annonce = `${nouveaux.length} circuit${nouveaux.length > 1 ? "s" : ""} créé${nouveaux.length > 1 ? "s" : ""} avec leurs protections minimales. `
+        + "Vérifiez la longueur de chaque circuit (estimée) et les heures d'utilisation de vos appareils.";
+    } else {
+      premier = Number(destination);
+      const c = circuits[premier];
+      c.recepteurs.push(...selection.map(({ appareil, quantite }) => K.recepteur(appareil, quantite)));
+      if (!c.type && selection.length === 1) { c.type = selection[0].appareil.circuit; appliquerTypeCircuit(c); }
+      etat.annonce = `${selection.length} appareil${selection.length > 1 ? "s" : ""} ajouté${selection.length > 1 ? "s" : ""} au circuit « ${c.nom} ».`;
+    }
+    etat.supprime = null;
+    fermerCatalogue();
+    if ($("#app").dataset.onglet !== "charges") ouvrirOnglet("charges");
+    rendreCharges();
+    calculer();
+    const cible = $(`.circuit[data-circuit="${premier}"]`);
+    if (cible) cible.scrollIntoView({ block: "start" });
+  }
+  function brancherCatalogue() {
+    const fenetre = $("#fenetre-catalogue");
+    let minuterie = null;
+    $("#catalogue-recherche").addEventListener("input", (e) => {
+      clearTimeout(minuterie);
+      minuterie = setTimeout(() => { catalogue.recherche = e.target.value; rendreListeCatalogue(); }, 120);
+    });
+    $("#catalogue-categories").addEventListener("click", (e) => {
+      const b = e.target.closest("[data-categorie]");
+      if (!b) return;
+      catalogue.categorie = b.dataset.categorie;
+      $$("[data-categorie]", fenetre).forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+      rendreListeCatalogue();
+      $("#catalogue-liste").scrollTop = 0;
+    });
+    $("#catalogue-liste").addEventListener("click", (e) => {
+      const article = e.target.closest(".article");
+      if (!article) return;
+      const q = catalogue.selection.get(article.dataset.id) || 0;
+      if (e.target.closest("[data-plus]")) changerQuantiteCatalogue(article.dataset.id, q + 1);
+      else if (e.target.closest("[data-moins]")) changerQuantiteCatalogue(article.dataset.id, q - 1);
+      else if (!e.target.closest("[data-qte]") && !q) changerQuantiteCatalogue(article.dataset.id, 1);
+    });
+    $("#catalogue-liste").addEventListener("input", (e) => {
+      const article = e.target.closest(".article");
+      if (article && e.target.dataset.qte !== undefined) changerQuantiteCatalogue(article.dataset.id, nombreSaisi(e.target.value) || 0);
+    });
+    $("#catalogue-destination").addEventListener("change", (e) => { catalogue.destination = e.target.value; });
+    $("#catalogue-ajouter").addEventListener("click", ajouterDepuisCatalogue);
+    fenetre.addEventListener("click", (e) => { if (e.target === fenetre || e.target.closest("[data-fermer]")) fermerCatalogue(); });
+    fenetre.addEventListener("keydown", (e) => { if (e.key === "Escape") fermerCatalogue(); });
+    $("#btn-catalogue").addEventListener("click", () => ouvrirCatalogue("auto"));
+    // Touche Retour d'Android : ferme le catalogue au lieu de quitter l'application
+    window.retourAndroid = () => {
+      if ($("#fenetre-catalogue").hidden) return false;
+      fermerCatalogue();
+      return true;
+    };
   }
 
   // ---------------------------------------------------------------------------
@@ -1297,12 +1531,300 @@
     return typeof l.valeur === "number" ? fr(l.valeur, 3) : String(l.valeur);
   }
 
+  // ---------------------------------------------------------------------------
+  // Onglet Matériel et devis
+  // ---------------------------------------------------------------------------
+
+  const CLE_PRIX = "agent-dimensionnement:prix"; // prix unitaires saisis, mémorisés sur l'appareil pour tous les projets
+  const MARGE_CABLES = 0.1;
+  const DEVISES = { FCFA: 0, "€": 2, $: 2, "£": 2, MAD: 2, DZD: 2, TND: 3, GNF: 0, CDF: 0, NGN: 2, GHS: 2, KES: 2 };
+  const POUVOIRS_COUPURE = { iec: [3, 4.5, 6, 10, 15, 25, 36, 50, 70, 100], nec: [10, 14, 18, 22, 25, 35, 42, 65, 100] };
+  const ORDRE_MATERIEL = ["Production solaire", "Stockage", "Conversion", "Groupe électrogène", "Raccordement au réseau", "Compensation",
+    "Câbles", "Protections", "Tableau", "Ligne aérienne"];
+
+  function lirePrix() {
+    let stocke = {};
+    try { stocke = JSON.parse(localStorage.getItem(CLE_PRIX) || "{}") || {}; } catch (e) { /* stockage indisponible */ }
+    return { devise: DEVISES[stocke.devise] === undefined ? "FCFA" : stocke.devise, main_oeuvre: Number(stocke.main_oeuvre) || 0,
+      tva: Number(stocke.tva) || 0, prix: stocke.prix && typeof stocke.prix === "object" ? stocke.prix : {} };
+  }
+  function enregistrerPrix() {
+    try { localStorage.setItem(CLE_PRIX, JSON.stringify(etat.prix)); } catch (e) { /* le prix reste en mémoire pour la session */ }
+  }
+  const clePrix = (l) => `${l.designation}|${l.unite}`;
+
+  /**
+   * Liste du matériel tirée du résultat du moteur : équipements dimensionnés, câbles par type et section (longueurs + 10 %),
+   * disjoncteurs par calibre, protections différentielles, tableau et ligne aérienne.
+   */
+  function listeMateriel(r) {
+    const p = r.projet;
+    const res = M.RESEAUX[p.reseau];
+    const nec = M.REFERENTIELS[p.referentiel].famille === "nec";
+    const nf = p.referentiel === "nfc15100";
+    const lignes = [];
+    const notes = [];
+    const ajouter = (categorie, designation, quantite, unite = "u", usage = "") => {
+      if (!(quantite > 0)) return;
+      let l = lignes.find((x) => x.designation === designation && x.unite === unite);
+      if (!l) { l = { categorie, designation, quantite: 0, unite, usages: [] }; lignes.push(l); }
+      l.quantite += quantite;
+      if (usage && !l.usages.includes(usage)) l.usages.push(usage);
+    };
+    const nbOnduleurs = r.onduleur ? (res.nph === 3 ? 3 : 1) * r.onduleur.n_par_phase : 0;
+
+    if (r.pv) {
+      const pv = r.pv;
+      const nChaines = pv.n_mppt * pv.np;
+      ajouter("Production solaire", p.module.nom, pv.n_modules, "u", `${pv.n_mppt} régulateur(s) × ${pv.ns} en série × ${pv.np} en parallèle`);
+      ajouter("Production solaire", p.mppt.nom, pv.n_mppt);
+      ajouter("Production solaire", `Structure de fixation, inclinaison ${r.gisement.beta}°, orientée ${p.site.latitude >= 0 ? "plein Sud" : "plein Nord"}`, pv.n_modules, "module");
+      ajouter("Production solaire", "Connecteurs MC4 (paire mâle et femelle)", 2 * nChaines, "paire", `${nChaines} chaîne(s)`);
+      ajouter("Production solaire", "Interrupteur-sectionneur DC du champ photovoltaïque", pv.n_mppt, "u", "un par régulateur");
+      notes.push(`Parafoudres AC et DC, boîtes de jonction et liaison équipotentielle du champ : selon l'analyse du risque de foudre et l'implantation (${nec ? "NEC 690 et 242" : "IEC 62548, guide UTE C 15-712"}).`);
+    }
+    if (r.batteries) {
+      const b = r.batteries;
+      if (p.hyp.chimie === "plomb") ajouter("Stockage", `Élément de batterie 2 V OPzV ${b.ah_unite} Ah (C10)`, b.n_par * b.n_cellules, "u", `${b.n_par} branche(s) de ${b.n_cellules} éléments`);
+      else ajouter("Stockage", `Module de batterie LiFePO4 ${fr(b.u_nom)} V ${b.ah_unite} Ah avec BMS`, b.n_par, "u", `${fr(b.c_installee_kwh, 1)} kWh installés`);
+    }
+    if (r.onduleur) {
+      const o = r.onduleur;
+      const kva = (res.nph === 2 ? 2 * o.unite_va : o.unite_va) / 1000;
+      ajouter("Conversion", `Onduleur/chargeur ${fr(kva)} kVA, ${o.u_bus} V DC${res.nph === 2 ? `, split-phase ${res.u0}/${res.u_ll} V` : ""}`, nbOnduleurs, "u", o.designation);
+    }
+    if (r.groupe) {
+      const g = r.groupe;
+      ajouter("Groupe électrogène", `Groupe électrogène ${fr(g.s_kva)} kVA ${g.regime}, ${tensionCourte(res)}`, 1, "u", `critère : ${g.critere}`);
+      if (p.systeme === "reseau") ajouter("Groupe électrogène", `Inverseur de source ${g.inverseur_a} A${nec ? " (UL 1008)" : ", 4 pôles"}`, 1);
+      if (g.cuve_l) ajouter("Groupe électrogène", `Cuve de gasoil ${fr(Math.ceil(g.cuve_l / 50) * 50, 0)} L`, 1);
+    }
+    if (r.source && r.source.type === "transfo") ajouter("Raccordement au réseau", `Transformateur ${fr(r.source.s_kva)} kVA`, 1);
+    const comp = r.compensation;
+    if (comp.necessaire && comp.q_installee_var && p.systeme === "reseau") {
+      ajouter("Compensation", `Batterie de condensateurs ${comp.automatique ? "automatique" : "fixe"} ${fr(comp.q_installee_var / 1000)} kvar (${comp.type})`, 1);
+    }
+
+    // Câbles et protections
+    const iccNote = r.note.find((l) => l.libelle.startsWith("Icc maximal au tableau principal"));
+    const iccKa = iccNote ? Number(iccNote.valeur) / 1000 : 0;
+    const gamme = POUVOIRS_COUPURE[nec ? "nec" : "iec"];
+    const pdc = gamme.find((x) => x >= iccKa) || gamme[gamme.length - 1];
+    const textePdc = nec ? `AIC ≥ ${pdc} kA` : `pouvoir de coupure ≥ ${fr(pdc)} kA`;
+    const isolant = nf ? "U1000 R2V" : "cuivre XLPE 0,6/1 kV";
+    const marge = (longueur) => longueur * (1 + MARGE_CABLES);
+    let modules = 0;
+    const terminaux = [];
+    for (const c of r.cables) {
+      const n = c.conducteurs_paralleles || 1;
+      const sec = c.section_label;
+      if (/^Chaîne PV/.test(c.liaison)) {
+        ajouter("Câbles", nec ? `Câble PV Wire ${sec}` : `Câble solaire H1Z2Z2-K 1 × ${sec}`, marge(2 * c.longueur_m * r.pv.n_mppt * r.pv.np), "m", "chaînes PV");
+        continue;
+      }
+      if (/\(DC\)/.test(c.liaison)) {
+        const fois = /onduleur/.test(c.liaison) ? nbOnduleurs : r.pv ? r.pv.n_mppt : 1;
+        ajouter("Câbles", nec ? `Câble cuivre souple ${sec} (liaisons batterie)` : `Câble cuivre souple 1 × ${sec} (H07RN-F)`, marge(2 * c.longueur_m * n * fois), "m", c.liaison);
+        const fusible = c.protection.match(/Fusible DC (\d+) A/);
+        if (fusible) ajouter("Protections", `Fusible DC ${fusible[1]} A avec porte-fusible`, fois, "u", c.liaison);
+        continue;
+      }
+      const ligne = r.bilan.lignes.find((l) => l.circuit.nom === c.liaison);
+      const poly = ligne ? ligne.circuit.triphase && res.nph >= 2 : res.nph >= 2;
+      const moteurSeul = ligne && ligne.circuit.recepteurs.length > 0 && ligne.circuit.recepteurs.every((x) => x.moteur);
+      const neutre = ligne ? !(poly && (moteurSeul || res.nph === 2)) : true;
+      const actifs = (poly ? (res.nph === 3 ? 3 : 2) : 1) + (neutre ? 1 : 0);
+      if (nec) {
+        ajouter("Câbles", `Conducteur THHN/THWN-2 cuivre ${sec}`, marge(c.longueur_m * actifs * n), "m", c.liaison);
+        ajouter("Câbles", `Conducteur de terre (EGC) cuivre ${c.pe}`, marge(c.longueur_m * n), "m", c.liaison);
+      } else if (n === 1 && c.section_mm2 <= 16) {
+        ajouter("Câbles", `Câble ${isolant} ${actifs + 1}G${sec}`, marge(c.longueur_m), "m", c.liaison);
+      } else {
+        ajouter("Câbles", `Câble ${isolant} 1 × ${sec}`, marge(c.longueur_m * actifs * n), "m", c.liaison);
+        ajouter("Câbles", `Conducteur de protection vert/jaune 1 × ${String(c.pe).replace(/^\d+ × /, "")}`, marge(c.longueur_m * n), "m", c.liaison);
+      }
+      const disj = c.protection.match(/^Disj\.\s*(?:(\d)P\s+)?(\d+) A(?: courbe ([BCD]))?/);
+      if (!disj) continue;
+      const calibre = Number(disj[2]);
+      const poles = disj[1] ? `${disj[1]}P` : nec ? (poly ? `${res.nph === 3 ? 3 : 2}P` : "1P") : poly ? (neutre ? "4P" : "3P") : "1P+N";
+      ajouter("Protections", `Disjoncteur ${poles} ${calibre} A${disj[3] ? ` courbe ${disj[3]}` : ""}, ${textePdc}`, 1, "u", c.liaison);
+      if (calibre <= 125) modules += Number(poles[0]); // les disjoncteurs de plus de 125 A ne sont pas modulaires
+      if (ligne) terminaux.push({ poly, i: c.i_b_a });
+    }
+    if (!nec && terminaux.length) {
+      for (const [poly, pole] of [[false, "2P"], [true, "4P"]]) {
+        const groupe = terminaux.filter((t) => t.poly === poly);
+        for (let k = 0; k < groupe.length; k += 8) {
+          const courant = groupe.slice(k, k + 8).reduce((s, t) => s + t.i, 0);
+          const calibre = [25, 40, 63, 80, 100].find((x) => x >= courant) || 125;
+          ajouter("Protections", `Interrupteur différentiel ${pole} ${calibre} A 30 mA type A`, 1);
+          modules += poly ? 4 : 2;
+        }
+      }
+      notes.push(`Protection différentielle : un interrupteur différentiel 30 mA pour 8 circuits au plus${nf ? " (NF C 15-100)" : ""}, calibre selon le courant des circuits protégés ; type A pour lave-linge, plaques de cuisson et bornes de recharge (borne : type B ou détection 6 mA DC selon le constructeur).`);
+    }
+    if (nec) notes.push("GFCI (210.8) et AFCI (210.12) à prévoir selon les pièces et les circuits concernés.");
+    if (modules) {
+      const avecReserve = Math.ceil(modules * 1.2);
+      if (nec) {
+        const emplacements = [12, 16, 20, 24, 30, 32, 40, 42, 54, 60, 84].find((x) => x >= avecReserve) || avecReserve;
+        ajouter("Tableau", `Tableau de distribution (panelboard) ${emplacements} emplacements`, 1, "u", `${modules} pôles et 20 % de réserve`);
+      } else {
+        const rangees = Math.ceil(avecReserve / 13);
+        ajouter("Tableau", `Coffret de répartition ${rangees} rangée${rangees > 1 ? "s" : ""} de 13 modules`, 1, "u", `${modules} modules utilisés et 20 % de réserve`);
+      }
+    }
+    if (r.ligne) {
+      const l = r.ligne;
+      const matiere = { beton: "en béton armé", bois_ansi: "en bois" }[p.ligne.poteau || M.REFERENTIELS[p.referentiel].poteau] || "";
+      ajouter("Ligne aérienne", `Conducteur ${l.conducteur}`, l.longueur_m * 1.03, "m", "longueur de la ligne + 3 % (flèches, raccordements)");
+      for (const s of l.supports) ajouter("Ligne aérienne", `Poteau ${matiere} ${fr(p.ligne.hauteur_poteau_m)} m, ${s.classe || "hors gamme (étude spécifique)"}`, 1, "u", `n° ${s.numero}`);
+      ajouter("Ligne aérienne", "Hauban complet (câble, ancrage, isolateur)", l.supports.filter((s) => s.hauban).length);
+      ajouter("Ligne aérienne", `Protection de départ de ligne : ${l.protection}`, 1);
+    }
+    notes.unshift(`Longueurs de câbles : longueurs saisies + ${fr(MARGE_CABLES * 100, 0)} % pour les raccordements et les chutes ; ${nec ? "conducteurs individuels sous conduit" : "câbles multiconducteurs jusqu'à 16 mm², unipolaires au-delà"}.`);
+    notes.push("Non comptés : chemins de câbles et conduits, boîtes de dérivation, interrupteurs et prises, prise de terre, petites fournitures.");
+    for (const l of lignes) l.quantite = l.unite === "m" ? Math.ceil(l.quantite) : Math.round(l.quantite);
+    lignes.sort((a, b) => ORDRE_MATERIEL.indexOf(a.categorie) - ORDRE_MATERIEL.indexOf(b.categorie));
+    return { lignes, notes };
+  }
+
+  /** Montants du devis avec les prix enregistrés : matériel, main-d'œuvre, HT, TVA, TTC. */
+  function montantsDevis(liste, reglages = etat.prix) {
+    let materiel = 0;
+    let sansPrix = 0;
+    for (const l of liste.lignes) {
+      const prix = reglages.prix[clePrix(l)];
+      if (Number.isFinite(prix)) materiel += prix * l.quantite; else sansPrix += 1;
+    }
+    const mainOeuvre = materiel * reglages.main_oeuvre;
+    const ht = materiel + mainOeuvre;
+    const tva = ht * reglages.tva;
+    return { materiel, mainOeuvre, ht, tva, ttc: ht + tva, sansPrix };
+  }
+  const montant = (x, devise = etat.prix.devise) => `${fr(x, DEVISES[devise] ?? 2)} ${devise}`;
+
+  function rendreMateriel(force = false) {
+    const zone = $("#materiel");
+    if (!force && $("#app").dataset.onglet !== "materiel" && zone.childElementCount) return;
+    const r = etat.resultat;
+    if (!r) {
+      etat.materiel = null;
+      zone.innerHTML = etat.manquants.length ? guideHtml("La liste du matériel sera prête quand ces informations seront saisies")
+        : `<div class="bandeau bandeau-nc"><div><strong>Pas de liste du matériel tant que les entrées sont incomplètes.</strong><ul>${(etat.erreurs || []).map((e) => `<li>${echap(e)}</li>`).join("")}</ul></div></div>`;
+      return;
+    }
+    const liste = listeMateriel(r);
+    etat.materiel = liste;
+    const reg = etat.prix;
+    const usages = (l) => (l.usages.length > 6 ? `${l.usages.slice(0, 6).join(", ")}…` : l.usages.join(", "));
+    const parCategorie = ORDRE_MATERIEL.map((cat) => [cat, liste.lignes.map((l, k) => [l, k]).filter(([l]) => l.categorie === cat)]).filter(([, ls]) => ls.length);
+    zone.innerHTML = `<div class="bloc">
+        <div class="bloc-titre"><h2>Matériel et devis</h2><span class="rangee"><button type="button" class="btn btn-primaire" data-export="devis">Devis (.csv)</button></span></div>
+        <p class="discret">Quantités tirées du dimensionnement (${echap(r.synthese.systeme_libelle)}, ${echap(r.synthese.referentiel)}). Saisissez vos prix unitaires : ils restent sur cet appareil et sont repris dans vos autres projets. Le montant total ne compte que les lignes qui ont un prix.</p>
+        <div class="grille-champs">
+          <label class="champ"><span>Devise</span><select data-reglage="devise">${Object.keys(DEVISES).map((d) => `<option${d === reg.devise ? " selected" : ""}>${echap(d)}</option>`).join("")}</select></label>
+          <label class="champ"><span>Main-d'œuvre et pose <span class="unite">% du matériel</span></span><input class="donnee" inputmode="decimal" data-reglage="main_oeuvre" value="${reg.main_oeuvre ? versSaisie(Math.round(reg.main_oeuvre * 10000) / 100) : ""}" placeholder="0"></label>
+          <label class="champ"><span>TVA <span class="unite">%</span></span><input class="donnee" inputmode="decimal" data-reglage="tva" value="${reg.tva ? versSaisie(Math.round(reg.tva * 10000) / 100) : ""}" placeholder="0"></label>
+        </div>
+        <p class="discret" id="materiel-message" role="status"></p>
+      </div>
+      ${parCategorie.map(([cat, ls]) => `<div class="bloc materiel"><h3>${echap(cat)}</h3><div class="defile"><table class="tableau">
+        <colgroup><col><col class="c-qte"><col class="c-unite"><col class="c-prix"><col class="c-montant"></colgroup>
+        <thead><tr><th>Désignation</th><th class="n">Qté</th><th>Unité</th><th class="n">Prix unitaire</th><th class="n">Montant</th></tr></thead>
+        <tbody>${ls.map(([l, k]) => {
+          const prix = reg.prix[clePrix(l)];
+          return `<tr><td>${echap(l.designation)}${l.usages.length ? `<div class="detail">${echap(usages(l))}</div>` : ""}</td><td class="n">${fr(l.quantite, 0)}</td><td>${echap(l.unite)}</td>
+          <td class="prix"><input class="donnee" inputmode="decimal" data-prix="${k}" value="${Number.isFinite(prix) ? versSaisie(prix) : ""}" placeholder="prix" aria-label="Prix unitaire : ${echap(l.designation)}"></td>
+          <td class="n" data-montant="${k}">${Number.isFinite(prix) ? montant(prix * l.quantite) : "—"}</td></tr>`;
+        }).join("")}</tbody></table></div></div>`).join("")}
+      <div class="bloc"><h3>Récapitulatif</h3><div class="totaux" id="totaux-devis"></div></div>
+      <div class="bloc"><h3>À savoir</h3><ul class="notes-materiel">${liste.notes.map((x) => `<li>${echap(x)}</li>`).join("")}</ul>
+        <p class="discret">Désignations génériques : choisissez les références chez votre fournisseur en respectant les caractéristiques indiquées (calibre, pouvoir de coupure, section, tension).</p></div>`;
+    majTotauxDevis();
+  }
+  function majTotauxDevis() {
+    const zone = $("#totaux-devis");
+    if (!zone || !etat.materiel) return;
+    const m = montantsDevis(etat.materiel);
+    const reg = etat.prix;
+    zone.innerHTML = `<span>Matériel${m.sansPrix ? ` <span class="discret">(${m.sansPrix} ligne${m.sansPrix > 1 ? "s" : ""} sans prix)</span>` : ""}</span><span class="n">${montant(m.materiel)}</span>
+      ${reg.main_oeuvre ? `<span>Main-d'œuvre et pose (${fr(reg.main_oeuvre * 100, 1)} %)</span><span class="n">${montant(m.mainOeuvre)}</span>` : ""}
+      <span>Total hors taxes</span><span class="n">${montant(m.ht)}</span>
+      ${reg.tva ? `<span>TVA (${fr(reg.tva * 100, 1)} %)</span><span class="n">${montant(m.tva)}</span><span class="fort">Total TTC</span><span class="n fort">${montant(m.ttc)}</span>` : ""}`;
+  }
+  function brancherMateriel() {
+    const zone = $("#materiel");
+    zone.addEventListener("input", (e) => {
+      const t = e.target;
+      if (t.dataset.prix !== undefined && etat.materiel) {
+        const l = etat.materiel.lignes[Number(t.dataset.prix)];
+        const prix = nombreSaisi(t.value);
+        if (Number.isNaN(prix) || prix < 0) { t.setAttribute("aria-invalid", "true"); return; }
+        t.removeAttribute("aria-invalid");
+        if (prix === undefined) delete etat.prix.prix[clePrix(l)]; else etat.prix.prix[clePrix(l)] = prix;
+        $(`[data-montant="${t.dataset.prix}"]`, zone).textContent = prix === undefined ? "—" : montant(prix * l.quantite);
+      } else if (t.dataset.reglage === "main_oeuvre" || t.dataset.reglage === "tva") {
+        const v = nombreSaisi(t.value);
+        if (Number.isNaN(v) || v < 0 || v > 100) { t.setAttribute("aria-invalid", "true"); return; }
+        t.removeAttribute("aria-invalid");
+        etat.prix[t.dataset.reglage] = (v || 0) / 100;
+      } else return;
+      enregistrerPrix();
+      majTotauxDevis();
+    });
+    zone.addEventListener("change", (e) => {
+      if (e.target.dataset.reglage !== "devise") return;
+      etat.prix.devise = e.target.value;
+      enregistrerPrix();
+      rendreMateriel(true);
+    });
+    zone.addEventListener("click", (e) => {
+      const b = e.target.closest("[data-export]");
+      if (b) exporter(b.dataset.export, $("#materiel-message"));
+    });
+  }
+  function devisCsv(liste) {
+    const champ = (v) => `"${String(v).replace(/"/g, '""')}"`;
+    const nombre = (v) => (v === null || v === undefined || !Number.isFinite(v) ? "" : String(Math.round(v * 1000) / 1000).replace(".", ","));
+    const reg = etat.prix;
+    const lignes = [["Catégorie", "Désignation", "Quantité", "Unité", `Prix unitaire (${reg.devise})`, `Montant (${reg.devise})`, "Utilisation"].map(champ).join(";")];
+    for (const l of liste.lignes) {
+      const prix = reg.prix[clePrix(l)];
+      lignes.push([champ(l.categorie), champ(l.designation), nombre(l.quantite), champ(l.unite), nombre(prix), nombre(Number.isFinite(prix) ? prix * l.quantite : null), champ(l.usages.join(", "))].join(";"));
+    }
+    const m = montantsDevis(liste);
+    lignes.push("");
+    lignes.push([champ("Total matériel"), "", "", "", "", nombre(m.materiel)].join(";"));
+    if (reg.main_oeuvre) lignes.push([champ(`Main-d'œuvre et pose (${fr(reg.main_oeuvre * 100, 1)} %)`), "", "", "", "", nombre(m.mainOeuvre)].join(";"));
+    lignes.push([champ("Total hors taxes"), "", "", "", "", nombre(m.ht)].join(";"));
+    if (reg.tva) {
+      lignes.push([champ(`TVA (${fr(reg.tva * 100, 1)} %)`), "", "", "", "", nombre(m.tva)].join(";"));
+      lignes.push([champ("Total TTC"), "", "", "", "", nombre(m.ttc)].join(";"));
+    }
+    return `﻿${lignes.join("\r\n")}`;
+  }
+  /** Section « Liste du matériel » de la note autonome, avec les prix s'ils sont saisis. */
+  function materielHtml(liste) {
+    const reg = etat.prix;
+    const m = montantsDevis(liste);
+    const avecPrix = m.sansPrix < liste.lignes.length;
+    return `<h2>Liste du matériel</h2><table><tr><th>Désignation</th><th>Qté</th><th>Unité</th>${avecPrix ? `<th>Prix unitaire</th><th>Montant</th>` : ""}</tr>
+${liste.lignes.map((l) => {
+  const prix = reg.prix[clePrix(l)];
+  return `<tr><td>${echap(l.designation)}</td><td class="v">${fr(l.quantite, 0)}</td><td>${echap(l.unite)}</td>${avecPrix ? `<td class="v">${Number.isFinite(prix) ? echap(montant(prix)) : ""}</td><td class="v">${Number.isFinite(prix) ? echap(montant(prix * l.quantite)) : ""}</td>` : ""}</tr>`;
+}).join("")}</table>
+${avecPrix ? `<p>Total matériel : <b>${echap(montant(m.materiel))}</b>${reg.main_oeuvre ? ` · main-d'œuvre ${echap(montant(m.mainOeuvre))}` : ""} · total HT <b>${echap(montant(m.ht))}</b>${reg.tva ? ` · TVA ${echap(montant(m.tva))} · total TTC <b>${echap(montant(m.ttc))}</b>` : ""}${m.sansPrix ? ` (${m.sansPrix} ligne(s) sans prix)` : ""}</p>` : ""}
+<ul class="small">${liste.notes.map((x) => `<li>${echap(x)}</li>`).join("")}</ul>`;
+  }
+
   function rendreNote() {
     const zone = $("#note");
     const r = etat.resultat;
     if (!r && !etat.erreurs && !etat.manquants.length) return;
     const boutons = r ? `<button type="button" class="btn btn-primaire" data-export="note">Télécharger la note (.html)</button>
-      <button type="button" class="btn" data-export="cables">Carnet de câbles (.csv)</button>` : "";
+      <button type="button" class="btn" data-export="cables">Carnet de câbles (.csv)</button>
+      <button type="button" class="btn" data-export="devis">Matériel et devis (.csv)</button>` : "";
     const entete = `<div class="bloc"><div class="bloc-titre"><h2>Note de calcul</h2>
       <span class="rangee">${boutons}<button type="button" class="btn" data-export="projet">Projet (.json)</button></span></div>
       <p class="discret" id="export-message">Chaque valeur renvoie à sa justification [Rn]. Outil d'aide à la conception : tables et hypothèses à valider contre l'édition en vigueur des normes et les fiches constructeurs ; toute note remise à un bureau de contrôle est validée par un ingénieur qualifié.</p></div>`;
@@ -1352,8 +1874,99 @@ ${lignes.join("\n")}
 <h2>Câbles et protections</h2><table><tr><th>Liaison</th><th>I<sub>B</sub> A</th><th>L m</th><th>Section</th><th>Protection (PE/EGC)</th><th>ΔU %</th><th>Protection</th></tr>${cables}</table>
 <h2>Vérifications</h2><table>${r.verifications.map((v) => `<tr><td class="st ${{ "NON CONFORME": "nc", ATTENTION: "at", OK: "ok", INFO: "" }[v.statut]}">${echap(v.statut)}</td><td>${echap(v.message)}</td><td class="r">${v.n ? `[R${v.n}]` : ""}</td></tr>`).join("")}</table>
 <h2>Nomenclature principale</h2><ul>${r.nomenclature.map((x) => `<li>${echap(x)}</li>`).join("")}</ul>
+${materielHtml(listeMateriel(r))}
 <h2>Justifications</h2><ol>${r.references.map((x) => `<li>${echap(x)}</li>`).join("")}</ol>
 <p class="small">Outil d'aide à la conception. Les tables normatives et les données de matériel sont des valeurs usuelles génériques à vérifier contre l'édition en vigueur des normes et les fiches constructeurs. Cette note doit être validée et signée par un ingénieur qualifié avant toute remise à un bureau de contrôle.</p>
+</body></html>`;
+  }
+
+  /**
+   * Fiche de relevé terrain à imprimer : toutes les informations utiles au dimensionnement, pré-remplies avec le projet
+   * en cours (site, système, appareils) et complétées de lignes vides à remplir sur place.
+   */
+  function ficheReleveHtml(p) {
+    const res = M.RESEAUX[p.reseau] || reseauActif();
+    const ref = M.REFERENTIELS[p.referentiel] || referentielActif();
+    const site = p.site || {};
+    const v = (x, d = 1) => (x === null || x === undefined || x === "" || !Number.isFinite(Number(x)) ? "" : fr(x, d));
+    const vide = (n, colonnes) => Array.from({ length: n }, () => `<tr>${"<td></td>".repeat(colonnes)}</tr>`).join("");
+    const coche = (oui) => (oui ? "☒" : "☐");
+    const lignesAppareils = [];
+    for (const c of p.circuits || []) {
+      for (const r of c.recepteurs || []) {
+        const unite = uniteDe(r);
+        const puissance = unite === "W" ? `${v(r.puissance_w, 0)} W` : `${v(r.valeur_saisie, 2)} ${unite}`;
+        lignesAppareils.push(`<tr><td>${echap(c.nom)}</td><td>${echap(r.nom || "")}</td><td class="c">${v(r.quantite ?? 1, 0)}</td><td class="c">${echap(puissance)}</td>
+          <td class="c">${v(r.cos_phi ?? 0.9, 2)}</td><td>${echap(ecrirePlages(r.plages))}</td><td class="c">${r.moteur ? echap(M.MODES_DEMARRAGE[r.demarrage || "direct"].libelle) : ""}</td>
+          <td class="c">${v(c.longueur_m, 0)}</td><td></td></tr>`);
+      }
+    }
+    const nVides = Math.max(12, 24 - lignesAppareils.length);
+    const date = new Date().toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
+    return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Fiche de relevé — ${echap(p.nom || "projet")}</title>
+<style>body{font-family:Arial,Helvetica,sans-serif;color:#111;max-width:1000px;margin:24px auto;padding:0 16px;font-size:12px;line-height:1.35}
+h1{font-size:19px;margin:0 0 2px}h2{font-size:14px;margin:18px 0 6px;padding:3px 6px;background:#eee;border-left:4px solid #a94b1c}
+table{width:100%;border-collapse:collapse;margin:4px 0}td,th{border:1px solid #888;padding:4px 5px;text-align:left;vertical-align:top;height:18px}
+th{background:#f3f3f3;font-size:11px}td.c{text-align:center}.l{width:34%;background:#fafafa}.grille{display:grid;grid-template-columns:1fr 1fr;gap:0 16px}
+.astuce{border:1px dashed #a94b1c;padding:6px 8px;margin:8px 0;background:#fdf6f1}.petit{color:#555;font-size:11px}
+@media print{body{margin:0;max-width:none}h2{break-after:avoid}table{break-inside:auto}tr{break-inside:avoid}}
+@media (max-width:700px){.grille{grid-template-columns:1fr}}</style></head><body>
+<h1>Fiche de relevé terrain — dimensionnement électrique</h1>
+<p class="petit">Projet : <b>${echap(p.nom || "")}</b> · imprimée le ${date} · Relevé par : ________________________ · Date de la visite : ____ / ____ / ________</p>
+<div class="astuce"><b>Sur place :</b> photographiez la plaque signalétique de chaque appareil (puissance en W, kW, CV ou HP, tension, courant en A, cos φ),
+notez les heures réelles d'utilisation avec l'occupant, mesurez la longueur de câble entre le tableau et chaque usage, et relevez la position GPS.</div>
+
+<h2>1. Projet et client</h2>
+<div class="grille"><table>
+<tr><td class="l">Client / maître d'ouvrage</td><td></td></tr><tr><td class="l">Téléphone</td><td></td></tr>
+<tr><td class="l">Type de bâtiment</td><td></td></tr><tr><td class="l">Nombre d'occupants / de pièces</td><td></td></tr>
+</table><table>
+<tr><td class="l">Type de système</td><td>${coche(p.systeme === "hybride")} Hybride ${coche(p.systeme === "solaire")} Solaire autonome<br>${coche(p.systeme === "groupe")} Groupe seul ${coche(p.systeme === "reseau")} Réseau public</td></tr>
+<tr><td class="l">Pays, norme</td><td>${echap(ref.nom)}</td></tr><tr><td class="l">Réseau (tension, fréquence)</td><td>${echap(res.nom)}</td></tr>
+<tr><td class="l">Extensions prévues</td><td></td></tr>
+</table></div>
+
+<h2>2. Site</h2>
+<div class="grille"><table>
+<tr><td class="l">Ville, quartier</td><td></td></tr><tr><td class="l">Latitude (°)</td><td>${v(site.latitude, 4)}</td></tr>
+<tr><td class="l">Longitude (°)</td><td>${v(site.longitude, 4)}</td></tr><tr><td class="l">Altitude (m)</td><td>${v(site.altitude_m, 0)}</td></tr>
+<tr><td class="l">Température maximale (°C)</td><td>${v(site.t_amb_max, 0)}</td></tr><tr><td class="l">Température minimale (°C)</td><td>${v(site.t_amb_min, 0)}</td></tr>
+</table><table>
+<tr><td class="l">Surface disponible pour les panneaux (m²)</td><td></td></tr><tr><td class="l">Toiture : type, orientation, pente</td><td></td></tr>
+<tr><td class="l">Ombrages (arbres, bâtiments)</td><td></td></tr><tr><td class="l">Local technique (batteries, onduleurs) : surface, ventilation</td><td></td></tr>
+<tr><td class="l">Distance local technique → tableau (m)</td><td></td></tr><tr><td class="l">Emplacement du groupe, distance (m)</td><td></td></tr>
+</table></div>
+
+<h2>3. Appareils à alimenter</h2>
+<p class="petit">Une ligne par type d'appareil. Puissance avec son unité (W, kW, CV, HP, kVA ou A). Heures : « 18-23 », « 8-17 60 % » (taux de marche pour les compresseurs et thermostats), plusieurs plages possibles.
+Moteur (pompe, compresseur, moulin) : mode de démarrage (direct, étoile-triangle, progressif, variateur).</p>
+<table><tr><th>Circuit / pièce</th><th>Appareil</th><th>Qté</th><th>Puissance unitaire</th><th>cos φ</th><th>Heures d'utilisation</th><th>Démarrage (moteur)</th><th>Longueur câble (m)</th><th>Remarques</th></tr>
+${lignesAppareils.join("")}${vide(nVides, 9)}</table>
+
+<h2>4. Raccordement au réseau public (si réseau)</h2>
+<div class="grille"><table>
+<tr><td class="l">Distributeur, n° de compteur</td><td></td></tr><tr><td class="l">Branchement BT ou poste privé</td><td></td></tr>
+<tr><td class="l">Puissance souscrite (kVA)</td><td></td></tr><tr><td class="l">Coupures : fréquence, durée</td><td></td></tr>
+</table><table>
+<tr><td class="l">Icc maximal / minimal (kA, distributeur)</td><td></td></tr><tr><td class="l">Transformateur : kVA, u<sub>k</sub> %</td><td></td></tr>
+<tr><td class="l">Groupe de secours : part secourue, autonomie (h)</td><td></td></tr><tr><td class="l">Câble source → tableau (m)</td><td></td></tr>
+</table></div>
+
+<h2>5. Ligne aérienne (si nécessaire)</h2>
+<table><tr><th>Portée n°</th><th>Longueur (m)</th><th>Angle au poteau d'arrivée (°)</th><th>Charge au poteau d'arrivée (kVA)</th><th>Obstacle, traversée de route</th></tr>${vide(8, 5)}</table>
+<p class="petit">Type de poteaux disponible : ${coche(false)} béton ${coche(false)} bois ${coche(false)} métal · hauteur : ______ m · conducteur existant : ____________________</p>
+
+<h2>6. Installation existante et observations</h2>
+<div class="grille"><table>
+<tr><td class="l">Tableau existant (état, calibres)</td><td></td></tr><tr><td class="l">Prise de terre : valeur mesurée (Ω)</td><td></td></tr>
+<tr><td class="l">Schéma de liaison à la terre (TT, TN, IT)</td><td></td></tr>
+</table><table>
+<tr><td class="l">Groupe ou onduleur existant (kVA)</td><td></td></tr><tr><td class="l">Photos prises (plaques, tableau, toiture)</td><td></td></tr>
+<tr><td class="l">Contraintes d'accès, de sécurité</td><td></td></tr>
+</table></div>
+<table><tr><td style="height:90px">Remarques :</td></tr></table>
+<p class="petit">Fiche générée par l'Agent de dimensionnement électrique (v${echap(M.VERSION)}). Saisissez ensuite ces informations dans l'application, ou décrivez-les à l'assistant.</p>
 </body></html>`;
   }
 
@@ -1416,6 +2029,8 @@ ${lignes.join("\n")}
     if (type === "projet") message = await proposerFichier(nomFichier("json"), JSON.stringify(etat.projet, null, 2), "application/json");
     else if (type === "note" && etat.resultat) message = await proposerFichier(nomFichier("html", "-note-de-calcul"), noteHtmlAutonome(etat.resultat), "text/html");
     else if (type === "cables" && etat.resultat) message = await proposerFichier(nomFichier("csv", "-cables"), cablesCsv(etat.resultat), "text/csv");
+    else if (type === "devis" && etat.resultat) message = await proposerFichier(nomFichier("csv", "-materiel-devis"), devisCsv(listeMateriel(etat.resultat)), "text/csv");
+    else if (type === "fiche") message = await proposerFichier(nomFichier("html", "-fiche-de-releve"), ficheReleveHtml(etat.projet), "text/html");
     if (message && zoneMessage) zoneMessage.textContent = message;
   }
 
@@ -1561,11 +2176,13 @@ Tes outils agissent sur le projet affiché à l'écran :
 - calculer : lance le moteur et renvoie le matériel retenu, les critères et les vérifications.
 - details_note : renvoie les lignes détaillées d'une rubrique de la note de calcul.
 - comparer_systemes : compare hybride, solaire autonome, groupe seul et réseau public pour le même bâtiment.
+- chercher_appareils : valeurs typiques du catalogue de l'application (plus de 200 équipements : éclairage, climatisation, froid, cuisine, pompes, moteurs, atelier, agro-transformation, santé, commerce, bornes de recharge) : puissance, cos φ, rendement, démarrage, heures d'utilisation, type de circuit.
+- liste_materiel : liste du matériel tirée du calcul (équipements, câbles par section et longueur, disjoncteurs, différentiels, tableau) et montant du devis si l'utilisateur a saisi ses prix.
 
 Règles :
 1. Ne donne jamais un résultat de dimensionnement (kWc, kWh, kVA, kvar, sections, calibres, litres de gasoil, flèches, classes de poteaux) qui ne vient pas d'un outil ou du résumé de résultats fourni.
-2. Quand on te décrit une installation, traduis-la en circuits et récepteurs avec des valeurs typiques (puissance unitaire en W, cos φ, rendement pour les moteurs, plages horaires réalistes [début, fin, taux de marche 0-1], la plage peut passer minuit), appelle modifier_projet en une seule fois (remplacer_circuits=true pour un nouveau projet, avec referentiel et reseau), puis calculer.
-3. Regroupe par usage : éclairage (eclairage=true), prises (ks 0,2), climatisation, froid, informatique, moteurs. Un moteur : puissance utile en W, moteur=true, rendement 0,75 à 0,9, démarrage progressif ou variateur conseillé au-delà de 2 kW sur solaire. non_lineaire=true pour LED, informatique, variateurs et climatiseurs inverter. triphase=true : triphasé sur un réseau triphasé, 240 V entre phases sur un réseau 120/240 V ; impossible sur 230 V monophasé. Longueur de chaque circuit estimée (15 à 60 m dans un bâtiment).
+2. Quand on te décrit une installation, cherche d'abord les appareils dans le catalogue (chercher_appareils, une recherche par type d'appareil) et reprends ses valeurs, ajustées à ce que dit l'utilisateur (puissance de plaque, heures). Sinon, prends des valeurs typiques : puissance unitaire en W, cos φ, rendement pour les moteurs, plages horaires réalistes [début, fin, taux de marche 0-1], la plage peut passer minuit. Appelle ensuite modifier_projet en une seule fois (remplacer_circuits=true pour un nouveau projet, avec referentiel et reseau), puis calculer.
+3. Regroupe par usage et donne à chaque circuit son type (champ type : eclairage, exterieur, prises, cuisine, specialise, cuisson, chauffe_eau, clim, froid, informatique, securite, medical, atelier, moteur, ve, autre) : l'application en déduit la protection et la section minimales usuelles. Un circuit par climatiseur, chauffe-eau, plaque de cuisson, moteur ou borne de recharge ; 8 points d'éclairage au plus par circuit. Un moteur : puissance utile en W, moteur=true, rendement 0,65 à 0,95, démarrage progressif ou variateur conseillé au-delà de 2 kW sur solaire. Réfrigérateurs, congélateurs et climatiseurs non inverter : moteur=true (compresseur), rendement 1 (puissance absorbée de la plaque). non_lineaire=true pour LED, informatique, variateurs et climatiseurs inverter. Plaque en CV : 1 CV = 735,5 W ; en HP : 745,7 W ; en kVA ou en A : P = S·cos φ = U·I·cos φ (× √3 en triphasé). triphase=true : triphasé sur un réseau triphasé, 240 V entre phases sur un réseau 120/240 V ; impossible sur 230 V monophasé. Longueur de chaque circuit estimée (15 à 60 m dans un bâtiment).
 4. Systèmes : hybride, solaire, groupe, reseau. Pour reseau : source.type public (branchement du distributeur, Icc à demander au distributeur) ou transfo (poste privé), source.secours=true pour un groupe de secours (part_secourue 0-1, autonomie_h).
 5. Ligne aérienne : ligne.actif=true, portees = [{longueur_m, angle_deg au poteau d'arrivée, charge_kva au poteau d'arrivée}], 30 à 50 m par portée en BT. Le conducteur, le climat et les supports suivent la norme si tu ne les fixes pas.
 6. Si le lieu est une ville, mets ses coordonnées et son altitude approximatives et dis-le. N'invente pas d'irradiations mensuelles : laisse ghi_mensuel vide et rappelle qu'on peut saisir les valeurs PVGIS ou NASA POWER dans l'onglet Projet. Ajuste t_amb_max, t_amb_min et t_amb_jour au climat du lieu.
@@ -1581,13 +2198,14 @@ Règles :
     plages: { type: "array", items: { type: "array", items: { type: "number" } }, description: "[[début h, fin h, taux 0-1], ...]" },
     moteur: { type: "boolean" }, demarrage: { type: "string", enum: Object.keys(M.MODES_DEMARRAGE) }, non_lineaire: { type: "boolean" } } };
   const SCHEMA_CIRCUIT = { type: "object", properties: {
-    nom: { type: "string" }, triphase: { type: "boolean" }, longueur_m: { type: "number" }, ks: { type: "number" }, eclairage: { type: "boolean" },
+    nom: { type: "string" }, type: { type: "string", enum: Object.keys(K.TYPES_CIRCUITS), description: "usage du circuit : fixe la protection et la section minimales" },
+    triphase: { type: "boolean" }, longueur_m: { type: "number" }, ks: { type: "number" }, eclairage: { type: "boolean" },
     calibre_min: { type: "number" }, section_min: { type: "number" }, recepteurs: { type: "array", items: SCHEMA_RECEPTEUR } } };
 
   function resumeProjet() {
     const p = etat.projet;
     const res = M.RESEAUX[p.reseau] || reseauActif();
-    return p.circuits.map((c, i) => `${i + 1}. ${c.nom} (${libelleAlimentation(c.triphase, res)}, ${fr(c.longueur_m, 0)} m) : `
+    return p.circuits.map((c, i) => `${i + 1}. ${c.nom} (${c.type ? `type ${c.type}, ` : ""}${libelleAlimentation(c.triphase, res)}, ${fr(c.longueur_m, 0)} m) : `
       + c.recepteurs.map((r) => `${fr(r.quantite, 0)} × ${r.nom} ${fr(r.puissance_w, 0)} W [${ecrirePlages(r.plages)}]`).join(", ")).join("\n");
   }
   function resumeResultats() {
@@ -1629,10 +2247,20 @@ Règles :
     if (entree.ligne && typeof entree.ligne === "object") p.ligne = { ...(p.ligne || {}), ...entree.ligne };
     if (entree.site && typeof entree.site === "object") Object.assign(p.site, entree.site);
     for (const cle of ["hypotheses", "module", "mppt"]) if (entree[cle] && typeof entree[cle] === "object") Object.assign(p[cle], entree[cle]);
+    const familleProjet = M.REFERENTIELS[p.referentiel].famille;
+    /** Type de circuit donné par l'assistant : protections minimales du type, sauf valeurs qu'il a fixées lui-même. */
+    const avecType = (c, donnees) => {
+      if (!c.type || !K.TYPES_CIRCUITS[c.type]) { if (c.type) avertissements.push(`Type de circuit inconnu : ${c.type}.`); delete c.type; return c; }
+      const preset = K.presetCircuit(c.type, familleProjet, c.triphase);
+      for (const [cle, valeur] of Object.entries(preset)) if (donnees[cle] === undefined) c[cle] = valeur;
+      return c;
+    };
     for (const m of Array.isArray(entree.modifier_circuits) ? entree.modifier_circuits : []) {
       const c = p.circuits[Number(m.numero) - 1];
-      if (c && m.champs && typeof m.champs === "object") Object.assign(c, m.champs);
-      else avertissements.push(`Circuit n° ${m.numero} introuvable.`);
+      if (c && m.champs && typeof m.champs === "object") {
+        Object.assign(c, m.champs);
+        if (m.champs.type !== undefined || m.champs.triphase !== undefined) avecType(c, m.champs);
+      } else avertissements.push(`Circuit n° ${m.numero} introuvable.`);
     }
     const aSupprimer = (Array.isArray(entree.supprimer_circuits) ? entree.supprimer_circuits : []).map(Number).sort((a, b) => b - a);
     for (const numero of aSupprimer) {
@@ -1640,7 +2268,7 @@ Règles :
       else avertissements.push(`Circuit n° ${numero} introuvable.`);
     }
     if (Array.isArray(entree.circuits)) {
-      const nouveaux = entree.circuits.filter((c) => c && typeof c === "object").map((c) => ({ ...c, recepteurs: Array.isArray(c.recepteurs) ? c.recepteurs : [] }));
+      const nouveaux = entree.circuits.filter((c) => c && typeof c === "object").map((c) => avecType({ ...c, recepteurs: Array.isArray(c.recepteurs) ? c.recepteurs : [] }, c));
       p.circuits = entree.remplacer_circuits ? nouveaux : p.circuits.concat(nouveaux);
     }
     // Un projet en cours de saisie peut ne pas encore avoir de circuit : seule une saisie invalide est refusée
@@ -1704,6 +2332,32 @@ Règles :
           if (!nom) throw new Error(`Rubrique inconnue. Rubriques disponibles : ${[...groupes.keys()].join(", ")}`);
           etape(`Lecture de la note : ${nom}`);
           return { rubrique: nom, lignes: groupes.get(nom).map((l) => `${l.libelle} : ${valeurNote(l)} ${l.unite}${l.ref ? ` (${l.ref})` : ""}`) };
+        },
+      },
+      {
+        name: "chercher_appareils",
+        description: "Cherche dans le catalogue de l'application les valeurs typiques d'un appareil (mots-clés : « climatiseur 12000 », « pompe immergée », « moulin », « réfrigérateur », « borne ») : puissance_w, cos_phi, rendement, ku, moteur, demarrage, non_lineaire, plages, type de circuit conseillé, triphasé conseillé.",
+        inputSchema: { type: "object", properties: { recherche: { type: "string", description: "mots-clés, sans accents si besoin" },
+          categorie: { type: "string", enum: K.CATEGORIES.map((c) => c.cle) } }, required: ["recherche"] },
+        execute: (entree) => {
+          const trouves = K.chercher(String((entree && entree.recherche) || ""), (entree && entree.categorie) || null, 12);
+          etape(`Catalogue : ${trouves.length} appareil(s) pour « ${(entree && entree.recherche) || ""} »`);
+          if (!trouves.length) return { trouves: 0, conseil: "Aucun appareil : essaie un mot plus simple (ex. « pompe », « clim », « frigo »), ou prends des valeurs typiques." };
+          return trouves.map((a) => ({ nom: a.nom, puissance_w: a.puissance_w, cos_phi: a.cos_phi, rendement: a.rendement, ku: a.ku, moteur: a.moteur,
+            demarrage: a.moteur ? a.demarrage : undefined, non_lineaire: a.non_lineaire, plages: a.plages, type_circuit: a.circuit,
+            triphase_conseille: a.triphase || undefined, heures_par_jour: Math.round(K.heuresParJour(a.plages) * 10) / 10 }));
+        },
+      },
+      {
+        name: "liste_materiel",
+        description: "Renvoie la liste du matériel du projet calculé (désignation, quantité, unité, catégorie) et le montant du devis si des prix ont été saisis dans l'onglet Matériel et devis.",
+        execute: () => {
+          if (!etat.resultat) throw new Error("Aucun résultat : le calcul attend des informations ou des corrections.");
+          const liste = listeMateriel(etat.resultat);
+          const m = montantsDevis(liste);
+          etape("Liste du matériel");
+          return { lignes: liste.lignes.map((l) => `${l.categorie} : ${fr(l.quantite, 0)} ${l.unite} — ${l.designation}`), notes: liste.notes,
+            devis: m.sansPrix === liste.lignes.length ? "aucun prix saisi" : { materiel: montant(m.materiel), total_ht: montant(m.ht), total_ttc: etat.prix.tva ? montant(m.ttc) : undefined, lignes_sans_prix: m.sansPrix } };
         },
       },
       {
@@ -2253,7 +2907,7 @@ Règles :
       <p>Décrivez votre bâtiment, vos appareils et le lieu : je choisis la norme du pays (NF C 15-100, IEC 60364, BS 7671 ou NEC), je remplis le projet, je lance le calcul et je vous explique le matériel retenu. Vous pouvez aussi me poser une question sur une norme ou un résultat.</p>`);
     $("#suggestions").hidden = false;
     const suggestions = etat.projet.circuits.length
-      ? ["Explique-moi le matériel retenu et ce qui le dimensionne.", "Quelles corrections faut-il faire ?", "Compare les quatre systèmes pour ce projet."]
+      ? ["Explique-moi le matériel retenu et ce qui le dimensionne.", "Quelles corrections faut-il faire ?", "Donne-moi la liste du matériel à acheter.", "Compare les quatre systèmes pour ce projet."]
       : ["Quelles informations faut-il pour dimensionner mon installation ?", "Je veux une installation solaire avec batteries pour ma maison.",
         "Je veux dimensionner un groupe électrogène pour mon bâtiment.", "Quelle norme dois-je utiliser dans mon pays ?"];
     $("#suggestions").innerHTML = suggestions.map((t) => `<button type="button">${echap(t)}</button>`).join("");
@@ -2264,17 +2918,18 @@ Règles :
   // ---------------------------------------------------------------------------
 
   function demarrer() {
+    etat.prix = lirePrix();
     etat.projet = chargerProjet();
     construireProjet();
     construireChoix();
     construireLigne();
-    $("#bibliotheque").innerHTML = BIBLIOTHEQUE.map((a) => `<option value="${echap(a.nom)}"></option>`).join("");
+    $("#bibliotheque").innerHTML = K.APPAREILS.map((a) => `<option value="${echap(a.nom)}"></option>`).join("");
     rendreFormulaires();
 
     let onglet = null;
     try { onglet = localStorage.getItem(CLE_ONGLET); } catch (e) { /* sans effet */ }
     const hash = location.hash.replace("#", "");
-    if (["assistant", "projet", "charges", "choix", "ligne", "resultats", "note"].includes(hash)) onglet = hash;
+    if (["assistant", "projet", "charges", "choix", "ligne", "resultats", "materiel", "note"].includes(hash)) onglet = hash;
     ouvrirOnglet(onglet || (informationsManquantes().length ? "projet" : ETROIT.matches ? "assistant" : "resultats"), false);
     calculer();
     accueilAssistant();
@@ -2302,6 +2957,8 @@ Règles :
     });
     $("#liste-circuits").addEventListener("click", surActionCharges);
     $("#btn-ajout-circuit").addEventListener("click", ajouterCircuit);
+    brancherCatalogue();
+    brancherMateriel();
     $("#ghi-effacer").addEventListener("click", () => { etat.projet.site.ghi_mensuel = null; remplirGhi(); calculer(); });
     $("#choix").addEventListener("click", (e) => {
       if (e.target.id !== "btn-defauts") return;
@@ -2334,6 +2991,7 @@ Règles :
       if (b) allerA(b.dataset.aller);
     });
     $("#btn-exporter").addEventListener("click", () => exporter("projet", $("#fichier-message")));
+    $("#btn-fiche").addEventListener("click", () => exporter("fiche", $("#fichier-message")));
     $("#fichier-import").addEventListener("change", async (e) => {
       const fichier = e.target.files && e.target.files[0];
       if (!fichier) return;

@@ -52,11 +52,14 @@ Sans clé, tous les onglets de calcul restent disponibles.
 L'application s'ouvre sur un projet vide, avec un guide des informations à saisir :
 1. **Projet** : nom, type de système, norme et réseau.
 2. **Site** : lieu, altitude, températures. Le bouton **Utiliser ma position (GPS)** remplit le lieu.
-3. **Charges** : circuits et appareils, avec leurs heures d'utilisation.
+3. **Charges** : touchez **Catalogue d'équipements**, cherchez vos appareils, choisissez les quantités, puis **Ajouter**. Les circuits sont créés. Vérifiez ensuite la longueur de chaque circuit et les heures d'utilisation. Une puissance de plaque se saisit en W, kW, CV, HP, kVA ou A.
 4. **Ensoleillement mensuel** : conseillé pour le solaire.
 5. **Choix techniques** : facultatif.
 
 Le calcul se lance tout seul dès que les étapes 2 et 3 sont remplies.
+
+* **Avant la visite chez le client :** onglet **Projet**, **Fiche de relevé terrain**. La fiche s'imprime ou se remplit sur place.
+* **Après le calcul :** l'onglet **Matériel et devis** donne la liste du matériel. Saisissez vos prix une fois : ils sont repris dans tous vos projets. Le devis s'exporte en CSV, pour Excel ou LibreOffice.
 
 Pour tout effacer et repartir de zéro : onglet **Projet**, **Réinitialiser l'application**.
 

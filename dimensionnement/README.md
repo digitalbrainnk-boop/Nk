@@ -8,7 +8,11 @@ Application de dimensionnement avec un assistant IA intégré. Elle couvre :
 * le raccordement au réseau public (branchement ou poste de transformation) ;
 * la compensation de l'énergie réactive et les harmoniques ;
 * les lignes aériennes basse tension : flèches, poteaux, chute de tension et court-circuit ;
-* une note de calcul justifiée, avec la référence de norme de chaque valeur.
+* une note de calcul justifiée, avec la référence de norme de chaque valeur ;
+* la liste du matériel et un devis estimatif ;
+* une fiche de relevé terrain à imprimer.
+
+Les appareils se choisissent dans un catalogue de 237 équipements. Les puissances se saisissent dans l'unité de la plaque signalétique.
 
 Ce dossier est indépendant du reste du dépôt.
 
@@ -49,11 +53,35 @@ L'application démarre sur un **projet vide**. Un guide indique les informations
 | Information | Statut |
 |---|---|
 | Lieu (bouton « Utiliser ma position »), altitude, températures | Obligatoire |
-| Circuits et appareils | Obligatoire |
+| Appareils (catalogue ou plaque signalétique) et heures d'utilisation | Obligatoire |
 | Ensoleillement mensuel | Conseillé pour le solaire |
 | Choix techniques | Facultatif |
 
 Le calcul se lance dès que l'essentiel est saisi. Il n'utilise jamais de lieu ou d'appareils d'exemple à votre insu. « Réinitialiser l'application » efface toutes les données de l'appareil.
+
+**Catalogue d'équipements** (onglet Charges). 237 appareils en 14 familles : éclairage, climatisation, froid, cuisine, électroménager, informatique, sécurité, pompage, atelier et soudage, agro-transformation, santé, commerce, bornes de recharge, moteurs et industrie. Chaque appareil a des valeurs typiques :
+* puissance et cos φ ;
+* rendement et mode de démarrage pour les moteurs et compresseurs ;
+* charge électronique non linéaire ;
+* heures d'utilisation et taux de marche.
+
+Après le choix des quantités, l'application crée les circuits :
+* un circuit par climatiseur, chauffe-eau, plaque de cuisson, moteur ou borne de recharge ;
+* au plus 8 points d'éclairage par circuit ;
+* les autres usages regroupés jusqu'à la puissance usuelle d'un circuit.
+
+Le **type de circuit** fixe la protection et la section minimales : NF C 15-100 pour les normes IEC, NEC 210 pour le NEC.
+
+**Unités de la plaque.** La puissance d'un appareil se saisit en W, kW, CV, HP, kVA ou A. La conversion tient compte du cos φ, du rendement (puissance utile d'un moteur), de la tension et des phases.
+
+**Matériel et devis.** La liste du matériel est tirée du calcul :
+* équipements dimensionnés ;
+* câbles par type et section, longueurs + 10 % ;
+* disjoncteurs par calibre, courbe et pouvoir de coupure ;
+* interrupteurs différentiels et coffret avec 20 % de réserve ;
+* poteaux et conducteur de la ligne aérienne.
+
+Les prix unitaires saisis sont mémorisés sur l'appareil, pour tous les projets. Le devis ajoute la main-d'œuvre et la TVA, et s'exporte en CSV.
 
 Vous pouvez aussi tout décrire à l'assistant avec vos mots, par exemple :
 
@@ -73,11 +101,12 @@ Il ne calcule jamais lui-même : tous les chiffres viennent du moteur. Chaque mo
 |---|---|
 | Assistant IA | Décrire l'installation, poser une question sur un résultat ou une norme, comparer des variantes |
 | Projet | Nom ; type de système (hybride, solaire autonome, groupe seul, réseau public) ; norme et réseau ; raccordement au réseau ; site (coordonnées, températures, irradiation PVGIS) ; import/export du projet |
-| Charges | Circuits et récepteurs : puissance, cos φ, rendement, plages horaires, moteurs et mode de démarrage, charges non linéaires ; bibliothèque d'appareils typiques |
+| Charges | Catalogue de 237 équipements avec création automatique des circuits ; type de circuit ; récepteurs : puissance dans l'unité de la plaque (W, kW, CV, HP, kVA, A), cos φ, rendement, plages horaires, moteurs et mode de démarrage, charges non linéaires |
 | Choix techniques | Batteries, onduleur, groupe, module PV et régulateur, mode de pose des câbles (ou options NEC), cos φ visé, simulation. Seuls les blocs utiles au système choisi sont affichés. |
 | Ligne aérienne | Conducteur, hypothèses climatiques, poteaux, portées ; résultats : tensions mécaniques, profil en long, classes de supports, chute de tension et court-circuit le long de la ligne |
 | Résultats | Synthèse, vérifications, journée simulée, bilan mensuel, comparaison des quatre systèmes, raccordement, bilan de puissance, câbles et protections (avec Zs en BS 7671), énergie réactive, gisement solaire |
-| Note de calcul | Note complète avec justifications `[Rn]` ; téléchargement de la note (.html), du carnet de câbles (.csv) et du projet (.json) |
+| Matériel et devis | Liste du matériel par catégorie, prix unitaires mémorisés, main-d'œuvre, TVA, total ; export du devis (.csv) |
+| Note de calcul | Note complète avec justifications `[Rn]` et liste du matériel ; téléchargement de la note (.html), du carnet de câbles (.csv), du devis (.csv) et du projet (.json) |
 
 ## Contenu du dossier
 
@@ -85,6 +114,7 @@ Il ne calcule jamais lui-même : tous les chiffres viennent du moteur. Chaque mo
 |---|---|
 | [app/index.html](app/index.html), [app/app.js](app/app.js) | Interface de l'application et assistant IA (dans Claude ou avec une clé API) |
 | [app/moteur.js](app/moteur.js) | Moteur de calcul multi-normes (JavaScript, sans dépendance) |
+| [app/catalogue.js](app/catalogue.js) | Catalogue d'équipements, types de circuits, conversions de puissance, répartition en circuits |
 | [app/manifest.webmanifest](app/manifest.webmanifest), [app/sw.js](app/sw.js) | Application web installable : icônes, cache hors connexion, mises à jour |
 | [app/polices/](app/polices/), [app/vendor/](app/vendor/) | Polices embarquées (licence OFL) et SDK Anthropic pour le navigateur (licence MIT) |
 | [android/](android/) | Application Android : WebView native, partage des fichiers, script de construction sans SDK Android |
@@ -100,7 +130,7 @@ Il ne calcule jamais lui-même : tous les chiffres viennent du moteur. Chaque mo
 ## Tests
 
 ```bash
-node --test dimensionnement/tests/*.test.mjs                                 # moteur et versions distribuables (28 tests)
+node --test dimensionnement/tests/*.test.mjs                                 # moteur, catalogue et versions distribuables (35 tests)
 cd dimensionnement && python3 -m unittest discover -s tests -v               # démonstrateur Python (18 tests)
 python3 demo_hybride.py --chimie plomb --autonomie 2                         # note de calcul en ligne de commande
 ```
@@ -109,6 +139,7 @@ Après une modification de l'application, `python3 outils/construire.py --apk` m
 
 Les tests du moteur vérifient notamment :
 * la parité exacte avec le démonstrateur Python en NF C 15-100 ;
+* le calcul de chaque appareil du catalogue dans les quatre normes, la répartition automatique en circuits, les conversions d'unités et les démarrages décalés des moteurs ;
 * des cas types NEC : 40 A continus donnent 50 A et du 8 AWG ; règle 240.4(D) ; moteur de 10 HP en 480 V ; facteurs de température ;
 * le Zs maximal d'un disjoncteur B32 en BS 7671 (1,37 Ω) ;
 * une compensation de 100 kW de cos φ 0,75 à 0,95, soit 55,3 kvar ;

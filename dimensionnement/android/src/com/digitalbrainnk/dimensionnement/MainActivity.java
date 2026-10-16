@@ -89,6 +89,23 @@ public class MainActivity extends Activity {
         super.onDestroy();
     }
 
+    /** Touche Retour : la page ferme d'abord sa fenêtre ouverte (catalogue d'équipements) ; sinon l'application se ferme. */
+    @Override
+    public void onBackPressed() {
+        if (vue == null) {
+            super.onBackPressed();
+            return;
+        }
+        vue.evaluateJavascript("Boolean(window.retourAndroid && window.retourAndroid())", new ValueCallback<String>() {
+            @Override
+            public void onReceiveValue(String traite) {
+                if (!"true".equals(traite)) {
+                    MainActivity.super.onBackPressed();
+                }
+            }
+        });
+    }
+
     @Override
     protected void onActivityResult(int code, int resultat, Intent donnees) {
         if (code == CHOIX_FICHIER) {

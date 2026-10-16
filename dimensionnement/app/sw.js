@@ -3,12 +3,13 @@
  * VERSION est recalculée par outils/construire.py à chaque modification des fichiers de l'application ;
  * un nouveau service worker remplace alors l'ancien et la page propose de recharger.
  */
-const VERSION = "7cbe9ec69556";
+const VERSION = "4722996b7c4c";
 const CACHE = `agent-dimensionnement-${VERSION}`;
 const FICHIERS = [
   "./",
   "index.html",
   "moteur.js",
+  "catalogue.js",
   "app.js",
   "polices.css",
   "manifest.webmanifest",

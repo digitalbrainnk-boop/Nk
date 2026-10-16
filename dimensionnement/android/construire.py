@@ -48,7 +48,7 @@ MIN_SDK = 21
 CIBLE_SDK = 34
 ALIAS = "dimensionnement"
 # Fichiers de l'application web embarqués dans l'APK (le service worker est inutile dans l'application Android)
-FICHIERS_WEB = ["index.html", "moteur.js", "app.js", "polices.css", "manifest.webmanifest"]
+FICHIERS_WEB = ["index.html", "moteur.js", "catalogue.js", "app.js", "polices.css", "manifest.webmanifest"]
 DOSSIERS_WEB = ["polices", "icones", "vendor"]
 
 

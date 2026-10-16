@@ -35,9 +35,22 @@ La clé reste sur le téléphone. Sans clé, tous les calculs fonctionnent.
 
 ### Nouveautés de cette version
 
-* L'application repart de zéro : les projets enregistrés pendant les essais sont effacés une fois, à la première ouverture.
-* Le projet d'exemple est retiré. La clé de l'assistant est conservée.
-* Sur téléphone, l'assistant est de nouveau utilisable au doigt.
-* Bouton **Coller** pour la clé API.
+* **Catalogue de 237 équipements**, en 14 familles : éclairage, climatisation, froid, cuisine, électroménager, informatique, sécurité, pompage, atelier et soudage, agro-transformation, santé, commerce, bornes de recharge, moteurs et industrie. On recherche un appareil (« clim 12000 », « pompe forage », « moulin »), on choisit les quantités, et l'application crée les circuits.
+  * Un circuit par climatiseur, chauffe-eau, plaque de cuisson, moteur ou borne de recharge.
+  * Au plus 8 points d'éclairage par circuit.
+  * Les protections et sections minimales usuelles sont fixées selon l'usage.
+* **Types de circuits** (éclairage, prises, cuisson, chauffe-eau, climatisation, force motrice…) : protection et section minimales selon la NF C 15-100 ou le NEC.
+* **Puissance dans l'unité de la plaque** : W, kW, CV, HP, kVA ou ampères. La conversion tient compte du cos φ, du rendement, de la tension et des phases.
+* Réfrigérateurs, congélateurs et climatiseurs non inverter sont comptés comme des compresseurs : leur appel au démarrage est vérifié.
+* **Démarrages décalés** : plusieurs moteurs identiques ne démarrent pas tous à la fois. L'onduleur et le groupe ne sont plus surdimensionnés quand il y a plusieurs pompes ou réfrigérateurs.
+* **Nouvel onglet « Matériel et devis »**. Il donne la liste du matériel avec ses quantités :
+  * modules, régulateurs, batteries, onduleurs, groupe ;
+  * câbles par section et longueur ;
+  * disjoncteurs avec leur pouvoir de coupure, interrupteurs différentiels et coffret.
+
+  Vos prix unitaires sont mémorisés sur le téléphone. La main-d'œuvre et la TVA sont prises en compte, et le devis s'exporte en CSV. La liste du matériel figure aussi dans la note de calcul.
+* **Fiche de relevé terrain à imprimer** : toutes les informations à relever chez le client, pré-remplies avec le projet en cours.
+* L'assistant IA utilise le catalogue et peut donner la liste du matériel.
+* Android : la touche Retour ferme le catalogue au lieu de quitter l'application.
 
 > Outil d'aide à la conception : les valeurs des normes et du matériel sont à vérifier. Toute note remise à un bureau de contrôle doit être validée par un ingénieur qualifié.

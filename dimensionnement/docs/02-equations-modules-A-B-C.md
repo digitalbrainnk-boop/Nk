@@ -98,7 +98,7 @@ I_B \le I_n \le I_z \qquad\qquad I_2 \le 1{,}45\, I_z
 |---|---|---|---|
 | $I_m$ | 3 à 5 $I_n$ | 5 à 10 $I_n$ | 10 à 20 $I_n$ |
 
-* **Choix de la courbe :** prendre la plus basse vérifiant $I_{m,\min} > 1{,}2\,I_d$ ($I_d$ = appel au démarrage), puis vérifier le déclenchement : $I_{k1,\min}(\text{bout de ligne}) \ge I_{m,\max}$.
+* **Choix de la courbe :** prendre la plus basse vérifiant $I_{m,\min} > 1{,}2\,I_d$, puis vérifier le déclenchement : $I_{k1,\min}(\text{bout de ligne}) \ge I_{m,\max}$. Pour $q$ appareils identiques sur le circuit, un seul démarre pendant que les autres tournent : $I_d = (k_d + q - 1)\,I_n$.
 * **Protection des personnes** (IEC 60364-4-41, tab. 41.1) :
   * schéma TN, 230 V, circuits terminaux ≤ 32 A : coupure en 0,4 s au plus ;
   * schéma TT : coupure en 0,2 s au plus, et $R_A \cdot I_{\Delta n} \le 50$ V.
@@ -422,6 +422,8 @@ S_{\text{ond, phase}}\;k_{\theta,\text{ond}} \ge S_{\text{dim, phase}}
 ```math
 k_{\text{surch}}\, S_{\text{ond}} \ge S_{\text{dim}} - S_{\text{moteur, marche}} + S_{d}
 ```
+
+$S_d$ et $S_{\text{moteur, marche}}$ sont ceux d'**un seul appareil** : les démarrages sont décalés (un appareil à la fois, les autres tournent déjà). Des moteurs qui démarrent ensemble, sur le même contacteur, se saisissent comme un seul récepteur de puissance cumulée.
 
 * **Chargeur :**
 

@@ -50,7 +50,7 @@ def versionner_service_worker():
     if nouveau != texte:
         sw.write_text(nouveau, encoding="utf-8")
     # Tous les fichiers de l'application doivent être dans le cache hors connexion
-    attendus = {"index.html", "moteur.js", "app.js", "polices.css", "manifest.webmanifest"}
+    attendus = {"index.html", "moteur.js", "catalogue.js", "app.js", "polices.css", "manifest.webmanifest"}
     attendus |= {f"{d}/{p.name}" for d in ("polices", "icones", "vendor") for p in (APP / d).iterdir()
                  if p.suffix in (".woff2", ".png", ".svg", ".js")}
     manquants = attendus - set(fichiers_du_cache())
@@ -90,8 +90,8 @@ def construire_hors_ligne():
     page = page.replace('<meta name="theme-color"', f'<link rel="icon" type="image/png" href="data:image/png;base64,{icone}">\n<meta name="theme-color"', 1)
     page = re.sub(r"<!-- POLICES -->.*?<!-- /POLICES -->", lambda m: "<style>\n" + polices_integrees() + "</style>", page, flags=re.S)
     # Le SDK de l'assistant est intégré : la page n'a besoin d'aucun autre fichier
-    page = page.replace('<script src="moteur.js"></script>\n<script src="app.js"></script>',
-                        script_integre("vendor/anthropic-sdk.js") + "\n" + script_integre("moteur.js") + "\n" + script_integre("app.js"))
+    page = page.replace('<script src="moteur.js"></script>\n<script src="catalogue.js"></script>\n<script src="app.js"></script>',
+                        "\n".join(script_integre(nom) for nom in ("vendor/anthropic-sdk.js", "moteur.js", "catalogue.js", "app.js")))
     if '<script src="' in page:
         raise SystemExit("Version hors ligne : un script externe subsiste")
     DIST.mkdir(exist_ok=True)
@@ -111,7 +111,7 @@ def construire_claude(dossier):
     dossier = Path(dossier)
     dossier.mkdir(parents=True, exist_ok=True)
     (dossier / "agent-dimensionnement.html").write_text(tete.strip() + "\n" + corps.strip() + "\n", encoding="utf-8")
-    for nom in ("moteur.js", "app.js"):
+    for nom in ("moteur.js", "catalogue.js", "app.js"):
         shutil.copy2(APP / nom, dossier / nom)
     print(f"Page pour Claude : {dossier}")
 

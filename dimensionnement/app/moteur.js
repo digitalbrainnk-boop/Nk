@@ -16,7 +16,7 @@
 (function (racine) {
   "use strict";
 
-  const VERSION = "1.3.0";
+  const VERSION = "1.4.0";
 
   // ===========================================================================
   // 0. Référentiels normatifs et réseaux
@@ -746,12 +746,16 @@
     if (tension === null || idx < 0 || !table[tension]) return courantNominalMoteur(r, poly);
     return table[tension][idx];
   }
+  /**
+   * Appareil à moteur dont l'appel au démarrage S_d = (Id/In)·Pu/(η·cos φ) est le plus élevé. Démarrages décalés :
+   * un seul appareil démarre à la fois, les autres (même identiques) tournent déjà.
+   */
   function plusGrosDemarrage(circuits) {
     let meilleur = null;
     for (const c of circuits) {
       for (const r of c.recepteurs) {
-        if (!r.moteur) continue;
-        const sD = ((r.quantite * r.puissance_w) / (r.rendement * r.cos_phi)) * MODES_DEMARRAGE[r.demarrage].id_in;
+        if (!r.moteur || !(r.quantite > 0)) continue;
+        const sD = (r.puissance_w / (r.rendement * r.cos_phi)) * MODES_DEMARRAGE[r.demarrage].id_in;
         if (!meilleur || sD > meilleur.s_d) meilleur = { recepteur: r, circuit: c, s_d: sD };
       }
     }
@@ -966,11 +970,12 @@
       moteur: dem ? dem.recepteur.nom : null, designation: designationOnduleur(nPar, unite) };
     if (dem) {
       const r = dem.recepteur;
-      const sMarche = ((r.quantite * r.puissance_w) / (r.rendement * r.cos_phi)) * r.ku;
+      const sMarche = (r.puissance_w / (r.rendement * r.cos_phi)) * r.ku;
       const part = dem.circuit.triphase ? RES.nph : 1;
       const besoin = sPh - sMarche / part + dem.s_d / part;
       const capacite = hyp.surcharge_onduleur * unite * nPar;
       note.ajouter(rub, `Appel au démarrage moteur (${MODES_DEMARRAGE[r.demarrage].libelle})`, arrondi(dem.s_d / 1000, 1), "kVA", "S_d = (Id/In) · Pu/(η·cos φ)");
+      if (r.quantite > 1) note.info(rub, `${r.nom} : démarrages décalés, un appareil à la fois ; des moteurs qui démarrent ensemble se saisissent comme un seul récepteur`, R.HYP);
       note.verifier(rub, besoin <= capacite, `Surcharge de démarrage par phase ${fr(besoin / 1000)} kVA ≤ ${fr(capacite / 1000)} kVA`,
         `Surcharge de démarrage par phase ${fr(besoin / 1000)} kVA > ${fr(capacite / 1000)} kVA : démarreur progressif/variateur ou démarrage uniquement sur groupe`, R.ONDULEUR);
     }
@@ -1221,7 +1226,7 @@
         `Chute de tension au démarrage ${pct(dip, 1)} > ${pct(hyp.chute_tension_max)}`, R.GE_DIP);
       const r = dem.recepteur;
       const pD = sD * MODES_DEMARRAGE[r.demarrage].cos_phi_d;
-      const pAvant = bilan.p_dim_w * part - ((r.quantite * r.puissance_w) / r.rendement) * r.ku;
+      const pAvant = bilan.p_dim_w * part - (r.puissance_w / r.rendement) * r.ku;
       note.verifier(rub, pAvant + pD <= pSite, `Échelon de charge au démarrage ${fr((pAvant + pD) / 1000)} kW ≤ ${fr(pSite / 1000)} kW`,
         `Échelon ${fr((pAvant + pD) / 1000)} kW > puissance du moteur thermique : séquencer les démarrages`, "ISO 8528-5 : acceptation d'échelon selon la pression moyenne effective", "ATTENTION");
     }
@@ -1476,7 +1481,8 @@
   function choisirCourbe(c, inC) {
     if (c.courbe) return c.courbe;
     let iAppel = 0;
-    for (const r of c.recepteurs) if (r.moteur) iAppel = Math.max(iAppel, courantNominalMoteur(r, c.triphase) * r.quantite * MODES_DEMARRAGE[r.demarrage].id_in);
+    // Un appareil démarre pendant que les autres appareils identiques du circuit tournent
+    for (const r of c.recepteurs) if (r.moteur) iAppel = Math.max(iAppel, courantNominalMoteur(r, c.triphase) * (MODES_DEMARRAGE[r.demarrage].id_in + Math.max(0, r.quantite - 1)));
     for (const k of ["B", "C", "D"]) if (MAGNETIQUE_MIN[k] * inC > 1.2 * iAppel) return k;
     return "D";
   }
