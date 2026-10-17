@@ -44,9 +44,28 @@ fi
 cd "$APP"
 
 export NEXT_TELEMETRY_DISABLED=1
-npm install --no-audit --no-fund
-# Next.js n'a pas de compilateur natif pour Android : on installe sa version WebAssembly.
-npm install --no-save --no-audit --no-fund "@next/swc-wasm-nodejs@$(node -p 'require("next/package.json").version')"
+# Réseau mobile : plus de patience et de nouvelles tentatives pour les téléchargements npm.
+npm config set fetch-retries 6
+npm config set fetch-retry-mintimeout 20000
+npm config set fetch-retry-maxtimeout 180000
+npm config set fetch-timeout 900000
+
+reessayer() {
+  local essai
+  for essai in 1 2 3; do
+    "$@" && return 0
+    echo "⚠️  Connexion lente ou coupée : nouvel essai ($essai/3) dans 15 secondes..."
+    sleep 15
+  done
+  echo "❌ Téléchargement impossible. Vérifie ta connexion (Wi-Fi conseillé) puis relance la même commande :"
+  echo "   l'installation reprendra là où elle s'est arrêtée."
+  return 1
+}
+
+reessayer npm install --no-audit --no-fund --prefer-offline
+# Next.js n'a pas de compilateur natif pour Android : on installe sa version WebAssembly (≈ 30 Mo).
+echo "Téléchargement du compilateur de Next.js (≈ 30 Mo, quelques minutes sur réseau mobile)..."
+reessayer npm install --no-save --no-audit --no-fund --prefer-offline "@next/swc-wasm-nodejs@$(node -p 'require("next/package.json").version')"
 
 mkdir -p "$DONNEES"
 if [ ! -f .env.local ]; then
