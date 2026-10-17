@@ -1,10 +1,15 @@
-import type { NextConfig } from "next";
+// Configuration Next.js (en JavaScript : se charge sans compilateur, y compris sur Android / Termux).
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-const nextConfig: NextConfig = {
+const root = path.dirname(fileURLToPath(import.meta.url));
+
+/** @type {import("next").NextConfig} */
+const nextConfig = {
   poweredByHeader: false,
   // Le dépôt contient aussi l'agent (package-lock à la racine) : DB.Mélo est autonome dans ce dossier.
-  outputFileTracingRoot: __dirname,
-  turbopack: { root: __dirname },
+  outputFileTracingRoot: root,
+  turbopack: { root },
   async headers() {
     return [
       {

@@ -20,6 +20,30 @@ npm run dev                  # http://localhost:3000
 ```
 
 Production : `npm run build && npm start` (port `PORT`, 3000 par défaut).
+
+### Sur Android, avec Termux
+
+1. Installe **Termux** depuis F-Droid : https://f-droid.org/packages/com.termux/ (pas la version du Play Store). Téléphone **64 bits (ARM64)** obligatoire.
+2. Ouvre Termux et colle cette ligne, puis Entrée :
+   ```
+   curl -fsSL https://raw.githubusercontent.com/digitalbrainnk-boop/Nk/claude/db-melo-saas-app-14k2yw/db-melo/installer-termux.sh | bash
+   ```
+3. Réponds aux questions (clé Kie.ai, paiement simulé pour tes essais). La première installation prend 10 à 20 minutes : Next.js n'ayant pas de compilateur natif pour Android, l'application est compilée avec sa version WebAssembly (`next build --webpack`).
+4. Chrome s'ouvre sur **http://localhost:3001** (le port 3000 reste à l'agent IA). Menu ⋮ → *Ajouter à l'écran d'accueil* pour l'icône DB.Mélo.
+
+Commandes dans Termux :
+
+| Commande | Effet |
+|---|---|
+| `dbmelo` | lance DB.Mélo (en arrière-plan) et ouvre Chrome ; il démarre aussi tout seul à l'ouverture de Termux |
+| `dbmelo-stop` | arrête DB.Mélo et l'accès public |
+| `dbmelo-journal` | affiche ce que fait le serveur |
+| `dbmelo-public` | ouvre une adresse publique temporaire `https://….trycloudflare.com` pour montrer DB.Mélo à des clients (refusé tant que le paiement simulé est actif) |
+| `dbmelo-maj` | met à jour, recompile et relance |
+
+Réglages (clés Kie, Claude, paiements) : `nano ~/DBMelo/db-melo/.env.local`, puis `dbmelo-stop` et `dbmelo`. Les commandes et les chansons sont gardées dans `~/dbmelo-donnees`.
+
+Limites : Termux doit rester ouvert et le téléphone allumé (idéalement en charge) ; l'adresse publique change à chaque `dbmelo-public`, et les webhooks configurés dans les tableaux de bord (Stripe, Flutterwave) ne peuvent pas la suivre. Le téléphone convient pour tester et faire des démonstrations ; pour vendre durablement, héberge DB.Mélo (o2switch, Render…).
 Contrôles : `npm test` (tests unitaires), `npm run typecheck`.
 
 ## Parcours
