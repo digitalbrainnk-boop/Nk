@@ -55,6 +55,14 @@ struct SSignal
    int               candleId;     // figure retenue comme preuve (0 = aucune)
    string            candleName;
    string            criteria;     // critères satisfaits (+) et échoués (-), séparés par '|'
+   //--- zone à l'origine du signal (F6 : FVG ; vide sinon)
+   string            zoneId;
+   int               zoneTf;
+   datetime          zoneTime;     // création de la zone
+   int               zoneRetests;  // retours dans la zone, contact actuel compris
+   double            zoneQuality;
+   double            zoneFill;
+   datetime          dispEventTime; // cassure produite par le déplacement de la zone (0 = aucune)
   };
 
 //--- Zone dans l'espace de la vue (support pour un achat, résistance retournée pour une vente)
@@ -68,6 +76,14 @@ struct SViewZone
    int               retests;
    bool              inverted;    // IFVG
    string            label;
+   string            id;          // identifiant (FVG : FvgKey)
+   int               tfMin;
+   datetime          created;
+   double            fill;
+   bool              obConf;      // Order Block en confluence
+   bool              obSame;      // ... issu du même déplacement
+   datetime          confKnown;   // instant où la confluence est connue
+   datetime          bosTime;     // cassure du déplacement (0 = aucune)
   };
 
 //+------------------------------------------------------------------+
@@ -98,6 +114,27 @@ public:
       arr[n].retests = retests;
       arr[n].inverted = inverted;
       arr[n].label = label;
+      arr[n].id = "";
+      arr[n].tfMin = 0;
+      arr[n].created = known;
+      arr[n].fill = 0.0;
+      arr[n].obConf = false;
+      arr[n].obSame = false;
+      arr[n].confKnown = known;
+      arr[n].bosTime = 0;
+     }
+
+   void              AddFvgZone(SViewZone &arr[], const SFvg &f)
+     {
+      AddZone(arr, f.lo, f.hi, f.quality, GLS_LVL_FVG, f.created, f.retests, f.inverted, f.reason);
+      int n = ArraySize(arr) - 1;
+      arr[n].id = FvgKey(f);
+      arr[n].tfMin = f.tfMin;
+      arr[n].fill = f.fillPct;
+      arr[n].obConf = f.obConf;
+      arr[n].obSame = f.obSameDisp;
+      arr[n].confKnown = f.obConf ? f.obKnown : f.created;
+      arr[n].bosTime = f.bosTime;
      }
 
    void              AddFvgs(const CFvgMap &m)
@@ -106,16 +143,16 @@ public:
         {
          if(m.fvgs[i].status != GLS_FVG_FRESH && m.fvgs[i].status != GLS_FVG_PARTIAL)
             continue;
+         if(m.fvgs[i].duplicate || m.tfMin != (int)InpFvgTF)
+            continue;   // une imbalance n'est utilisée qu'une fois, sur l'unité de trading
          if(m.fvgs[i].dir == dir)
            {
-            if(m.tfMin == (int)InpFvgTF && (!m.fvgs[i].inverted || InpUseIFVG))
-               AddZone(fvgZones, m.fvgs[i].lo, m.fvgs[i].hi, m.fvgs[i].quality, GLS_LVL_FVG, m.fvgs[i].created,
-                       m.fvgs[i].retests, m.fvgs[i].inverted, m.fvgs[i].reason);
+            if(!m.fvgs[i].inverted || InpUseIFVG)
+               AddFvgZone(fvgZones, m.fvgs[i]);
            }
          else
-            if(InpUseSRObstacles && m.tfMin == (int)InpFvgTF && m.fvgs[i].quality >= InpFvgMinQuality)
-               AddZone(obstacles, m.fvgs[i].lo, m.fvgs[i].hi, m.fvgs[i].quality, GLS_LVL_FVG, m.fvgs[i].created,
-                       m.fvgs[i].retests, m.fvgs[i].inverted, m.fvgs[i].reason);
+            if(InpUseFvgObstacles && m.fvgs[i].quality >= InpFvgMinQuality && (!m.fvgs[i].inverted || InpUseIFVG))
+               AddFvgZone(obstacles, m.fvgs[i]);
         }
      }
 
@@ -184,6 +221,46 @@ void SignalReset(SSignal &s)
    s.candleId = GLS_CDL_NONE;
    s.candleName = "";
    s.criteria = "";
+   s.zoneId = "";
+   s.zoneTf = 0;
+   s.zoneTime = 0;
+   s.zoneRetests = 0;
+   s.zoneQuality = 0.0;
+   s.zoneFill = 0.0;
+   s.dispEventTime = 0;
+  }
+
+//--- Décisions par zone (F6) de la barre courante : candidats en attente ou refusés, pour le journal
+//--- (le meilleur candidat seul ne suffit pas à tracer chaque zone)
+class CZoneDecisions
+  {
+public:
+   SSignal           items[];
+
+   void              Clear(void) { ArrayResize(items, 0); }
+
+   void              Add(const SSignal &s)
+     {
+      if(StringLen(s.zoneId) == 0)
+         return;
+      int n = ArraySize(items);
+      ArrayResize(items, n + 1);
+      items[n] = s;
+     }
+  };
+
+CZoneDecisions g_zoneDecisions;
+
+//--- Identité de la zone d'origine d'un candidat (journal des zones, résultat des trades)
+void SetZoneInfo(SSignal &s, const SViewZone &z)
+  {
+   s.zoneId = z.id;
+   s.zoneTf = z.tfMin;
+   s.zoneTime = z.created;
+   s.zoneRetests = z.retests;
+   s.zoneQuality = z.quality;
+   s.zoneFill = z.fill;
+   s.dispEventTime = z.bosTime;
   }
 
 //--- Note partielle (composantes propres à la famille) pour départager des candidats
@@ -907,16 +984,21 @@ void DetectSRBounce(const CMarketContext &ctx, const CBarSeries &b, const CDirVi
 
 //+------------------------------------------------------------------+
 //| F6 - Retest de FVG avec réaction confirmée                       |
-//| FVG du sens du trade (InpFvgTF), fraîche ou partiellement        |
-//|   comblée, qualité >= InpFvgMinQuality, retours <= InpFvgMaxRet.,|
-//|   âge <= InpFvgMaxAgeBars barres de son unité, connue avant le   |
-//|   contact.                                                       |
+//| FVG du sens du trade (InpFvgTF, hors doublons), fraîche ou       |
+//|   partiellement comblée, qualité >= InpFvgMinQuality, retours <= |
+//|   InpFvgMaxRetests, âge <= InpFvgMaxAgeBars barres de son unité, |
+//|   connue avant le contact.                                       |
+//| Option InpFvgObConfluence = exigée : un Order Block actif du même|
+//|   sens doit toucher la FVG (filtre de sélection, AUCUN point de  |
+//|   score : FVG, OB et cassure d'un même déplacement = une seule   |
+//|   information).                                                  |
 //| Contact : 1re entrée dans la zone dans les InpFvgReactBars       |
 //|   dernières barres M1, la barre précédente étant hors zone.      |
 //| Zone tenue : aucune clôture sous bas - InpFvgInvalidBufferATR.   |
 //| Pas d'entrée au premier contact : il faut une RÉACTION =         |
 //|   figure confirmée sur la dernière barre ET/OU CHOCH M1, avec    |
-//|   clôture au-dessus du milieu de la zone.                        |
+//|   clôture au-dessus du milieu de la zone. (InpFvgRequireReaction |
+//|   = false : variante de RECHERCHE refusée hors testeur.)         |
 //| Stop : min(plus bas depuis le contact, bas de zone) - tampon.    |
 //| Invalidation : bas de la zone.                                   |
 //+------------------------------------------------------------------+
@@ -933,13 +1015,15 @@ void DetectFvgRetest(const CMarketContext &ctx, const CBarSeries &b, const CDirV
    double buf = InpFvgInvalidBufferATR * atr;
    int from = MathMax(2, last - InpFvgReactBars + 1);
    datetime oldest = b.time[last] - InpFvgMaxAgeBars * (int)InpFvgTF * 60;
+   bool needOb = (InpFvgObConfluence == GLS_OBC_REQUIRE);
    for(int z = 0; z < ArraySize(v.fvgZones); z++)
      {
       double lo = v.fvgZones[z].lo;
       double hi = v.fvgZones[z].hi;
       if(v.fvgZones[z].quality < InpFvgMinQuality || v.fvgZones[z].retests > InpFvgMaxRetests)
          continue;
-      if(v.fvgZones[z].known > b.time[from] || v.fvgZones[z].known < oldest)
+      datetime known = (needOb && v.fvgZones[z].obConf) ? v.fvgZones[z].confKnown : v.fvgZones[z].known;
+      if(known > b.time[from] || v.fvgZones[z].known < oldest)
          continue;
       int t = -1;
       for(int k = from; k <= last; k++)
@@ -954,6 +1038,17 @@ void DetectFvgRetest(const CMarketContext &ctx, const CBarSeries &b, const CDirV
       SignalReset(cand);
       cand.dir = v.dir;
       cand.stage = 1;
+      cand.family = GLS_FAMILY_FVG;
+      SetZoneInfo(cand, v.fvgZones[z]);
+      string obText = v.fvgZones[z].obConf ? (v.fvgZones[z].obSame ? "OB : oui (même déplacement)" : "OB : oui (déplacement distinct)") : "OB : non";
+      if(needOb && !v.fvgZones[z].obConf)
+        {
+         cand.refusal = GLS_REFUSE_NO_CONFLUENCE;
+         cand.detail = "FVG " + ViewRange(lo, hi) + " : aucun Order Block en confluence";
+         g_zoneDecisions.Add(cand);
+         KeepBest(best, cand);
+         continue;
+        }
       bool held = true;
       for(int k = t; k <= last; k++)
          if(b.close[k] < lo - buf)
@@ -963,23 +1058,29 @@ void DetectFvgRetest(const CMarketContext &ctx, const CBarSeries &b, const CDirV
            }
       if(!held)
         {
-         cand.detail = "FVG " + ViewRange(lo, hi) + " invalidée";
+         cand.refusal = GLS_REFUSE_ZONE_BROKEN;
+         cand.detail = "FVG " + ViewRange(lo, hi) + " invalidée par une clôture";
+         g_zoneDecisions.Add(cand);
          KeepBest(best, cand);
          continue;
         }
       if(b.close[last] <= 0.5 * (lo + hi))
         {
          cand.refusal = GLS_REFUSE_INCOMPLETE;
-         cand.detail = "retour dans la FVG " + ViewRange(lo, hi) + ", réaction non confirmée";
+         cand.detail = "retour dans la FVG " + ViewRange(lo, hi) + ", réaction non confirmée (clôture sous le milieu)";
+         g_zoneDecisions.Add(cand);
          KeepBest(best, cand);
          continue;
         }
       int pi = ReactionPattern(ca, t - 1, hi, tol, last);
       bool choch = MicroChochAtLast(b, MathMax(0, t - 5));
-      if(pi < 0 && !choch)
+      string confText = "figure : " + ((pi >= 0) ? CandleName(ca.pats[pi].id, ca.pats[pi].dir) : "aucune") + ", CHOCH M1 : " + (choch ? "oui" : "non")
+                        + ", " + obText;
+      if(pi < 0 && !choch && InpFvgRequireReaction)
         {
          cand.refusal = GLS_REFUSE_INCOMPLETE;
-         cand.detail = "FVG " + ViewRange(lo, hi) + " : attente d'une figure confirmée ou d'un CHOCH M1";
+         cand.detail = "FVG " + ViewRange(lo, hi) + " : attente d'une réaction (" + confText + ")";
+         g_zoneDecisions.Add(cand);
          KeepBest(best, cand);
          continue;
         }
@@ -988,7 +1089,6 @@ void DetectFvgRetest(const CMarketContext &ctx, const CBarSeries &b, const CDirV
          rLow = MathMin(rLow, ca.pats[pi].low);
       cand.valid = true;
       cand.stage = 2;
-      cand.family = GLS_FAMILY_FVG;
       cand.level = hi;
       cand.extreme = rLow;
       cand.stop = MathMin(rLow, lo) - InpSLBufferATR * atr;
@@ -998,14 +1098,14 @@ void DetectFvgRetest(const CMarketContext &ctx, const CBarSeries &b, const CDirV
       cand.triggerTime = b.time[last];
       cand.levelKind = GLS_LVL_FVG;
       cand.retestEntry = true;
+      //--- la qualité de la FVG (déplacement, cassure, balayage, fraîcheur, contexte) est comptée UNE fois ici
       cand.cLiq = Clamp(v.fvgZones[z].quality, 0.0, 1.0);
       cand.cTrig = Clamp(1.0 - 0.1 * (last - t), 0.3, 1.0);
       cand.cStruct = choch ? 1.0 : 0.7;
       //--- retest : réaction tenue DANS la FVG ; le nombre de retours est déjà dans la qualité
       //--- de la FVG (fraîcheur, cLiq) : il n'est pas compté une seconde fois
       cand.cRetest = (rLow >= lo) ? 1.0 : 0.7;
-      cand.detail = (v.fvgZones[z].inverted ? "IFVG " : "FVG ") + ViewRange(lo, hi) + " [" + v.fvgZones[z].label + "], réaction : "
-                    + ((pi >= 0) ? CandleName(ca.pats[pi].id, ca.pats[pi].dir) : "aucune figure") + (choch ? ", CHOCH M1" : "");
+      cand.detail = (v.fvgZones[z].inverted ? "IFVG " : "FVG ") + ViewRange(lo, hi) + " [" + v.fvgZones[z].label + "] - " + confText;
       KeepBest(best, cand);
      }
   }
@@ -1286,6 +1386,14 @@ void FinalizeSignal(SSignal &sig, const CMarketContext &ctx, const CDirView &v, 
 
    //--- 7. composantes communes et score
    double a5 = (ctx.t5.dir == dir) ? 1.0 : ((ctx.t5.dir == 0) ? 0.5 : 0.0);
+   //--- même déplacement : la cassure M5 qui fixe la tendance M5 est celle déjà comptée dans la qualité
+   //--- de la zone (FVG) ; l'alignement M5 n'utilise alors que les autres votes (sommets/creux, EMA, pente)
+   if(sig.dispEventTime != 0 && ctx.st5.lastEventTime == sig.dispEventTime)
+     {
+      int ov = (ctx.t5.swingVote + ctx.t5.emaVote + ctx.t5.slopeVote) * dir;
+      a5 = (ov > 0) ? 1.0 : ((ov == 0) ? 0.5 : 0.0);
+      Pass(sig, "alignement M5 sans la cassure du déplacement (déjà comptée dans la zone)");
+     }
    double a15 = (ctx.t15.dir == dir) ? 1.0 : ((ctx.t15.dir == 0) ? 0.5 : 0.0);
    sig.cAlign = 0.5 * a5 + 0.5 * a15;
    double ratio = SafeDiv(atr, ctx.AtrLong(), 1.0);

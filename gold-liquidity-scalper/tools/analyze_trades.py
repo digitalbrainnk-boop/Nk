@@ -92,6 +92,9 @@ def load_trades(paths, per_file, group_by="family"):
                 t["regime"] = row.get("regime") or "?"
                 t["label"] = row.get("label") or "sans_libelle"
                 t["candle"] = row.get("candle") or "aucune"
+                t["zone_id"] = row.get("zone_id") or ""
+                zr = row.get("zone_retests") or ""
+                t["zone_retests"] = int(float(zr)) if zr not in ("",) else 0
                 t["group"] = row["family"] + ("|" + label if per_file else "") + ("|" + t["label"] if group_by == "label" else "")
                 trades.append(t)
     trades.sort(key=lambda x: x["close_dt"])
@@ -359,6 +362,48 @@ def breakdown(trades, key):
     return rows
 
 
+def zone_freshness(t):
+    """Zone d'origine à l'entrée : 1er retour (zone fraîche) ou zone déjà revisitée (retours comptés
+    contact actuel compris) ; vide pour les familles sans zone suivie ou un plan reconstruit."""
+    if not t.get("zone_id"):
+        return "sans zone suivie"
+    return "zone fraîche (1er retour)" if t.get("zone_retests", 0) <= 1 else "zone déjà revisitée"
+
+
+def filter_verdicts(results, groups, baseline, splits, criteria, unlock_test):
+    """Règle pré-enregistrée : un filtre (variante) n'est CONSERVÉ que s'il améliore l'espérance R de la
+    référence en développement ET en validation (et au test final s'il est déverrouillé), avec assez de
+    trades dans chaque période et une espérance sous stress des coûts positive en validation.
+    Sinon : DÉSACTIVER (le filtre ne fait que réduire l'échantillon ou dégrade le résultat)."""
+    order = [s for s in ("dev", "val", "test") if s in splits and (s != "test" or unlock_test)]
+    out = []
+    for g in groups:
+        if g == baseline:
+            continue
+        reasons = []
+        deltas = []
+        for s in order:
+            m = results.get((g, s), ({}, []))[0]
+            r = results.get((baseline, s), ({}, []))[0]
+            n = m.get("n", 0)
+            if n < criteria["min_trades"].get(s, 0):
+                reasons.append("%s : %d trades < %d" % (s, n, criteria["min_trades"].get(s, 0)))
+            ev, er = m.get("expectancy_r"), r.get("expectancy_r")
+            if ev is None or er is None:
+                reasons.append("%s : espérance indisponible" % s)
+                deltas.append(float("nan"))
+                continue
+            d = ev - er
+            deltas.append(d)
+            if not d > 0:
+                reasons.append("%s : écart d'espérance %s R" % (s, fmt(d)))
+        mv = results.get((g, "val"), ({}, []))[0]
+        if "val" in splits and not mv.get("stressed_expectancy_r", float("nan")) > criteria["min_stressed_expectancy_r"]:
+            reasons.append("val : espérance sous stress %s R" % fmt(mv.get("stressed_expectancy_r", float("nan"))))
+        out.append((g, "CONSERVER (candidat)" if not reasons else "DÉSACTIVER", deltas, order, reasons))
+    return out
+
+
 def fmt(x, nd=2):
     if isinstance(x, float):
         if math.isnan(x):
@@ -477,7 +522,8 @@ def build_report(trades, splits, criteria, n_variants, unlock_test, baseline=Non
                                ("Tranche de score (calibration)", lambda t: "%02d-%02d" % (int(t["score"] // 10) * 10, int(t["score"] // 10) * 10 + 9)),
                                ("Sens", lambda t: t["dir"]), ("Entrée sur retest", lambda t: t.get("retest", "?")),
                                ("Régime à l'entrée", lambda t: t.get("regime", "?")),
-                               ("Figure de bougie retenue", lambda t: t.get("candle", "aucune"))):
+                               ("Figure de bougie retenue", lambda t: t.get("candle", "aucune")),
+                               ("Fraîcheur de la zone (F6)", zone_freshness)):
                 lines.append("| %s | Trades | Réussite %% | Net | Esp. R |" % title)
                 lines.append("|---|---|---|---|---|")
                 for k, n, wr, net, er in breakdown(sub, key):
@@ -485,6 +531,19 @@ def build_report(trades, splits, criteria, n_variants, unlock_test, baseline=Non
                 lines.append("")
             lines.append("</details>")
             lines.append("")
+
+    if baseline:
+        lines.append("## Verdict des filtres (référence : %s)" % baseline)
+        lines.append("")
+        verdicts = filter_verdicts(results, groups, baseline, splits, criteria, unlock_test)
+        lines.append("| Variante | Verdict | %s | Motifs |" % " | ".join("Écart R (%s)" % s for s in (verdicts[0][3] if verdicts else [])))
+        lines.append("|---|---|%s---|" % ("---|" * len(verdicts[0][3] if verdicts else [])))
+        for g, verdict, deltas, order, reasons in verdicts:
+            lines.append("| %s | **%s** | %s | %s |" % (g, verdict, " | ".join(fmt(d) for d in deltas), "; ".join(reasons) if reasons else "—"))
+        lines.append("")
+        lines.append("_Un filtre marqué DÉSACTIVER doit être désactivé dans les paramètres (son apport n'est pas démontré "
+                     "hors échantillon). Un filtre CONSERVÉ reste un candidat : il doit encore passer le test final et la démo._")
+        lines.append("")
 
     # décision
     lines.append("## Décision")

@@ -1,4 +1,4 @@
-# Définitions exactes de la stratégie (v1.10)
+# Définitions exactes de la stratégie (v1.11)
 
 Ce document décrit **les règles réellement codées** dans l'EA. Les noms entre
 crochets sont les paramètres (`Inp...`) du fichier `Gold_Liquidity_Scalper.mq5` ;
@@ -119,7 +119,10 @@ est enregistré pour chaque signal et chaque position.
 ### 2.3 Supports / résistances dynamiques — `Zones.mqh`
 
 - **Pivots** : sommets/creux structurels M5 (40 derniers de chaque type) et M15
-  (30 derniers), pris seulement s'ils sont **confirmés** à l'instant de l'analyse.
+  (30 derniers) **parmi ceux confirmés** à l'instant de l'analyse (un pivot
+  postérieur ne modifie ni la sélection ni les zones).
+- **Origine** : chaque zone indique l'unité de ses pivots (`M5`, `M15` ou
+  `M5+M15`) ; des pivots M5 et M15 proches forment **une seule** zone (pas de doublon).
 - **Regroupement** : pivots dont l'écart ≤ `InpZoneMergeATR` (0,5) × ATR M5 ;
   bornes = pivots extrêmes ± `InpZonePadATR` (0,15) × ATR M5 (largeur adaptée à la
   volatilité).
@@ -136,9 +139,10 @@ est enregistré pour chaque signal et chaque position.
   PUIS un retour dans la zone suivi d'une clôture au-delà. **Cassure ratée** :
   après la cassure, clôture de retour de l'autre côté → rôle d'origine conservé.
 
-**Obstacles** (`InpUseSRObstacles`) : pour un achat, les résistances de force ≥
-`InpSRMinStrength` (0,5) et les FVG baissières actives de l'unité `InpFvgTF` de
-qualité ≥ `InpFvgMinQuality` (0,55) réduisent l'**espace** disponible (§ 9) :
+**Obstacles** : pour un achat, les résistances de force ≥ `InpSRMinStrength`
+(0,5) (`InpUseSRObstacles`) et les FVG baissières actives de l'unité `InpFvgTF`,
+hors doublons, de qualité ≥ `InpFvgMinQuality` (0,55) (`InpUseFvgObstacles`)
+réduisent l'**espace** disponible (§ 9) :
 espace jusqu'au bord le plus proche ; **prix à l'intérieur d'une résistance →
 refus** (« prix dans une résistance ») ; prix à l'intérieur d'une FVG contraire →
 espace jusqu'à son bord lointain. Vente : symétrique. Ces obstacles s'ajoutent à
@@ -155,11 +159,21 @@ Indices chronologiques de barres clôturées, figure de 3 bougies i−2, i−1, 
 - La bougie i−1 (déplacement) doit aller dans le sens du déséquilibre ; un écart
   < 0,5 × `InpFvgMinSizeATR` × ATR est ignoré (bruit). Unité de trading : M5 par
   défaut (`InpFvgTF`, M1 possible) ; les FVG M1 sont aussi suivies (contexte, journal).
+- **Identifiant** : `unité|sens|heure de création` (+ `|I` pour une IFVG) ;
+  **identifiant du déplacement** = heure d'ouverture de la bougie i−1.
+- **Doublons entre unités** : une FVG M1 recouverte à ≥ 50 % par une FVG M5 du
+  même sens et formée pendant les 3 bougies de celle-ci est la même imbalance :
+  marquée « doublon de » la FVG M5, elle n'est ni comptée, ni tradée, ni utilisée
+  comme obstacle. Seule l'unité `InpFvgTF` sert à F6 et aux obstacles.
 - Enregistré : sens, bornes, unité, heure de création (clôture de i), taille en
   points et en ATR, amplitude et corps du déplacement, BOS/CHOCH produit par le
-  déplacement (barres i−1 à i+2), balayage préalable (creux confirmé percé puis
-  repris entre i−5 et i−1), distance à une zone S/R favorable ou à un OB, retours,
-  comblement, statut, heure du statut, qualité, raison.
+  déplacement (barres i−1 à i+2, avec son heure), balayage préalable (creux
+  confirmé percé puis repris entre i−5 et i−1), distance à une zone S/R favorable,
+  retours, comblement, statut, heure du statut, qualité, lien éventuel avec un
+  Order Block (§ 2.4 bis), raison. La cassure peut être attribuée jusqu'à 2 barres
+  après la création (barres déjà clôturées) : la zone n'apparaît jamais
+  rétroactivement, seul cet attribut est complété, et une cassure attribuée ne
+  disparaît jamais.
 - **Comblement** (haussière) = (haut − plus bas atteint depuis la création) /
   largeur, borné [0 ; 1] ; baissière : symétrique. **Retour** = chaque nouvelle
   entrée du prix dans la zone après en être sorti.
@@ -169,11 +183,9 @@ Indices chronologiques de barres clôturées, figure de 3 bougies i−2, i−1, 
 - **IFVG** (`InpUseIFVG`, désactivé par défaut) : règle distincte ; une FVG
   invalidée devient une zone de sens opposé, connue à l'instant de l'invalidation,
   suivie avec les mêmes règles.
-- **Order Block** (définition objective retenue) : dernière bougie de couleur
-  opposée parmi les 3 bougies précédant le déplacement, **seulement si** le
-  déplacement a produit un BOS/CHOCH.
 - **Qualité** (0–1, critères **intrinsèques** seulement ; la tendance, les coûts et
-  l'espace sont évalués une seule fois, au niveau du signal) :
+  l'espace sont évalués une seule fois, au niveau du signal ; l'Order Block n'en
+  fait **pas** partie) :
 
 | Critère | Poids | Mesure |
 |---|---|---|
@@ -182,9 +194,37 @@ Indices chronologiques de barres clôturées, figure de 3 bougies i−2, i−1, 
 | structure `InpFvgWStructure` | 20 | 1 si BOS/CHOCH, sinon 0,3 |
 | balayage `InpFvgWSweep` | 15 | 1 si balayage préalable, sinon 0,4 |
 | fraîcheur `InpFvgWFresh` | 20 | 0 retour 1 ; 1 → 0,7 ; 2 → 0,4 ; plus 0,1 ; comblée/invalidée 0 |
-| contexte `InpFvgWContext` | 10 | 1 si zone S/R favorable ou OB à ≤ 1 ATR, sinon 0,5 |
+| contexte `InpFvgWContext` | 10 | 1 si zone S/R favorable à ≤ 1 ATR, sinon 0,5 |
 
-Une FVG **ne déclenche jamais seule** une entrée (famille F6, § 8).
+Une FVG **ne déclenche jamais seule** une entrée (famille F6, § 8). La détection
+d'une zone n'est **pas** une preuve d'opportunité rentable.
+
+### 2.4 bis Order Blocks — `OrderBlocks.mqh` (concept distinct des FVG)
+
+Règles propres (haussier ; baissier symétrique), sur l'unité `InpFvgTF` :
+
+1. un événement de structure haussier (BOS ou CHOCH) sur la barre j, connu à la
+   **clôture** de j ;
+2. l'Order Block est la **dernière bougie baissière** parmi les `InpObLookback`
+   (5) barres précédant j (barre k) ;
+3. le déplacement k+1 … j est impulsif : `clôture[j] − bas[k] ≥ InpObMinDispATR`
+   (1,5) × ATR(k), et au moins une bougie du sens de corps ≥ 60 % et d'amplitude ≥ 1 ATR ;
+4. zone = `[bas[k] ; haut[k]]`, connue à la clôture de j (jamais avant) ;
+   identifiant `OB|unité|sens|heure de la bougie k`, déplacement = k+1 … j ;
+5. **retour** = nouvelle entrée du prix dans la zone ; statut frais → retesté ;
+   **invalidation** = clôture sous `bas − InpObInvalidBufferATR` (0,1) × ATR.
+
+Un OB peut exister **sans** FVG (cassure sans écart entre les bougies) et une FVG
+sans OB (écart sans cassure de structure). Journal : `_ob.csv`.
+
+**Confluence FVG + OB** (`InpFvgObConfluence`, **ignorée par défaut**) : un OB
+actif du même sens, de la même unité, en contact avec la FVG ou à ≤
+`InpObConfluenceATR` (0,5) × ATR. Le lien indique si l'OB provient du **même
+déplacement** que la FVG (une seule information : FVG, OB et cassure décrivent le
+même mouvement) ou d'un déplacement distinct. La confluence n'ajoute **aucun point
+de score** ; en mode « exigée », elle sert de **filtre de sélection** pour F6, à
+conserver seulement si le protocole montre un gain hors échantillon. La confluence
+n'est connue qu'à l'instant où les deux zones le sont.
 
 ### 2.5 Bougies japonaises — `Candles.mqh`
 
@@ -236,6 +276,22 @@ zone (ou est une continuation alignée). Ces informations sont journalisées.
 **Rôles des unités** : les figures sont lues sur M1 (déclenchement) ; M15 et M5
 fournissent le contexte (tendance, régime, zones, FVG) et ne produisent pas de
 figures dans cette version.
+
+### 2.6 Unités de temps et absence de repainting
+
+| Unité | Rôle | Objets |
+|---|---|---|
+| M15 | contexte supérieur, zones majeures | structure, tendance par votes, régime, pivots des zones majeures |
+| M5 | structure opérationnelle, zones pertinentes | structure, tendance, zones S/R, FVG et Order Blocks de trading (`InpFvgTF` = M5) |
+| M1 | déclenchement, entrée | liquidité, figures de bougies, CHOCH M1, FVG M1 de contexte (doublons des FVG M5 marqués) |
+
+Règles communes : séries de **barres clôturées** uniquement ; chaque objet porte
+l'instant où il devient connu (pivot : clôture de la barre i+k ; FVG : clôture de
+la 3e bougie ; OB : clôture de la cassure ; zone S/R : confirmation de son 1er
+pivot ; confluence : la plus tardive des deux zones) et n'est utilisé qu'après.
+Le banc de test vérifie qu'un calcul fait avec les données jusqu'à T et un calcul
+fait avec des données ultérieures donnent les **mêmes** pivots, cassures, FVG, OB
+et zones connus à T (test « absence de repaint »).
 
 **Utilisation dans la décision** (sans redondance) :
 
@@ -342,16 +398,23 @@ Achat sur support confirmé (vente : résistance, par la série miroir) :
 
 ## 8. Famille F6 — retest de FVG avec réaction confirmée (v1.10)
 
-1. **FVG** du sens du trade (§ 2.4), unité `InpFvgTF` (M5), fraîche ou partiellement
-   comblée, qualité ≥ `InpFvgMinQuality` (0,55), retours ≤ `InpFvgMaxRetests` (1),
-   âge ≤ `InpFvgMaxAgeBars` (48) barres de son unité, connue avant le contact.
-   IFVG utilisées seulement si `InpUseIFVG`.
+1. **FVG** du sens du trade (§ 2.4), unité `InpFvgTF` (M5), hors doublons, fraîche
+   ou partiellement comblée, qualité ≥ `InpFvgMinQuality` (0,55), retours ≤
+   `InpFvgMaxRetests` (1), âge ≤ `InpFvgMaxAgeBars` (48) barres de son unité,
+   connue avant le contact. IFVG utilisées seulement si `InpUseIFVG`. Si
+   `InpFvgObConfluence` = exigée : Order Block en confluence connu avant le contact,
+   sinon refus « pas de confluence FVG + Order Block ».
 2. **Contact** : première entrée dans la zone parmi les `InpFvgReactBars` (8)
    dernières barres M1, la barre précédente étant hors zone.
 3. **Zone tenue** : aucune clôture sous `bas − InpFvgInvalidBufferATR × ATR`.
 4. **Pas d'entrée au premier contact** : il faut une **réaction** = figure
    confirmée sur la dernière barre et/ou CHOCH M1, avec clôture au-dessus du milieu
-   de la zone.
+   de la zone. `InpFvgRequireReaction = false` n'existe que pour la variante de
+   recherche « détection seule » du protocole : l'EA **refuse de démarrer** avec ce
+   réglage hors du testeur de stratégie.
+   Les confirmations présentes ou absentes (figure, CHOCH M1, OB) sont écrites dans
+   le détail du signal ; chaque zone en attente ou refusée est journalisée une fois
+   par changement d'état (décision `ATTENTE` ou `REFUS`, motif précis).
 5. Refus si les unités de temps se contredisent (filtres de tendance et de régime),
    si la zone est invalidée, ou si l'espace / le rendement-risque est insuffisant.
 6. **Stop** : min(plus bas depuis le contact, bas de zone) − `InpSLBufferATR` × ATR.
@@ -396,7 +459,7 @@ premier critère échoué.
 | Déclencheur | `InpWTrigger` 10 | F1 : 1 − 0,15 × barres de réintégration − 0,15 × clôtures sous le niveau ; F2 : force de l'impulsion ; F3 : clôture de cassure ; F4 : amplitude de l'expansion ; F5/F6 : 1 − 0,1 × barres depuis le contact (≥ 0,3) |
 | Confirmation structurelle | `InpWStructure` 15 | F1 : 0,7 (0,6 sans sommet fractal) + 0,3 × qualité du déplacement de la barre de CHOCH ; F5/F6 : 1 avec CHOCH M1, sinon 0,7 |
 | Bougies | `InpWCandle` 10 | § 2.5 (preuve unique ; 0 si figure contraire) |
-| Alignement M5/M15 | `InpWAlignment` 15 | 0,5 × (tendance M5 par votes alignée 1 / neutre 0,5 / opposée 0) + 0,5 × (idem M15) |
+| Alignement M5/M15 | `InpWAlignment` 15 | 0,5 × (tendance M5 par votes alignée 1 / neutre 0,5 / opposée 0) + 0,5 × (idem M15). F6 : si la dernière cassure M5 (celle qui fixe la tendance M5) **est** la cassure du déplacement de la FVG, déjà comptée dans sa qualité, la moitié M5 n'utilise que les votes sommets/creux, EMA et pente |
 | Retest | `InpWRetest` 10 | F1 : 1,0 retest profond, 0,8 retest, 0,3 entrée à la confirmation ; F2/F4 : 0,5 ; F3 : proximité du retest ; F5/F6 : 1 si la réaction tient dans la zone, 0,7 si mèche au-delà (le nombre de retours d'une FVG est déjà dans sa qualité) |
 | Volatilité | `InpWVolatility` 5 | 1 si ATR14/ATR100 ∈ [0,8 ; 1,6], décroissant au-delà |
 | Coût d'exécution | `InpWCost` 5 | 1 − rampe(coût/risque ; 3 % → 15 %) |

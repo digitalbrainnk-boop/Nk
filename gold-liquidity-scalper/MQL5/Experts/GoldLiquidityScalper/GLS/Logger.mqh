@@ -191,6 +191,11 @@ public:
       AppendLine(m_base + "_fvg.csv", header, row);
      }
 
+   void              WriteObRow(const string header, const string row)
+     {
+      AppendLine(m_base + "_ob.csv", header, row);
+     }
+
    void              WriteText(const string fileName, const string text)
      {
       if(!m_files)

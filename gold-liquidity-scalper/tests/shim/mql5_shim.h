@@ -462,6 +462,22 @@ inline ushort StringGetCharacter(const string &s, int pos)
     return 0;
   return (ushort)(uchar)s.s[(size_t)pos];
 }
+// MQL5 : int StringReplace(string &str, const string find, const string replacement) ; -1 si find est vide
+inline int StringReplace(string &str, const string &find, const string &replacement)
+{
+  if (find.s.empty())
+    return -1;
+  int n = 0;
+  size_t pos = 0;
+  while ((pos = str.s.find(find.s, pos)) != std::string::npos)
+  {
+    str.s.replace(pos, find.s.size(), replacement.s);
+    pos += replacement.s.size();
+    n++;
+  }
+  return n;
+}
+
 inline int StringSplit(const string &s, ushort sep, MqlArray<string> &result)
 {
   ArrayResize(result, 0);

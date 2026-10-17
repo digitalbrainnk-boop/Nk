@@ -85,6 +85,7 @@ static void RelaxContextFilters()
   InpCdlBlockIndecision = false;
   InpCdlBlockExtended = false;
   InpUseSRObstacles = false;
+  InpUseFvgObstacles = false;
 }
 
 //--- filtre optionnel (argument) : sous-chaînes séparées par '|' ; seuls les tests correspondants sont lancés
@@ -1591,22 +1592,21 @@ static void TestFvg()
   CHECK(f.created == s.CloseTime(33), "connue à la clôture de la 3e bougie");
   CHECK(f.status == GLS_FVG_FRESH && f.fillPct == 0.0 && f.retests == 0, "fraîche");
   CHECK(f.dispAtr > 2.0 && f.dispBody > 0.9, "déplacement mesuré : " << f.dispAtr);
-  CHECK(!f.bos && !f.hasOB, "sans cassure de structure : ni BOS ni OB");
+  CHECK(!f.bos && f.bosTime == 0, "sans cassure de structure");
+  CHECK(f.dispTime == s.time[32], "identifiant du déplacement = bougie i-1");
+  CHECK(!f.duplicate && !f.obConf, "ni doublon ni confluence par défaut");
   CHECK(f.quality > 0.0 && f.quality <= 1.0, "qualité bornée : " << f.quality);
   CHECK(FindFvg(m, -1, 33, false) < 0, "pas de FVG baissière sur ce schéma");
   double qNoBos = f.quality;
-  // déplacement avec BOS : OB objectif = dernière bougie opposée avant le déplacement
+  // déplacement avec BOS : cassure enregistrée (heure de l'événement), qualité supérieure ;
+  // l'Order Block n'est PAS un attribut de la FVG (module distinct)
   CStructure st;
   st.AddEvent(GLS_EVT_BOS_UP, 32, 2000.3, s.CloseTime(32));
   BuildFvg(b, m, st, s);
   k = FindFvg(m, 1, 33, false);
-  CHECK(k >= 0 && m.fvgs[k].bos && !m.fvgs[k].choch && m.fvgs[k].hasOB, "BOS et OB adjacent");
+  CHECK(k >= 0 && m.fvgs[k].bos && !m.fvgs[k].choch && m.fvgs[k].bosTime == s.CloseTime(32), "BOS du déplacement daté");
   if (k >= 0)
-  {
-    CHECK_NEAR(m.fvgs[k].obLo, 1999.7, 1e-9, "OB bas");
-    CHECK_NEAR(m.fvgs[k].obHi, 2000.3, 1e-9, "OB haut");
-    CHECK(m.fvgs[k].quality > qNoBos, "BOS : qualité supérieure, sans double comptage du déplacement");
-  }
+    CHECK(m.fvgs[k].quality > qNoBos, "BOS : qualité supérieure");
   // suivi : retours, comblement, statut
   b.push_back({2002.8, 2002.9, 2000.8, 2001.5}); // 34 : 1er retour, 40 %
   BuildFvg(b, m, none, s);
@@ -2020,7 +2020,7 @@ static void TestFilterAB()
   AbRun rg = RunAb(fam, "regime", [] { RelaxContextFilters(); InpUseRegimeFilter = true; });
   AbRun tr = RunAb(fam, "tendance", [] { RelaxContextFilters(); InpUseTrendFilter = true; });
   AbRun cd = RunAb(fam, "bougies", [] { RelaxContextFilters(); InpCdlBlockOpposing = true; InpCdlBlockIndecision = true; InpCdlBlockExtended = true; });
-  AbRun ob = RunAb(fam, "obstacles", [] { RelaxContextFilters(); InpUseSRObstacles = true; });
+  AbRun ob = RunAb(fam, "obstacles", [] { RelaxContextFilters(); InpUseSRObstacles = true; InpUseFvgObstacles = true; });
   AbRun all = RunAb(fam, "defaut", [] {});
   std::cout << "         F1 entrées (synthétique, sans valeur de performance) : référence " << ref.entries << ", +régime " << rg.entries
             << ", +tendance " << tr.entries << ", +bougies " << cd.entries << ", +obstacles S/R " << ob.entries << ", tous (défaut) " << all.entries << "\n";
@@ -2077,6 +2077,510 @@ static void TestLogVolume()
   CHECK(bad == 0, "niveau par défaut : statuts finaux uniquement (" << bad << " ligne(s) intermédiaire(s))");
 }
 
+
+//==========================================================================
+// v1.11 : Order Blocks (module distinct), confluence, doublons, absence de repaint
+//==========================================================================
+//--- lecture d'un CSV du simulateur (séparateur ';', 1re ligne = en-tête) : une table par nom de colonne
+static std::vector<std::map<std::string, std::string>> ReadCsv(const std::string &content)
+{
+  std::vector<std::map<std::string, std::string>> rows;
+  std::istringstream in(content);
+  std::string line;
+  std::vector<std::string> head;
+  while (std::getline(in, line))
+  {
+    if (!line.empty() && line.back() == '\r')
+      line.pop_back();
+    std::vector<std::string> f;
+    std::string x;
+    std::istringstream ls(line);
+    while (std::getline(ls, x, ';'))
+      f.push_back(x);
+    if (!line.empty() && line.back() == ';')
+      f.push_back("");
+    if (head.empty())
+    {
+      head = f;
+      continue;
+    }
+    std::map<std::string, std::string> r;
+    for (size_t i = 0; i < head.size(); i++)
+      r[head[i]] = (i < f.size()) ? f[i] : "";
+    rows.push_back(r);
+  }
+  return rows;
+}
+
+//--- nombre de lignes dont le nombre de champs diffère de l'en-tête (séparateur ';' dans un texte libre...)
+static int CsvBadRows(const std::string &content)
+{
+  std::istringstream in(content);
+  std::string line;
+  long head = -1;
+  int bad = 0;
+  while (std::getline(in, line))
+  {
+    if (!line.empty() && line.back() == '\r')
+      line.pop_back();
+    long n = (long)std::count(line.begin(), line.end(), ';');
+    if (head < 0)
+      head = n;
+    else if (n != head)
+      bad++;
+  }
+  return bad;
+}
+
+static int FindOb(const COrderBlockMap &m, int dir, datetime obTime)
+{
+  for (int k = 0; k < ArraySize(m.obs); k++)
+    if (m.obs[k].dir == dir && m.obs[k].obTime == obTime)
+      return k;
+  return -1;
+}
+
+static void BuildOb(const std::vector<Bar> &bars, COrderBlockMap &om, const CStructure &st, CBarSeries &s, MqlArray<double> &atr)
+{
+  FillSeries(s, 1741600800, bars);
+  CalcATR(s, 14, atr);
+  om.Build(s, atr, st, 1, 1000);
+}
+
+static void TestOrderBlocks()
+{
+  const std::vector<Bar> b = FvgBullBars();
+  CBarSeries s;
+  MqlArray<double> atr;
+  COrderBlockMap om;
+  FillSeries(s, 1741600800, b);
+  CStructure st;
+  st.AddEvent(GLS_EVT_BOS_UP, 32, 2000.5, s.CloseTime(32));
+  BuildOb(b, om, st, s, atr);
+  int k = FindOb(om, 1, s.time[30]);
+  CHECK(k >= 0 && ArraySize(om.obs) == 1, "OB haussier : dernière bougie baissière avant la cassure");
+  if (k < 0)
+    return;
+  CHECK_NEAR(om.obs[k].lo, 1999.7, 1e-9, "OB bas = bas de la bougie");
+  CHECK_NEAR(om.obs[k].hi, 2000.3, 1e-9, "OB haut = haut de la bougie");
+  CHECK(om.obs[k].created == s.CloseTime(32), "connu à la clôture de la cassure, jamais avant");
+  CHECK(om.obs[k].dispFrom == s.time[31] && om.obs[k].dispTo == s.time[32], "déplacement identifié");
+  CHECK(!om.obs[k].choch && om.obs[k].status == GLS_OB_FRESH && om.obs[k].retests == 0, "BOS, OB frais");
+  std::string obKey = ObKey(om.obs[k]).s;
+  // même déplacement que la FVG : lien enregistré, qualité de la FVG inchangée
+  CFvgMap fm;
+  CZoneMap zm;
+  fm.Build(s, atr, st, zm, 1, 1000, 0.01);
+  int f = FindFvg(fm, 1, 33, false);
+  CHECK(f >= 0, "FVG du même déplacement");
+  if (f >= 0)
+  {
+    double q0 = fm.fvgs[f].quality;
+    LinkFvgOrderBlocks(fm, om, atr);
+    CHECK(fm.fvgs[f].obConf && fm.fvgs[f].obSameDisp && fm.fvgs[f].obKey.s == obKey, "FVG et OB du même déplacement liés et signalés");
+    CHECK(fm.fvgs[f].obKnown == std::max(fm.fvgs[f].created, s.CloseTime(32)), "confluence connue quand les deux zones le sont");
+    CHECK(fm.fvgs[f].quality == q0, "la qualité de la FVG ne dépend pas de l'OB");
+    COrderBlockMap none;
+    LinkFvgOrderBlocks(fm, none, atr);
+    CHECK(!fm.fvgs[f].obConf && !fm.fvgs[f].obSameDisp, "sans OB : aucune confluence");
+  }
+  // OB sans FVG : même cassure, pas d'écart entre les bougies i-2 et i
+  std::vector<Bar> nogap = b;
+  nogap[33] = {2002.5, 2003.0, 2000.4, 2002.8};
+  BuildOb(nogap, om, st, s, atr);
+  fm.Build(s, atr, st, zm, 1, 1000, 0.01);
+  CHECK(FindOb(om, 1, s.time[30]) >= 0 && FindFvg(fm, 1, 33, false) < 0, "Order Block sans FVG");
+  // FVG sans OB : écart présent mais aucune cassure de structure
+  CStructure nost;
+  BuildOb(b, om, nost, s, atr);
+  fm.Build(s, atr, nost, zm, 1, 1000, 0.01);
+  CHECK(ArraySize(om.obs) == 0 && FindFvg(fm, 1, 33, false) >= 0, "FVG sans Order Block");
+  // déplacement insuffisant : pas d'OB
+  InpObMinDispATR = 10.0;
+  BuildOb(b, om, st, s, atr);
+  CHECK(ArraySize(om.obs) == 0, "déplacement insuffisant : pas d'OB");
+  InpObMinDispATR = 1.5;
+  // suivi : retour dans la zone, puis invalidation par une clôture
+  std::vector<Bar> tr = b;
+  tr.push_back({2002.8, 2002.9, 2001.5, 2002.0}); // 34 : hors zone
+  tr.push_back({2002.0, 2002.1, 2000.2, 2000.6}); // 35 : touche 2000.3
+  BuildOb(tr, om, st, s, atr);
+  k = FindOb(om, 1, s.time[30]);
+  CHECK(k >= 0 && om.obs[k].retests == 1 && om.obs[k].status == GLS_OB_TESTED, "OB retesté (1er retour)");
+  tr.push_back({2000.6, 2000.7, 1999.4, 1999.5}); // 36 : clôture sous le bas - tampon
+  BuildOb(tr, om, st, s, atr);
+  k = FindOb(om, 1, s.time[30]);
+  CHECK(k >= 0 && om.obs[k].status == GLS_OB_INVALIDATED && om.obs[k].statusTime == s.CloseTime(36), "OB invalidé par une clôture");
+  CHECK(om.CountActive(1) == 0, "OB invalidé non compté");
+  // symétrie : OB baissier = dernière bougie haussière avant une cassure baissière
+  std::vector<Bar> bear = MirrorBars(b, 4000.0);
+  FillSeries(s, 1741600800, bear);
+  CStructure sb;
+  sb.AddEvent(GLS_EVT_BOS_DOWN, 32, 1999.5, s.CloseTime(32));
+  BuildOb(bear, om, sb, s, atr);
+  k = FindOb(om, -1, s.time[30]);
+  CHECK(k >= 0, "OB baissier (miroir)");
+  if (k >= 0)
+  {
+    CHECK_NEAR(om.obs[k].lo, 1999.7, 1e-9, "OB baissier bas");
+    CHECK_NEAR(om.obs[k].hi, 2000.3, 1e-9, "OB baissier haut");
+  }
+}
+
+static SFvg MakeFvg(int dir, double lo, double hi, int tf, datetime created)
+{
+  SFvg f;
+  f.dir = dir;
+  f.lo = lo;
+  f.hi = hi;
+  f.tfMin = tf;
+  f.created = created;
+  f.i3 = 0;
+  f.sizePts = 0;
+  f.sizeAtr = 0;
+  f.dispAtr = 0;
+  f.dispBody = 0;
+  f.dispTime = created - 120;
+  f.bos = false;
+  f.choch = false;
+  f.bosTime = 0;
+  f.sweep = false;
+  f.ctxDistAtr = -1;
+  f.duplicate = false;
+  f.parentKey = "";
+  f.obConf = false;
+  f.obSameDisp = false;
+  f.obKnown = 0;
+  f.obKey = "";
+  f.retests = 0;
+  f.fillPct = 0;
+  f.status = GLS_FVG_FRESH;
+  f.statusTime = created;
+  f.inverted = false;
+  f.quality = 0.8;
+  f.reason = "test";
+  return f;
+}
+
+static void TestFvgDuplicates()
+{
+  const datetime T = 1741600800 + 3600;
+  CFvgMap parent, child;
+  parent.tfMin = 5;
+  child.tfMin = 1;
+  ArrayResize(parent.fvgs, 1);
+  parent.fvgs[0] = MakeFvg(1, 2000.0, 2001.0, 5, T);
+  ArrayResize(child.fvgs, 3);
+  child.fvgs[0] = MakeFvg(1, 2000.2, 2000.8, 1, T - 300); // même imbalance vue en M1
+  child.fvgs[1] = MakeFvg(1, 2000.2, 2000.8, 1, T + 600); // formée après : autre imbalance
+  child.fvgs[2] = MakeFvg(-1, 2000.2, 2000.8, 1, T - 300); // sens opposé
+  MarkNestedFvgDuplicates(child, parent);
+  CHECK(child.fvgs[0].duplicate && child.fvgs[0].parentKey.s == FvgKey(parent.fvgs[0]).s, "FVG M1 contenue dans la FVG M5 : doublon identifié");
+  CHECK(!child.fvgs[1].duplicate && !child.fvgs[2].duplicate, "pas de doublon hors fenêtre ou de sens opposé");
+  CHECK(child.CountActive(1) == 1, "doublon non compté");
+  // la vue directionnelle n'utilise qu'une fois l'imbalance (unité de trading, hors doublons)
+  InpFvgTF = GLS_FVGTF_M1;
+  CDirView v;
+  v.AddFvgs(child);
+  CHECK(ArraySize(v.fvgZones) == 1 && ArraySize(v.obstacles) == 1, "zones et obstacles hors doublons");
+  InpFvgTF = GLS_FVGTF_M5;
+  CDirView v5;
+  v5.AddFvgs(child);
+  CHECK(ArraySize(v5.fvgZones) == 0 && ArraySize(v5.obstacles) == 0, "FVG d'une autre unité ignorées par F6");
+}
+
+static void SeriesFromRates(const std::vector<MqlRates> &r, size_t n, CBarSeries &s)
+{
+  std::vector<Bar> v;
+  for (size_t i = 0; i < n && i < r.size(); i++)
+    v.push_back({r[i].open, r[i].high, r[i].low, r[i].close});
+  FillSeries(s, r[0].time, v);
+}
+
+//--- tout objet connu à l'instant T est identique, qu'il soit calculé avec les données jusqu'à T
+//--- ou avec des données ultérieures (aucune apparition, disparition ou modification rétroactive)
+static void TestNoRepaint()
+{
+  std::vector<MqlRates> r = GenerateBars(ShimTimegm(2025, 3, 3, 0, 0, 0), 2, 99u, 2900.0);
+  const size_t N = 1200, P = 800;
+  CBarSeries full, pre;
+  SeriesFromRates(r, N, full);
+  SeriesFromRates(r, P, pre);
+  MqlArray<double> aF, aP;
+  CalcATR(full, 14, aF);
+  CalcATR(pre, 14, aP);
+  CStructure sF, sP;
+  sF.Analyze(full, 2, 20, 0.3, 6);
+  sP.Analyze(pre, 2, 20, 0.3, 6);
+  datetime T = pre.CloseTime(pre.count - 1);
+  // structure
+  int known = 0, bad = 0;
+  for (int i = 0; i < ArraySize(sF.highs); i++)
+    if (sF.highs[i].confirmTime <= T)
+      known++;
+  for (int i = 0; i < ArraySize(sP.highs); i++)
+    if (i >= ArraySize(sF.highs) || sF.highs[i].index != sP.highs[i].index || sF.highs[i].confirmTime != sP.highs[i].confirmTime)
+      bad++;
+  CHECK(bad == 0 && known == ArraySize(sP.highs), "sommets confirmés identiques (" << ArraySize(sP.highs) << ")");
+  int evKnown = 0;
+  bad = 0;
+  for (int i = 0; i < ArraySize(sF.events); i++)
+    if (sF.events[i].time <= T)
+      evKnown++;
+  for (int i = 0; i < ArraySize(sP.events); i++)
+    if (i >= ArraySize(sF.events) || sF.events[i].index != sP.events[i].index || sF.events[i].type != sP.events[i].type)
+      bad++;
+  CHECK(bad == 0 && evKnown == ArraySize(sP.events), "BOS/CHOCH connus identiques (" << ArraySize(sP.events) << ")");
+  // FVG
+  CZoneMap zm;
+  CFvgMap fF, fP;
+  fF.Build(full, aF, sF, zm, 1, 5000, 0.01);
+  fP.Build(pre, aP, sP, zm, 1, 5000, 0.01);
+  int fKnown = 0;
+  bad = 0;
+  int bosLost = 0;
+  for (int i = 0; i < ArraySize(fF.fvgs); i++)
+    if (fF.fvgs[i].created <= T)
+      fKnown++;
+  for (int i = 0; i < ArraySize(fP.fvgs); i++)
+  {
+    int m = -1;
+    for (int j = 0; j < ArraySize(fF.fvgs); j++)
+      if (FvgKey(fF.fvgs[j]).s == FvgKey(fP.fvgs[i]).s)
+        m = j;
+    if (m < 0 || fF.fvgs[m].lo != fP.fvgs[i].lo || fF.fvgs[m].hi != fP.fvgs[i].hi || fF.fvgs[m].dispTime != fP.fvgs[i].dispTime)
+      bad++;
+    else if (fP.fvgs[i].bos && !fF.fvgs[m].bos)
+      bosLost++;
+  }
+  CHECK(ArraySize(fP.fvgs) > 10, "échantillon de FVG suffisant : " << ArraySize(fP.fvgs));
+  CHECK(bad == 0 && fKnown == ArraySize(fP.fvgs), "FVG connues à T identiques (" << ArraySize(fP.fvgs) << " / " << fKnown << ")");
+  CHECK(bosLost == 0, "une cassure attribuée à une FVG ne disparaît jamais");
+  // Order Blocks
+  COrderBlockMap oF, oP;
+  oF.Build(full, aF, sF, 1, 5000);
+  oP.Build(pre, aP, sP, 1, 5000);
+  int oKnown = 0;
+  bad = 0;
+  for (int i = 0; i < ArraySize(oF.obs); i++)
+    if (oF.obs[i].created <= T)
+      oKnown++;
+  for (int i = 0; i < ArraySize(oP.obs); i++)
+  {
+    int m = -1;
+    for (int j = 0; j < ArraySize(oF.obs); j++)
+      if (ObKey(oF.obs[j]).s == ObKey(oP.obs[i]).s)
+        m = j;
+    if (m < 0 || oF.obs[m].lo != oP.obs[i].lo || oF.obs[m].hi != oP.obs[i].hi || oF.obs[m].created != oP.obs[i].created)
+      bad++;
+  }
+  CHECK(ArraySize(oP.obs) > 3, "échantillon d'OB suffisant : " << ArraySize(oP.obs));
+  CHECK(bad == 0 && oKnown == ArraySize(oP.obs), "OB connus à T identiques (" << ArraySize(oP.obs) << " / " << oKnown << ")");
+  // zones S/R : les pivots confirmés après T n'entrent pas dans les zones à T
+  CStructure none;
+  CZoneMap zF, zP;
+  zF.Build(sF, none, pre, 1.0, T);
+  zP.Build(sP, none, pre, 1.0, T);
+  bad = (ArraySize(zF.zones) == ArraySize(zP.zones)) ? 0 : 1;
+  for (int i = 0; i < ArraySize(zP.zones) && bad == 0; i++)
+    if (zF.zones[i].lo != zP.zones[i].lo || zF.zones[i].hi != zP.zones[i].hi || zF.zones[i].touches != zP.zones[i].touches)
+      bad++;
+  CHECK(ArraySize(zP.zones) > 0 && bad == 0, "zones à T identiques (" << ArraySize(zP.zones) << ")");
+}
+
+static void TestFvgObConfluence()
+{
+  const datetime T0 = 1741600800;
+  InpUseExternalLevels = false;
+  PrepareCandleContext(ZoneReactionBars(true));
+  CDirView vb;
+  vb.AddZone(vb.fvgZones, 1995.0, 1995.4, 0.8, GLS_LVL_FVG, T0, 1, false, "test");
+  vb.fvgZones[0].id = string("5|1|test");
+  vb.fvgZones[0].tfMin = 5;
+  InpFvgObConfluence = GLS_OBC_REQUIRE;
+  g_zoneDecisions.Clear();
+  SSignal s1;
+  DetectFamily(GLS_FAMILY_FVG, g_ctx, vb, s1);
+  CHECK(!s1.valid && s1.refusal == GLS_REFUSE_NO_CONFLUENCE, "confluence exigée sans OB : refus (" << GlsRefusalText(s1.refusal).s << ")");
+  CHECK(ArraySize(g_zoneDecisions.items) == 1 && g_zoneDecisions.items[0].zoneId.s == "5|1|test"
+            && g_zoneDecisions.items[0].refusal == GLS_REFUSE_NO_CONFLUENCE, "décision de la zone enregistrée pour le journal");
+  vb.fvgZones[0].obConf = true;
+  vb.fvgZones[0].obSame = true;
+  vb.fvgZones[0].confKnown = T0;
+  SSignal s2;
+  DetectFamily(GLS_FAMILY_FVG, g_ctx, vb, s2);
+  CHECK(s2.valid && s2.detail.s.find("OB : oui (même déplacement)") != std::string::npos, "confluence présente : signal, origine signalée");
+  CHECK(s2.cLiq == 0.8 && s2.zoneId.s == "5|1|test" && s2.zoneRetests == 1, "confluence : aucun point de score ajouté ; zone identifiée");
+  vb.fvgZones[0].confKnown = T0 + 112 * 60;
+  SSignal s3;
+  DetectFamily(GLS_FAMILY_FVG, g_ctx, vb, s3);
+  CHECK(!s3.valid, "confluence connue après le contact : ignorée (pas de donnée future)");
+  InpFvgObConfluence = GLS_OBC_OFF;
+  // réaction exigée (défaut) : contact sans réaction = attente, confirmations absentes journalisées
+  ResetEaMemory();
+  InpUseExternalLevels = false;
+  PrepareCandleContext(ZoneReactionBars(false));
+  g_zoneDecisions.Clear();
+  SSignal s4;
+  DetectFamily(GLS_FAMILY_FVG, g_ctx, vb, s4);
+  CHECK(!s4.valid && s4.refusal == GLS_REFUSE_INCOMPLETE, "réaction absente : attente");
+  CHECK(ArraySize(g_zoneDecisions.items) == 1 && g_zoneDecisions.items[0].detail.s.find("CHOCH M1 : non") != std::string::npos
+            && g_zoneDecisions.items[0].detail.s.find("figure : aucune") != std::string::npos, "confirmations absentes indiquées");
+  // variante de recherche : sans réaction exigée (testeur uniquement)
+  InpFvgRequireReaction = false;
+  SSignal s5;
+  DetectFamily(GLS_FAMILY_FVG, g_ctx, vb, s5);
+  CHECK(s5.valid, "variante de recherche « détection seule » : signal sans réaction");
+  InpFvgRequireReaction = true;
+}
+
+static void TestAlignmentDedup()
+{
+  const datetime T0 = 1741600800;
+  InpUseExternalLevels = false;
+  InpUseRegimeFilter = false;
+  InpUseEmaFilter = false;
+  InpMinScore = 0;
+  PrepareCandleContext(ZoneReactionBars(true));
+  CDirView vb;
+  vb.AddZone(vb.fvgZones, 1995.0, 1995.4, 0.8, GLS_LVL_FVG, T0, 1, false, "test");
+  vb.fvgZones[0].bosTime = T0 + 1800;
+  SSignal sig;
+  DetectFamily(GLS_FAMILY_FVG, g_ctx, vb, sig);
+  CHECK(sig.valid && sig.dispEventTime == T0 + 1800, "cassure du déplacement transmise au signal");
+  // tendance M5 haussière par la structure, autres votes défavorables
+  g_ctx.t5.dir = 1;
+  g_ctx.t5.cls = GLS_TCLASS_BULL;
+  g_ctx.t5.structVote = 1;
+  g_ctx.t5.swingVote = 0;
+  g_ctx.t5.emaVote = -1;
+  g_ctx.t5.slopeVote = 0;
+  SSignal other = sig;
+  other.dispEventTime = 0;
+  g_ctx.st5.lastEventTime = T0 + 1800; // la cassure M5 qui fixe la tendance EST celle du déplacement
+  SSignal same = sig;
+  datetime now = T0 + 113 * 60;
+  FinalizeSignal(same, g_ctx, vb, 1996.80, 1997.00, 0.0, now);
+  FinalizeSignal(other, g_ctx, vb, 1996.80, 1997.00, 0.0, now);
+  CHECK_NEAR(other.cAlign, 0.75, 1e-9, "cassure indépendante : alignement M5 compté");
+  CHECK_NEAR(same.cAlign, 0.25, 1e-9, "même cassure : non recomptée dans l'alignement");
+  CHECK(same.criteria.s.find("sans la cassure du déplacement") != std::string::npos, "critère explicite");
+  CHECK(same.score < other.score, "score sans double comptage");
+}
+
+//--- réglage de recherche refusé hors testeur ; protections intactes pour F6
+static void TestFvgResearchAndProtections()
+{
+  SetupMarket(10000.0, 10, 6u);
+  SimState &S = Sim();
+  size_t i0 = IndexAtOrAfter(ShimTimegm(2025, 3, 3, 0, 0, 0) + 7 * 86400 + 9 * 3600);
+  S.now = S.m1[i0].time;
+  S.bid = S.m1[i0].open;
+  S.ask = S.bid + 0.2;
+  InpFvgRequireReaction = false;
+  S.tester = false;
+  CHECK(OnInit() == INIT_PARAMETERS_INCORRECT, "variante sans réaction refusée hors testeur");
+  ResetEaMemory();
+  S.tester = true;
+  CHECK(OnInit() == INIT_SUCCEEDED, "variante sans réaction acceptée dans le testeur");
+  OnDeinit(0);
+  // petit compte : même une FVG bien notée ne contourne pas le volume minimal
+  ResetAll();
+  SetupMarket(10.0, 19, 1234u + (unsigned)GLS_FAMILY_FVG);
+  Sim().currency = "EUR";
+  Sim().usdToAccount = 0.9;
+  RelaxContextFilters();
+  InpFamily = GLS_FAMILY_FVG;
+  InpMinScore = 0;
+  InpNewsMode = GLS_NEWS_OFF;
+  InpUseSessions = false;
+  size_t j0 = StartEa(7);
+  RunStats rs;
+  ReplayBars(j0, Sim().m1.size(), 0.20, rs);
+  CHECK(CountMagicIn() == 0, "compte de 10 : aucune position F6");
+  std::string sig = Sim().files["GLS\\" + g_log.Base().s + "_signals.csv"];
+  CHECK(sig.find("volume minimal > budget de risque") != std::string::npos, "refus « volume minimal » journalisé pour F6");
+}
+
+//--- pipeline F6 : journal des zones, résultat des trades relié à la zone, journal des OB
+static void TestFvgJournal()
+{
+  SetupMarket(10000.0, 19, 1234u + (unsigned)GLS_FAMILY_FVG);
+  RelaxContextFilters();
+  InpFamily = GLS_FAMILY_FVG;
+  InpMinScore = 0;
+  InpNewsMode = GLS_NEWS_OFF;
+  InpUseSessions = false;
+  size_t i0 = StartEa(7);
+  RunStats rs;
+  ReplayBars(i0, Sim().m1.size(), 0.20, rs);
+  FlushTimers(5);
+  CheckRunInvariants(rs, "journal F6");
+  std::string base = "GLS\\" + g_log.Base().s;
+  auto sig = ReadCsv(Sim().files[base + "_signals.csv"]);
+  int waits = 0, execs = 0, noZone = 0;
+  std::set<std::string> seen;
+  int dupRows = 0;
+  for (auto &r : sig)
+  {
+    if (r["decision"] == "ATTENTE")
+      waits++;
+    if (r["decision"] == "EXECUTE")
+      execs++;
+    if (r["family"] == "F6" && r["zone_id"].empty())
+      noZone++;
+    if (r["decision"] == "ATTENTE")
+    {
+      std::string k = r["zone_id"] + "|" + r["dir"] + "|" + r["reason"] + "|" + r["zone_retests"];
+      if (seen.count(k))
+        dupRows++;
+      seen.insert(k);
+    }
+  }
+  CHECK(waits > 0, "zones en attente de réaction journalisées : " << waits);
+  CHECK(execs > 0, "signaux F6 exécutés");
+  CHECK(noZone == 0, "chaque signal F6 porte l'identifiant de sa zone");
+  CHECK(dupRows == 0, "une ligne d'attente par état de zone (pas de répétition à chaque barre)");
+  auto trades = ReadCsv(Sim().files[base + "_trades.csv"]);
+  int linked = 0;
+  for (auto &t : trades)
+    if (!t["zone_id"].empty() && !t["zone_retests"].empty())
+      linked++;
+  CHECK(!trades.empty() && linked == (int)trades.size(), "résultat de chaque trade relié à sa zone (" << linked << "/" << trades.size() << ")");
+  auto fvg = ReadCsv(Sim().files[base + "_fvg.csv"]);
+  int fvgDup = 0;
+  for (auto &f : fvg)
+    if (!f["doublon_de"].empty())
+      fvgDup++;
+  CHECK(!fvg.empty() && fvgDup == 0, "journal FVG : unité de trading, sans doublon");
+  CHECK(!ReadCsv(Sim().files[base + "_ob.csv"]).empty(), "journal des Order Blocks écrit");
+  for (const char *suffix : {"_signals.csv", "_trades.csv", "_fvg.csv", "_ob.csv", "_bougies.csv", "_journal.csv"})
+    CHECK(CsvBadRows(Sim().files[base + suffix]) == 0, "CSV " << suffix << " : nombre de champs constant (" << CsvBadRows(Sim().files[base + suffix]) << " ligne(s) invalide(s))");
+  CHECK(g_engine.fvgDetected >= g_engine.fvgQualified && g_engine.fvgDetected > 0, "compteurs du jour : détectées >= qualifiées");
+  std::string rep = Sim().files[base + "_rapport.txt"];
+  OnDeinit(0);
+  rep = Sim().files[base + "_rapport.txt"];
+  CHECK(rep.find("fraîcheur de la zone") != std::string::npos, "rapport : zones fraîches / revisitées");
+}
+
+//--- variantes du protocole FVG (données synthétiques : invariants et effet des réglages seulement)
+static void TestFvgVariants()
+{
+  AbRun v1 = RunAb(GLS_FAMILY_SWEEP, "fvg1_reference", [] { RelaxContextFilters(); InpUseFvgObstacles = false; });
+  AbRun v2 = RunAb(GLS_FAMILY_FVG, "fvg2_detection", [] { RelaxContextFilters(); InpFvgMinQuality = 0.0; InpFvgMaxRetests = 99; InpFvgRequireReaction = false; });
+  AbRun v3 = RunAb(GLS_FAMILY_FVG, "fvg3_qualite", [] { RelaxContextFilters(); InpFvgMaxRetests = 99; InpFvgRequireReaction = false; });
+  AbRun v4 = RunAb(GLS_FAMILY_FVG, "fvg4_retest_confirmation", [] { RelaxContextFilters(); });
+  AbRun v5 = RunAb(GLS_FAMILY_FVG, "fvg5_confluence_ob", [] { RelaxContextFilters(); InpFvgObConfluence = GLS_OBC_REQUIRE; });
+  AbRun v6 = RunAb(GLS_FAMILY_FVG, "fvg6_filtres", [] {});
+  std::cout << "         variantes FVG (synthétique, sans valeur de performance) : référence F1 " << v1.entries << ", détection seule " << v2.entries
+            << ", + qualité " << v3.entries << ", + retest/confirmation " << v4.entries << ", + confluence OB " << v5.entries << ", + filtres " << v6.entries << "\n";
+  CHECK(v1.entries > 0 && v2.entries > 0, "variantes de référence et de détection actives");
+  for (auto &f : v5.exec)
+    CHECK(f[20].find("OB : oui") != std::string::npos, "confluence exigée : exécution sans OB");
+  for (auto &f : v4.exec)
+    CHECK(f[20].find("figure : aucune, CHOCH M1 : non") == std::string::npos, "réaction exigée : exécution sans réaction");
+}
+
 int main(int argc, char **argv)
 {
   if (argc > 1)
@@ -2104,7 +2608,12 @@ int main(int argc, char **argv)
   RunTest("bougies : confirmation, invalidation, expiration", TestCandleStatus);
   RunTest("tendance et régimes", TestTrendRegime);
   RunTest("supports / résistances", TestZones);
-  RunTest("FVG / IFVG / OB", TestFvg);
+  RunTest("FVG / IFVG", TestFvg);
+  RunTest("Order Blocks (règles propres) et lien FVG", TestOrderBlocks);
+  RunTest("doublons FVG M1 / M5", TestFvgDuplicates);
+  RunTest("absence de repaint (structure, FVG, OB, zones)", TestNoRepaint);
+  RunTest("F6 : confluence OB, réaction, journal des zones", TestFvgObConfluence);
+  RunTest("F6 : cassure du déplacement non recomptée", TestAlignmentDedup);
   RunTest("F5 réaction sur support/résistance + obstacles", TestSRBounce);
   RunTest("F6 retest de FVG", TestFvgRetest);
   RunTest("qualité d'exécution (statistiques)", TestExecStats);
@@ -2129,6 +2638,9 @@ int main(int argc, char **argv)
   RunTest("pannes : délai dépassé", TestExecTimeout);
   RunTest("intégrité : trou de données", TestDataGap);
   RunTest("comparaison A/B des filtres (F1)", TestFilterAB);
+  RunTest("F6 : variante de recherche et protections", TestFvgResearchAndProtections);
+  RunTest("F6 : journal des zones et résultats", TestFvgJournal);
+  RunTest("variantes du protocole FVG", TestFvgVariants);
   RunTest("volume des journaux", TestLogVolume);
   std::cout << "\n" << g_checks << " vérifications, " << g_failures << " échec(s)\n";
   return g_failures == 0 ? 0 : 1;

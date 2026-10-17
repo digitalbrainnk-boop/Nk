@@ -6,6 +6,48 @@ peuvent pas être mélangés avec ceux d'une version précédente, et elle doit 
 retestée (développement, validation, test final, démo). Aucune version n'est
 déployée automatiquement sur un compte réel.
 
+## 1.11 — FVG et Order Blocks distincts, absence de repaint, étude FVG
+
+Statut : compilée en C++ strict (banc de test), tests du banc réussis ;
+**compilation MetaEditor (hôtes MetaQuotes bloqués), testeur MT5, données réelles
+et démo : non vérifiés.** Le seuil de score reste à 80.
+
+Changements de règles (nouvelle variante pour le protocole) :
+
+- **Order Blocks** : module distinct (`OrderBlocks.mqh`) avec ses propres règles
+  (dernière bougie opposée avant une cassure BOS/CHOCH impulsive), suivi des retours
+  et de l'invalidation, journal `_ob.csv`. L'OB ne fait plus partie de la qualité
+  d'une FVG.
+- **Confluence FVG + OB** : option `InpFvgObConfluence` (ignorée par défaut),
+  filtre de sélection sans point de score ; le lien indique si l'OB provient du
+  même déplacement que la FVG.
+- **Pas de double comptage** : la cassure produite par le déplacement d'une FVG
+  n'est plus recomptée dans l'alignement M5 quand c'est elle qui fixe la tendance M5.
+- **Doublons entre unités** : FVG M1 contenues dans une FVG M5 marquées et ignorées ;
+  zones S/R avec leur origine (`M5`, `M15`, `M5+M15`).
+- **Absence de repaint** : sélection des pivots des zones parmi les seuls pivots
+  confirmés à l'instant de l'analyse (une sélection pouvait dépendre du nombre de
+  pivots ultérieurs) ; test dédié.
+- **F6** : réaction exigée par défaut ; `InpFvgRequireReaction = false` réservé à
+  la recherche (refus de démarrer hors testeur) ; obstacles FVG séparés des
+  obstacles S/R (`InpUseFvgObstacles`).
+
+Journal et suivi :
+
+- décisions par zone (`ATTENTE` / `REFUS`) une fois par changement d'état, motif
+  précis, confirmations présentes / absentes ; colonnes de zone dans `_signals.csv`
+  et `_trades.csv` (résultat relié à la zone) ; identifiant et attributs complets
+  dans `_fvg.csv` ; textes libres nettoyés du séparateur `;` (un détail de F6 en
+  contenait et décalait les colonnes) ;
+- tableau de bord : FVG du jour détectées / qualifiées / retestées / invalidées,
+  OB actifs ; rapport EA par fraîcheur de la zone.
+
+Outil d'analyse : répartition zones fraîches / revisitées, « Verdict des filtres »
+(CONSERVER seulement si gain en développement ET validation, sinon DÉSACTIVER).
+Préréglages des 6 variantes de l'étude FVG (`tester/sets/fvg_*.set`). Banc de
+test : 49 tests, dont Order Blocks, doublons, absence de repaint, confluence,
+non-recomptage, protections F6, journal, variantes, cohérence des CSV.
+
 ## 1.10 — modules d'analyse, familles F5 / F6, audit de robustesse
 
 Statut : compilée en C++ strict (banc de test), tests du banc réussis ;

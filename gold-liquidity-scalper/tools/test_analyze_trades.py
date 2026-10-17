@@ -16,7 +16,7 @@ HEADER = ("env;account;symbol;position_id;family;dir;hash;score;retest;session;o
 
 def make_csv(path, family, mean_r, n, seed, start=dt.datetime(2021, 1, 4), env="BACKTEST", label=None):
     rng = random.Random(seed)
-    lines = [HEADER + (";regime;label;candle" if label else "")]
+    lines = [HEADER + (";regime;label;candle;zone_id;zone_retests;zone_quality" if label else "")]
     t = start
     for i in range(n):
         r = rng.gauss(mean_r, 1.0)
@@ -31,7 +31,8 @@ def make_csv(path, family, mean_r, n, seed, start=dt.datetime(2021, 1, 4), env="
             "%.2f" % risk, "200.0", "%.2f" % net, "%.2f" % net, "0.00", "0.00", "0.00", "%.3f" % r,
             "SL" if r < 0 else "TP", "3", "1.0", "20.0", "0.60", "1.00", "0.50", "0.01"]
         if label:
-            cols += ["TENDANCE" if i % 2 else "RANGE", label, "marteau" if i % 3 == 0 else ""]
+            cols += ["TENDANCE" if i % 2 else "RANGE", label, "marteau" if i % 3 == 0 else "",
+                     "5|1|%d" % (1741600800 + i * 300), str(1 + i % 3), "0.70"]
         lines.append(";".join(cols))
         t += dt.timedelta(hours=9)
     with open(path, "w", encoding="utf-8") as fh:
@@ -177,9 +178,29 @@ class TestProtocol(unittest.TestCase):
         self.assertIn("Régime à l'entrée", rep)
         self.assertIn("| TENDANCE |", rep)
         self.assertIn("Figure de bougie retenue", rep)
+        self.assertIn("| zone fraîche (1er retour) |", rep)
+        self.assertIn("| zone déjà revisitée |", rep)
+        self.assertIn("Verdict des filtres (référence : F1|reference)", rep)
+        self.assertIn("| F1|bougies | **CONSERVER (candidat)** |", rep)
         bad = [ref, "--group-by", "label", "--baseline", "F1|absente", "--dev", "2021-01-01:2021-12-31",
                "--val", "2022-01-01:2022-06-30", "--out", self.out]
         self.assertEqual(at.main(bad), 3)
+
+    def test_filter_disabled_when_not_better(self):
+        ref = os.path.join(self.tmp, "ref_trades.csv")
+        worse = os.path.join(self.tmp, "worse_trades.csv")
+        few = os.path.join(self.tmp, "few_trades.csv")
+        make_csv(ref, "F6", 0.2, 1400, 9, label="reference")
+        make_csv(worse, "F6", 0.0, 1400, 10, label="filtre_inutile")
+        make_csv(few, "F6", 0.6, 60, 11, label="filtre_trop_strict")
+        args = [ref, worse, few, "--group-by", "label", "--baseline", "F6|reference", "--dev", "2021-01-01:2021-12-31",
+                "--val", "2022-01-01:2022-06-30", "--variants", "3", "--out", self.out]
+        self.assertEqual(at.main(args), 0)
+        with open(self.out, encoding="utf-8") as fh:
+            rep = fh.read()
+        self.assertIn("| F6|filtre_inutile | **DÉSACTIVER** |", rep)
+        self.assertIn("| F6|filtre_trop_strict | **DÉSACTIVER** |", rep)
+        self.assertIn("trades <", rep)
 
     def test_mixed_env_warning(self):
         demo = os.path.join(self.tmp, "demo_trades.csv")

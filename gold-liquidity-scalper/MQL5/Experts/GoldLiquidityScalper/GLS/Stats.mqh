@@ -53,6 +53,9 @@ struct STradeRecord
    string            lastOutComment;
    int               regime;
    int               candleId;
+   string            zoneId;        // zone d'origine (F6 : FVG), vide sinon ou si le plan a été reconstruit
+   int               zoneRetests;
+   double            zoneQuality;
   };
 
 void TradeRecordReset(STradeRecord &r)
@@ -89,6 +92,9 @@ void TradeRecordReset(STradeRecord &r)
    r.lastOutComment = "";
    r.regime = 0;
    r.candleId = 0;
+   r.zoneId = "";
+   r.zoneRetests = 0;
+   r.zoneQuality = 0.0;
   }
 
 //--- Commentaire d'entrée : "GLS<famille><B|S>[R] <score> <hash>", ex. "GLS1B 86 7F3A9C"
@@ -507,9 +513,10 @@ public:
 
    string            Breakdown(const int mode) const
      {
-      //--- mode 0 = session, 1 = famille, 2 = raison de sortie, 3 = tranche de score, 4 = régime
+      //--- mode 0 = session, 1 = famille, 2 = raison de sortie, 3 = tranche de score, 4 = régime,
+      //--- 5 = fraîcheur de la zone (0 sans zone, 1 premier retour, 2 zone déjà revisitée)
       string out = "";
-      int maxKey = (mode == 0) ? 5 : (mode == 1 ? GLS_FAMILY_MAX + 1 : (mode == 2 ? GLS_EXIT_COUNT : (mode == 3 ? 11 : GLS_RG_DISORDER + 1)));
+      int maxKey = (mode == 0) ? 5 : (mode == 1 ? GLS_FAMILY_MAX + 1 : (mode == 2 ? GLS_EXIT_COUNT : (mode == 3 ? 11 : (mode == 4 ? GLS_RG_DISORDER + 1 : 3))));
       for(int key = 0; key < maxKey; key++)
         {
          int c = 0;
@@ -534,7 +541,10 @@ public:
                      if(mode == 3)
                         k = (int)MathFloor(trades[i].score / 10.0);
                      else
-                        k = trades[i].regime;
+                        if(mode == 4)
+                           k = trades[i].regime;
+                        else
+                           k = (StringLen(trades[i].zoneId) == 0) ? 0 : ((trades[i].zoneRetests <= 1) ? 1 : 2);
             if(k != key)
                continue;
             c++;
@@ -560,7 +570,10 @@ public:
                   if(mode == 3)
                      label = StringFormat("score %d-%d", key * 10, key * 10 + 9);
                   else
-                     label = RegimeCode(key);
+                     if(mode == 4)
+                        label = RegimeCode(key);
+                     else
+                        label = (key == 0) ? "sans zone suivie" : ((key == 1) ? "zone fraîche (1er retour)" : "zone déjà revisitée");
          out += GroupLine(label, c, w, s, r, rc);
         }
       return out;
@@ -585,6 +598,7 @@ public:
       t += "\r\nPar méthode de sortie :\r\n" + Breakdown(2);
       t += "\r\nPar tranche de score (contrôle de calibration) :\r\n" + Breakdown(3);
       t += "\r\nPar régime de marché à l'entrée :\r\n" + Breakdown(4);
+      t += "\r\nPar fraîcheur de la zone (F6) :\r\n" + Breakdown(5);
       return t;
      }
 
@@ -592,7 +606,7 @@ public:
      {
       string h = "env;account;symbol;position_id;family;dir;hash;score;retest;session;open_time;close_time;duration_s;entry;exit;volume;";
       h += "risk_money;risk_points;net;gross;commission;swap;fee;r_multiple;exit_reason;exit_plan;slippage_pts;spread_pts;est_cost;mfe_r;mae_r;point;";
-      h += "regime;label;candle";
+      h += "regime;label;candle;zone_id;zone_retests;zone_quality";
       return h;
      }
 
@@ -611,7 +625,8 @@ public:
                    + GlsExitCode(r.exitReason) + ";" + IntegerToString(r.exitPlan) + ";" + DoubleToString(r.slippagePts, 1) + ";"
                    + DoubleToString(r.spreadPts, 1) + ";" + DoubleToString(r.estCost, 2) + ";"
                    + DoubleToString(r.mfeR, 2) + ";" + DoubleToString(r.maeR, 2) + ";" + DoubleToString(g_sym.point, g_sym.digits) + ";"
-                   + RegimeCode(r.regime) + ";" + InpRunLabel + ";" + ((r.candleId > 0) ? CandleCode(r.candleId) : "");
+                   + RegimeCode(r.regime) + ";" + InpRunLabel + ";" + ((r.candleId > 0) ? CandleCode(r.candleId) : "") + ";"
+                   + r.zoneId + ";" + IntegerToString(r.zoneRetests) + ";" + DoubleToString(r.zoneQuality, 2);
       return row;
      }
   };

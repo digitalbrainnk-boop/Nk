@@ -6,11 +6,12 @@ de bénéfices partielles, protections journalières, reprise après redémarrag
 tableau de bord avec boutons, statistiques et journal détaillés, et protocole de
 comparaison de six familles de stratégies.
 
-Version **1.10** (voir [CHANGELOG.md](CHANGELOG.md)) : analyse des bougies
+Version **1.11** (voir [CHANGELOG.md](CHANGELOG.md)) : analyse des bougies
 japonaises, tendance par votes et régimes de marché, supports / résistances
-dynamiques, FVG / IFVG / Order Blocks, familles F5 (réaction sur support /
-résistance) et F6 (retest de FVG), mesure de la qualité d'exécution, alertes,
-contrôle d'intégrité des données, comparaisons A/B et Monte-Carlo. État
+dynamiques, FVG / IFVG et Order Blocks (deux modules distincts), familles F5
+(réaction sur support / résistance) et F6 (retest de FVG), mesure de la qualité
+d'exécution, alertes, contrôle d'intégrité des données, absence de repaint
+vérifiée, comparaisons A/B, étude FVG en 6 variantes et Monte-Carlo. État
 vérifié exigence par exigence : [docs/AUDIT.md](docs/AUDIT.md).
 
 > **Avertissements**
@@ -59,7 +60,8 @@ gold-liquidity-scalper/
 │       ├── Candles.mqh              bougies japonaises : mesures, figures, statuts
 │       ├── Trend.mqh                tendance par votes, régimes de marché
 │       ├── Zones.mqh                supports / résistances dynamiques
-│       ├── Fvg.mqh                  FVG, IFVG, Order Blocks
+│       ├── Fvg.mqh                  FVG, IFVG, doublons entre unités, lien avec les OB
+│       ├── OrderBlocks.mqh          Order Blocks (règles propres)
 │       ├── Signals.mqh              6 familles de signaux, score, refus
 │       ├── Risk.mqh                 calcul du volume, découpage des sorties
 │       ├── Execution.mqh            envoi et vérification des ordres, qualité d'exécution
@@ -201,8 +203,11 @@ comparaisons A/B) :
 - **supports / résistances** dynamiques (pivots confirmés, largeur adaptée à
   l'ATR, réactions indépendantes, zones M15 majeures, inversion de rôle seulement
   après confirmation) : pas d'achat dans ou juste sous une résistance ;
-- **FVG / IFVG / Order Blocks** : définitions exactes sur 3 bougies, qualité,
-  suivi des retours et du comblement ; une FVG ne déclenche jamais seule.
+- **FVG / IFVG** : définitions exactes sur 3 bougies, qualité, suivi des retours
+  et du comblement, doublons M1/M5 écartés ; une FVG ne déclenche jamais seule ;
+- **Order Blocks** : module distinct (dernière bougie opposée avant une cassure
+  impulsive) ; la confluence FVG + OB est une option de filtre, sans point de
+  score, à conserver seulement si l'étude le justifie.
 
 Paramètres ajoutés en v1.10 (onglet « Paramètres » de l'EA, valeurs par défaut et
 règles exactes dans [docs/STRATEGIE.md](docs/STRATEGIE.md)) :
@@ -215,7 +220,8 @@ règles exactes dans [docs/STRATEGIE.md](docs/STRATEGIE.md)) :
 | Régimes de marché | `InpUseRegimeFilter`, `InpRegimeVolatileRatio`, `InpRegimeChopAlternation`, `InpRegimesF1` … `InpRegimesF6` |
 | Bougies japonaises | `InpCdlDisabled`, seuils de forme (`InpCdlDojiBodyRatio`, `InpCdlWickRatio`…), `InpCdlConfirmBars`, `InpCdlBlockOpposing`, `InpCdlBlockIndecision`, `InpCdlBlockExtended`, `InpCdlRequirePattern` |
 | Supports / résistances | `InpZoneMergeATR`, `InpZonePadATR`, `InpZoneMinTouches`, `InpZoneMinSeparationBars`, `InpZoneBreakCloses`, `InpUseSRObstacles`, `InpSRMinStrength`, `InpSRReactBars` |
-| FVG / imbalances | `InpFvgTF`, `InpFvgMinSizeATR`, `InpFvgMinDispATR`, `InpFvgMinQuality`, `InpFvgMaxRetests`, `InpFvgMaxAgeBars`, `InpUseIFVG`, poids `InpFvgW*` |
+| FVG / imbalances | `InpFvgTF`, `InpFvgMinSizeATR`, `InpFvgMinDispATR`, `InpFvgMinQuality`, `InpFvgMaxRetests`, `InpFvgMaxAgeBars`, `InpUseIFVG`, `InpFvgRequireReaction` (recherche uniquement si false), `InpFvgObConfluence`, `InpUseFvgObstacles`, poids `InpFvgW*` |
+| Order Blocks | `InpObLookback`, `InpObMinDispATR`, `InpObInvalidBufferATR`, `InpObConfluenceATR` |
 | Score | `InpWCandle` (nouveau), `InpWTrigger`, `InpWStructure` ; `InpMinScore` reste à 80 |
 | Alertes | `InpAlertPopup`, `InpAlertPush`, `InpAlertMail`, `InpAlertThrottleSec`, catégories `InpAlert*` |
 
@@ -335,7 +341,8 @@ avec l'environnement dans le nom (`BACKTEST`, `DEMO`, `REEL`) :
 | `..._signals.csv` | chaque configuration complète : composantes du score, décision, raison, critères satisfaits / échoués, figure, régime, tendances, libellé |
 | `..._trades.csv` | une ligne par **position** clôturée (partiels agrégés), avec régime, libellé et figure à l'entrée |
 | `..._bougies.csv` | figures de bougies interprétables, à leur statut final (confirmée / invalidée / expirée) avec leurs mesures et leur contexte (`InpLogCandles` : aucun / principal / tout) |
-| `..._fvg.csv` | FVG M5 : création puis comblement ou invalidation, avec tous leurs attributs (`InpLogFvg`) |
+| `..._fvg.csv` | FVG de l'unité de trading (hors doublons) : identifiant, création, 1er retour, comblement ou invalidation, avec tous leurs attributs et le lien éventuel avec un OB (`InpLogFvg`) |
+| `..._ob.csv` | Order Blocks : création, 1er retour, invalidation |
 | `..._rapport.txt` | synthèse : trades, réussite, PF, espérance (devise et R), drawdown, série de pertes, coûts observés et estimés, glissement, durée, et répartitions par session / famille / sortie / tranche de score |
 
 Taux de réussite = positions gagnantes / positions clôturées × 100. Le résultat
@@ -365,7 +372,8 @@ MetaTrader (`tests/`, lancer `tests/run_checks.sh`) :
 2. **Compilation C++ stricte** du code de l'EA (g++ et clang++, avertissements
    traités comme erreurs : conversions implicites, masquage de variables,
    comparaisons signées…) avec une couche reproduisant les signatures MQL5 utilisées.
-3. **41 tests** (1923 vérifications) exécutant réellement le code de l'EA contre un
+3. **49 tests** (2793 vérifications, g++ ; passes clang++ et sanitizers v1.11 :
+   voir `docs/AUDIT.md` ligne 51) exécutant réellement le code de l'EA contre un
    courtier simulé : heures d'été, indicateurs, BOS/CHOCH, détection des 6 familles
    (dont le cas « cassure qui continue » refusé), mesures et figures de bougies
    (haussières et miroirs baissiers, amplitude nulle, confirmation / invalidation /
@@ -380,14 +388,17 @@ MetaTrader (`tests/`, lancer `tests/run_checks.sh`) :
    boutons et lignes du tableau de bord, compte réel, petit compte, coupure de
    connexion, pannes d'exécution injectées (requotes, erreurs non récupérables →
    suspension, délai dépassé), alertes, trou de données, comparaison A/B des
-   filtres, volume des journaux. Les accès hors limites de tableau et les
+   filtres, volume des journaux, Order Blocks, doublons FVG M1/M5, absence de
+   repaint, confluence FVG + OB, non-recomptage de la cassure, protections et
+   journal de F6, variantes de l'étude FVG, cohérence des CSV. Les accès hors limites de tableau et les
    divisions par zéro font échouer les tests ; `tests/build/gls_tests "motif"`
    lance un sous-ensemble.
-4. **Analyse mémoire** : les 41 tests ont aussi été exécutés sous
+4. **Analyse mémoire** : les 41 tests de la v1.10 ont aussi été exécutés sous
    AddressSanitizer et UndefinedBehaviorSanitizer : aucune erreur mémoire, aucune
    fuite, aucun comportement indéfini signalé.
-5. **Outil d'analyse** : 12 tests Python (statistiques, Monte-Carlo, comparaison
-   A/B, verrouillage du test final, rapports).
+5. **Outil d'analyse** : 13 tests Python (statistiques, Monte-Carlo, comparaison
+   A/B, verdict des filtres, zones fraîches / revisitées, verrouillage du test
+   final, rapports).
 
 Ce banc **ne remplace pas** la compilation MetaEditor ni le testeur MT5 : le
 courtier simulé est simplifié et les données sont synthétiques (sans valeur de

@@ -54,6 +54,11 @@ struct SPlan
    int               stopFailures;
    int               regime;         // régime de marché à l'entrée (statistiques)
    int               candleId;       // figure de bougie retenue comme preuve à l'entrée
+   int               zoneTf;         // zone d'origine (F6 : FVG) : unité (0 = aucune)
+   datetime          zoneTime;       // ... création
+   bool              zoneInv;        // ... IFVG
+   int               zoneRetests;    // ... retours à l'entrée (contact compris)
+   double            zoneQuality;    // ... qualité à l'entrée
   };
 
 void PlanReset(SPlan &p)
@@ -93,6 +98,11 @@ void PlanReset(SPlan &p)
    p.stopFailures = 0;
    p.regime = 0;
    p.candleId = 0;
+   p.zoneTf = 0;
+   p.zoneTime = 0;
+   p.zoneInv = false;
+   p.zoneRetests = 0;
+   p.zoneQuality = 0.0;
   }
 
 string PlanHash(const SPlan &p)
@@ -132,6 +142,11 @@ void PlanSave(const SPlan &p)
    g_store.PosSet(t, "rec", p.recovered ? 1.0 : 0.0);
    g_store.PosSet(t, "rg", p.regime);
    g_store.PosSet(t, "cdl", p.candleId);
+   g_store.PosSet(t, "ztf", p.zoneTf);
+   g_store.PosSet(t, "ztm", (double)p.zoneTime);
+   g_store.PosSet(t, "zin", p.zoneInv ? 1.0 : 0.0);
+   g_store.PosSet(t, "zrt", p.zoneRetests);
+   g_store.PosSet(t, "zq", p.zoneQuality);
    g_store.PosSet(t, "dir", p.dir);   // écrit en dernier : marque un plan complet
   }
 
@@ -171,6 +186,11 @@ bool PlanLoad(const ulong ticket, SPlan &p)
    p.recovered = (g_store.PosGet(ticket, "rec", 0.0) > 0.5);
    p.regime = (int)g_store.PosGet(ticket, "rg", 0.0);
    p.candleId = (int)g_store.PosGet(ticket, "cdl", 0.0);
+   p.zoneTf = (int)g_store.PosGet(ticket, "ztf", 0.0);
+   p.zoneTime = (datetime)g_store.PosGet(ticket, "ztm", 0.0);
+   p.zoneInv = (g_store.PosGet(ticket, "zin", 0.0) > 0.5);
+   p.zoneRetests = (int)g_store.PosGet(ticket, "zrt", 0.0);
+   p.zoneQuality = g_store.PosGet(ticket, "zq", 0.0);
    return (p.dir == GLS_BUY || p.dir == GLS_SELL);
   }
 
@@ -655,6 +675,10 @@ public:
          rec.session = plans[i].session;
          rec.regime = plans[i].regime;
          rec.candleId = plans[i].candleId;
+         rec.zoneId = (plans[i].zoneTf > 0) ? IntegerToString(plans[i].zoneTf) + "|" + IntegerToString(plans[i].dir) + "|"
+                      + IntegerToString((long)plans[i].zoneTime) + (plans[i].zoneInv ? "|I" : "") : "";
+         rec.zoneRetests = plans[i].zoneRetests;
+         rec.zoneQuality = plans[i].zoneQuality;
          rec.mfeR = plans[i].mfeR;
          rec.maeR = plans[i].maeR;
          rec.spreadPts = (g_sym.point > 0.0) ? plans[i].spreadAtEntry / g_sym.point : 0.0;

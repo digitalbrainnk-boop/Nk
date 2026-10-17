@@ -1,4 +1,4 @@
-; Gold Liquidity Scalper v1.10 - passage de RECHERCHE (calibration du score)
+; Gold Liquidity Scalper v1.11 - passage de RECHERCHE (calibration du score)
 ; Seuil de score à 0 : toutes les configurations complètes passant les autres
 ; contrôles sont exécutées, pour mesurer la relation score -> résultat
 ; (rapport "par tranche de score"). NE PAS utiliser en réel.

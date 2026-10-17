@@ -18,14 +18,18 @@
 //| Statuts : fraîche, partiellement comblée, comblée, invalidée.    |
 //| IFVG (désactivé par défaut) : une FVG invalidée devient une zone |
 //|   de sens opposé, suivie avec les mêmes règles.                  |
-//| Order Block (définition objective retenue) : dernière bougie de  |
-//|   couleur opposée parmi les 3 bougies précédant le déplacement,  |
-//|   uniquement si le déplacement a produit un BOS/CHOCH.           |
+//| Les Order Blocks sont un concept DISTINCT (OrderBlocks.mqh) : la |
+//|   qualité d'une FVG ne dépend pas de la présence d'un OB ; le    |
+//|   lien FVG / OB (même déplacement ou non) est seulement noté.    |
+//| Doublons : une FVG M1 contenue dans une FVG M5 du même sens et   |
+//|   formée pendant ses 3 bougies est la même imbalance vue à une   |
+//|   unité inférieure : marquée « doublon » et non comptée.         |
 //+------------------------------------------------------------------+
 #ifndef GLS_FVG_MQH
 #define GLS_FVG_MQH
 
 #include "Zones.mqh"
+#include "OrderBlocks.mqh"
 
 #define GLS_FVG_FRESH       0
 #define GLS_FVG_PARTIAL     1
@@ -56,13 +60,18 @@ struct SFvg
    double            sizeAtr;
    double            dispAtr;      // amplitude de la bougie de déplacement / ATR
    double            dispBody;     // corps / amplitude de la bougie de déplacement
+   datetime          dispTime;     // ouverture de la bougie de déplacement (identifiant du déplacement)
    bool              bos;
    bool              choch;
+   datetime          bosTime;      // heure de la cassure produite par le déplacement (0 = aucune)
    bool              sweep;
-   bool              hasOB;
-   double            obLo;
-   double            obHi;
-   double            ctxDistAtr;   // distance à la zone S/R favorable ou à l'OB la plus proche (ATR), -1 si aucune
+   double            ctxDistAtr;   // distance à la zone S/R favorable la plus proche (ATR), -1 si aucune
+   bool              duplicate;    // imbalance déjà représentée par une FVG d'unité supérieure
+   string            parentKey;
+   bool              obConf;       // Order Block actif du même sens au contact ou à <= InpObConfluenceATR
+   bool              obSameDisp;   // ... issu du MÊME déplacement (information non indépendante)
+   datetime          obKnown;      // instant où la confluence est connue
+   string            obKey;
    int               retests;
    double            fillPct;
    int               status;
@@ -141,14 +150,14 @@ void ScoreFvg(SFvg &f)
          else
             if(f.retests == 2)
                qFresh = 0.4;
+   //--- contexte : zone S/R favorable proche (l'Order Block n'entre PAS dans la qualité)
    double qCtx = (f.ctxDistAtr >= 0.0 && f.ctxDistAtr <= 1.0) ? 1.0 : 0.5;
    double w = InpFvgWDisp + InpFvgWSize + InpFvgWStructure + InpFvgWSweep + InpFvgWFresh + InpFvgWContext;
    f.quality = SafeDiv(InpFvgWDisp * qDisp + InpFvgWSize * qSize + InpFvgWStructure * qStruct + InpFvgWSweep * qSweep
                        + InpFvgWFresh * qFresh + InpFvgWContext * qCtx, w, 0.0);
-   f.reason = StringFormat("dépl. %.1f ATR (corps %.0f %%), taille %.2f ATR, %s, %s, %d retour(s), comblement %.0f %%, %s%s",
+   f.reason = StringFormat("dépl. %.1f ATR (corps %.0f %%), taille %.2f ATR, %s, %s, %d retour(s), comblement %.0f %%, %s",
                            f.dispAtr, 100.0 * f.dispBody, f.sizeAtr, f.choch ? "CHOCH" : (f.bos ? "BOS" : "sans cassure de structure"),
-                           f.sweep ? "après balayage" : "sans balayage", f.retests, 100.0 * f.fillPct, FvgStatusText(f.status),
-                           f.hasOB ? ", OB adjacent" : "");
+                           f.sweep ? "après balayage" : "sans balayage", f.retests, 100.0 * f.fillPct, FvgStatusText(f.status));
   }
 
 class CFvgMap
@@ -238,24 +247,22 @@ public:
                continue;   // écart négligeable : bruit
             f.dispAtr = rng / a;
             f.dispBody = MathAbs(s.close[i - 1] - s.open[i - 1]) / rng;
+            f.dispTime = s.time[i - 1];
+            //--- cassure produite par le déplacement : barres i-1 à i+2 DÉJÀ clôturées (mise à jour
+            //--- de l'attribut pendant 2 barres, jamais d'apparition rétroactive de la zone)
             bool isChoch = false;
-            f.bos = st.BreakBetween(d, i - 1, MathMin(i + 2, last), isChoch);
+            datetime evTime = 0;
+            f.bos = st.BreakBetween(d, i - 1, MathMin(i + 2, last), isChoch, evTime);
             f.choch = f.bos && isChoch;
+            f.bosTime = f.bos ? evTime : 0;
             f.sweep = SweepBefore(s, st, d, i);
-            //--- Order Block objectif
-            f.hasOB = false;
-            f.obLo = 0.0;
-            f.obHi = 0.0;
-            if(f.bos)
-               for(int k = i - 2; k >= MathMax(0, i - 4); k--)
-                  if((double)d * (s.close[k] - s.open[k]) < 0.0)
-                    {
-                     f.hasOB = true;
-                     f.obLo = s.low[k];
-                     f.obHi = s.high[k];
-                     break;
-                    }
-            //--- contexte : zone S/R de rôle favorable ou OB à proximité
+            f.duplicate = false;
+            f.parentKey = "";
+            f.obConf = false;
+            f.obSameDisp = false;
+            f.obKnown = 0;
+            f.obKey = "";
+            //--- contexte : zone S/R de rôle favorable à proximité
             f.ctxDistAtr = -1.0;
             int favRole = (d > 0) ? GLS_ZONE_SUPPORT : GLS_ZONE_RESIST;
             for(int z = 0; z < ArraySize(zm.zones); z++)
@@ -266,12 +273,6 @@ public:
                double da = dist / a;
                if(f.ctxDistAtr < 0.0 || da < f.ctxDistAtr)
                   f.ctxDistAtr = da;
-              }
-            if(f.hasOB)
-              {
-               double dob = (lo > f.obHi) ? (lo - f.obHi) / a : ((f.obLo > hi) ? (f.obLo - hi) / a : 0.0);
-               if(f.ctxDistAtr < 0.0 || dob < f.ctxDistAtr)
-                  f.ctxDistAtr = dob;
               }
             f.inverted = false;
             TrackFvg(s, atr, f, i);
@@ -289,7 +290,9 @@ public:
                   g.created = f.statusTime;
                   g.i3 = k0;
                   g.sweep = false;
-                  g.hasOB = false;
+                  g.bos = false;
+                  g.choch = false;
+                  g.bosTime = 0;
                   TrackFvg(s, atr, g, k0);
                   ScoreFvg(g);
                   g.reason = "IFVG : " + g.reason;
@@ -311,7 +314,7 @@ public:
      {
       int c = 0;
       for(int i = 0; i < ArraySize(fvgs); i++)
-         if(fvgs[i].dir == dir && (fvgs[i].status == GLS_FVG_FRESH || fvgs[i].status == GLS_FVG_PARTIAL))
+         if(fvgs[i].dir == dir && !fvgs[i].duplicate && (fvgs[i].status == GLS_FVG_FRESH || fvgs[i].status == GLS_FVG_PARTIAL))
             c++;
       return c;
      }
@@ -320,6 +323,79 @@ public:
 string FvgKey(const SFvg &f)
   {
    return IntegerToString(f.tfMin) + "|" + IntegerToString(f.dir) + "|" + IntegerToString((long)f.created) + (f.inverted ? "|I" : "");
+  }
+
+//+------------------------------------------------------------------+
+//| Doublons entre unités : une FVG de l'unité inférieure (child)    |
+//| recouverte à >= 50 % par une FVG de l'unité supérieure (parent)  |
+//| du même sens, et formée pendant les 3 bougies du parent, est la  |
+//| même imbalance : marquée doublon (non comptée, non tradée, non   |
+//| utilisée comme obstacle).                                        |
+//+------------------------------------------------------------------+
+void MarkNestedFvgDuplicates(CFvgMap &child, const CFvgMap &parent)
+  {
+   int span = 3 * parent.tfMin * 60;
+   for(int i = 0; i < ArraySize(child.fvgs); i++)
+     {
+      child.fvgs[i].duplicate = false;
+      child.fvgs[i].parentKey = "";
+      double w = child.fvgs[i].hi - child.fvgs[i].lo;
+      if(w <= 0.0)
+         continue;
+      for(int p = 0; p < ArraySize(parent.fvgs); p++)
+        {
+         if(parent.fvgs[p].dir != child.fvgs[i].dir || parent.fvgs[p].inverted != child.fvgs[i].inverted)
+            continue;
+         datetime pc = parent.fvgs[p].created;
+         if(child.fvgs[i].created > pc || child.fvgs[i].created < pc - span)
+            continue;
+         double ov = MathMin(child.fvgs[i].hi, parent.fvgs[p].hi) - MathMax(child.fvgs[i].lo, parent.fvgs[p].lo);
+         if(ov >= 0.5 * w)
+           {
+            child.fvgs[i].duplicate = true;
+            child.fvgs[i].parentKey = FvgKey(parent.fvgs[p]);
+            break;
+           }
+        }
+     }
+  }
+
+//+------------------------------------------------------------------+
+//| Lien FVG / Order Block (même unité, même sens, OB non invalidé,  |
+//| zones en contact ou à <= InpObConfluenceATR x ATR). On préfère   |
+//| un OB issu du MÊME déplacement s'il existe, et on le signale :   |
+//| dans ce cas FVG, OB et cassure sont une seule information.       |
+//+------------------------------------------------------------------+
+void LinkFvgOrderBlocks(CFvgMap &fm, const COrderBlockMap &om, const double &atr[])
+  {
+   for(int i = 0; i < ArraySize(fm.fvgs); i++)
+     {
+      fm.fvgs[i].obConf = false;
+      fm.fvgs[i].obSameDisp = false;
+      fm.fvgs[i].obKnown = 0;
+      fm.fvgs[i].obKey = "";
+      if(om.tfMin != fm.tfMin)
+         continue;
+      int ia = fm.fvgs[i].i3 - 1;
+      double a = (ia >= 0 && ia < ArraySize(atr)) ? atr[ia] : 0.0;
+      double tol = InpObConfluenceATR * a;
+      for(int k = 0; k < ArraySize(om.obs); k++)
+        {
+         if(om.obs[k].dir != fm.fvgs[i].dir || om.obs[k].status == GLS_OB_INVALIDATED)
+            continue;
+         double gap = MathMax(om.obs[k].lo - fm.fvgs[i].hi, fm.fvgs[i].lo - om.obs[k].hi);
+         if(gap > tol)
+            continue;
+         bool same = (fm.fvgs[i].dispTime >= om.obs[k].dispFrom && fm.fvgs[i].dispTime <= om.obs[k].dispTo);
+         if(!fm.fvgs[i].obConf || (same && !fm.fvgs[i].obSameDisp))
+           {
+            fm.fvgs[i].obConf = true;
+            fm.fvgs[i].obSameDisp = same;
+            fm.fvgs[i].obKnown = MathMax(fm.fvgs[i].created, om.obs[k].created);
+            fm.fvgs[i].obKey = ObKey(om.obs[k]);
+           }
+        }
+     }
   }
 
 #endif // GLS_FVG_MQH

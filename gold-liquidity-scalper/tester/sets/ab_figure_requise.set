@@ -1,4 +1,4 @@
-; Gold Liquidity Scalper v1.10 - comparaison A/B des filtres (famille F1 par défaut : changer InpFamily au besoin)
+; Gold Liquidity Scalper v1.11 - comparaison A/B des filtres (famille F1 par défaut : changer InpFamily au besoin)
 ; Tous les filtres + figure de bougie confirmée OBLIGATOIRE (variante stricte)
 ; Même période, mêmes données, mêmes coûts pour toutes les variantes ; analyse :
 ;   python3 analyze_trades.py *_trades.csv --group-by label --baseline "F1|ab_reference" --variants 6 ...

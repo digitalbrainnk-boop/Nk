@@ -7,7 +7,7 @@
 #define GLS_DEFINES_MQH
 
 #define GLS_NAME            "Gold Liquidity Scalper"
-#define GLS_VERSION         "1.10"
+#define GLS_VERSION         "1.11"
 #define GLS_OBJ_PREFIX      "GLS_"
 #define GLS_COMMENT_TAG     "GLS"
 #define GLS_EPS             1e-9
@@ -30,6 +30,13 @@ enum ENUM_GLS_FVG_TF
   {
    GLS_FVGTF_M1 = 1, // M1
    GLS_FVGTF_M5 = 5  // M5
+  };
+
+//--- Confluence FVG + Order Block (filtre de sélection optionnel, jamais des points de score)
+enum ENUM_GLS_OB_CONFLUENCE
+  {
+   GLS_OBC_OFF = 0,     // Ignorée (enregistrée seulement)
+   GLS_OBC_REQUIRE = 1  // Exigée pour F6
   };
 
 //--- Mode d'entrée (famille F1)
@@ -186,6 +193,8 @@ enum ENUM_GLS_LOG_LEVEL
 #define GLS_REFUSE_EXTENDED         36
 #define GLS_REFUSE_INDECISION       37
 #define GLS_REFUSE_NO_PATTERN       38
+#define GLS_REFUSE_NO_CONFLUENCE    39
+#define GLS_REFUSE_ZONE_BROKEN      40
 
 //+------------------------------------------------------------------+
 //| Textes                                                            |
@@ -333,6 +342,8 @@ string GlsRefusalText(const int reason)
       case GLS_REFUSE_EXTENDED:       return "impulsion déjà étendue (entrée tardive)";
       case GLS_REFUSE_INDECISION:     return "bougie de déclenchement indécise (doji)";
       case GLS_REFUSE_NO_PATTERN:     return "aucune figure de bougie confirmée";
+      case GLS_REFUSE_NO_CONFLUENCE:  return "pas de confluence FVG + Order Block";
+      case GLS_REFUSE_ZONE_BROKEN:    return "zone invalidée";
      }
    return "inconnue";
   }

@@ -8,7 +8,7 @@
 //|  (ticks réels) puis en démo avant tout usage réel.               |
 //+------------------------------------------------------------------+
 #property copyright "Gold Liquidity Scalper"
-#property version   "1.10"
+#property version   "1.11"
 #property description "Scalping XAU/USD : liquidité M1 + contexte M5/M15, risque au stop, TP partiels, protections journalières."
 
 #include "GLS\Defines.mqh"
@@ -141,7 +141,7 @@ input int                 InpZoneMinTouches       = 2;      // Réactions indép
 input int                 InpZoneMinSeparationBars = 5;     // Écart minimal entre deux réactions (barres M5)
 input int                 InpZoneBreakCloses      = 2;      // Clôtures M5 au-delà pour confirmer une cassure
 input double              InpZoneBreakBufferATR   = 0.10;   // Tampon de cassure (x ATR)
-input bool                InpUseSRObstacles       = true;   // Compter zones opposées et FVG contraires dans l'espace disponible
+input bool                InpUseSRObstacles       = true;   // Compter les supports / résistances opposés dans l'espace disponible
 input int                 InpSRReactBars          = 8;      // F5 : fenêtre de réaction après contact (barres M1)
 input double              InpSRMinStrength        = 0.5;    // F5 : force minimale de la zone (0-1)
 
@@ -155,12 +155,21 @@ input int                 InpFvgMaxRetests        = 1;      // F6 : nombre maxim
 input int                 InpFvgMaxAgeBars        = 48;     // F6 : âge maximal (barres de l'unité de la FVG)
 input int                 InpFvgReactBars         = 8;      // F6 : fenêtre de réaction après contact (barres M1)
 input bool                InpUseIFVG              = false;  // Règle distincte : FVG invalidée utilisée en sens inverse (IFVG)
+input bool                InpFvgRequireReaction   = true;   // F6 : exiger une réaction (figure / CHOCH M1). false = RECHERCHE, refusé hors testeur
+input ENUM_GLS_OB_CONFLUENCE InpFvgObConfluence  = GLS_OBC_OFF; // F6 : confluence avec un Order Block (filtre, à valider par tests)
+input bool                InpUseFvgObstacles      = true;   // Compter les FVG contraires dans l'espace disponible
 input double              InpFvgWDisp             = 25.0;   // Qualité FVG : poids du déplacement
 input double              InpFvgWSize             = 10.0;   // Qualité FVG : poids de la taille
 input double              InpFvgWStructure        = 20.0;   // Qualité FVG : poids du BOS/CHOCH
 input double              InpFvgWSweep            = 15.0;   // Qualité FVG : poids du balayage préalable
 input double              InpFvgWFresh            = 20.0;   // Qualité FVG : poids de la fraîcheur
-input double              InpFvgWContext          = 10.0;   // Qualité FVG : poids de la proximité S/R ou OB
+input double              InpFvgWContext          = 10.0;   // Qualité FVG : poids de la proximité d'une zone S/R favorable
+
+input group "=== Order Blocks (règles propres) ==="
+input int                 InpObLookback           = 5;      // Recherche de la bougie opposée avant la cassure (barres)
+input double              InpObMinDispATR         = 1.5;    // Déplacement minimal depuis l'OB jusqu'à la clôture de cassure (x ATR)
+input double              InpObInvalidBufferATR   = 0.10;   // Invalidation : clôture au-delà de l'OB + x ATR
+input double              InpObConfluenceATR      = 0.50;   // Confluence FVG/OB : écart maximal entre les zones (x ATR)
 
 input group "=== F1 Balayage de liquidité ==="
 input int                 InpSetupMaxBars         = 20;     // Âge max d'une configuration (barres M1)

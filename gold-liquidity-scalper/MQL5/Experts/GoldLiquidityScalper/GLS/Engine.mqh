@@ -44,6 +44,12 @@ private:
    int               m_cdlState[];
    string            m_fvgKeys[];       // FVG déjà journalisées (clé) et dernier état
    int               m_fvgState[];
+   string            m_fvgCntKeys[];    // FVG de l'unité de trading déjà comptées (clé) et indicateurs du jour
+   int               m_fvgCntFlags[];
+   string            m_obKeys[];        // Order Blocks déjà journalisés
+   int               m_obState[];
+   string            m_zdKeys[];        // décisions par zone déjà journalisées (zone + sens + motif)
+   int               m_zdState[];
 
 public:
    bool              symbolOk;
@@ -68,13 +74,18 @@ public:
    int               cdlConfirmed;      // figures confirmées aujourd'hui
    int               sigRejected;       // signaux complets refusés aujourd'hui
    int               sigExecuted;       // transactions exécutées aujourd'hui
+   int               fvgDetected;       // FVG (unité de trading, hors doublons) créées aujourd'hui
+   int               fvgQualified;      // ... ayant atteint la qualité minimale
+   int               fvgRetested;       // ... revisitées au moins une fois
+   int               fvgInvalidated;    // ... invalidées
    string            lastCandleText;
 
                      CGlsEngine(void) : m_spreadPos(0), m_spreadCount(0), m_lastBarTime(0), m_lastReconcile(0), m_lastFinalize(0),
                      m_reconnectAtTick(0), m_wasConnected(true), symbolOk(false), symbolError(""), running(false), stateCoherent(false),
                      needResync(true), startedAt(0), env("?"), account(0), isReal(false), tester(false), optimization(false), visual(false),
                      lastSignalText("aucun"), lastRefusalText("aucun"), lastExecText("aucune"), pendingOrders(0), lastSpread(0.0),
-                     lastSession(GLS_SESSION_OFF), cdlDetected(0), cdlConfirmed(0), sigRejected(0), sigExecuted(0), lastCandleText("aucune") {}
+                     lastSession(GLS_SESSION_OFF), cdlDetected(0), cdlConfirmed(0), sigRejected(0), sigExecuted(0), fvgDetected(0), fvgQualified(0),
+                     fvgRetested(0), fvgInvalidated(0), lastCandleText("aucune") {}
 
    //+---------------------------------------------------------------+
    //| Utilitaires                                                    |
@@ -329,6 +340,11 @@ public:
          err = "paramètres de bougies incohérents";
       if(StringLen(err) == 0 && (InpZoneMergeATR <= 0.0 || InpZoneBreakCloses < 1 || InpMaxBarGapMin < 1))
          err = "paramètres de zones / données incohérents";
+      if(StringLen(err) == 0 && (InpObLookback < 1 || InpObMinDispATR <= 0.0 || InpObConfluenceATR < 0.0 || InpObInvalidBufferATR < 0.0))
+         err = "paramètres d'Order Block incohérents";
+      //--- une FVG ne déclenche jamais seule : la variante sans réaction n'existe que pour la recherche
+      if(StringLen(err) == 0 && !InpFvgRequireReaction && !tester)
+         err = "InpFvgRequireReaction = false est un réglage de RECHERCHE réservé au testeur de stratégie";
       return (StringLen(err) == 0);
      }
 
@@ -721,27 +737,61 @@ public:
    //+---------------------------------------------------------------+
    //| Recherche et exécution d'une entrée (à chaque nouvelle barre)  |
    //+---------------------------------------------------------------+
-   void              LogSignal(const SSignal &s, const string decision)
+   void              LogSignal(const SSignal &s, const string decision, const bool counted = true)
      {
       if(s.stage < 2)
          return;
-      if(decision == "EXECUTE")
-         sigExecuted++;
-      else
-         sigRejected++;
+      if(counted)
+        {
+         if(decision == "EXECUTE")
+            sigExecuted++;
+         else
+            sigRejected++;
+        }
       if(!g_log.FilesEnabled())
          return;
       string h = "time;family;dir;id;score;c_liq;c_trig;c_struct;c_align;c_retest;c_vol;c_cost;c_rr;room_r;risk_price;cost_frac;stop;level;decision;reason;detail;";
-      h += "c_candle;candle;regime;trend_m15;trend_m5;label;criteria";
+      h += "c_candle;candle;regime;trend_m15;trend_m5;label;criteria;zone_id;zone_tf;zone_retests;zone_quality;zone_fill";
+      //--- le séparateur du CSV ne doit jamais apparaître dans un texte libre
+      string detail = s.detail;
+      string criteria = s.criteria;
+      StringReplace(detail, ";", ",");
+      StringReplace(criteria, ";", ",");
       string row = TimeToString(s.triggerTime, TIME_DATE | TIME_MINUTES) + ";" + GlsFamilyCode(s.family) + ";" + (s.dir == GLS_BUY ? "BUY" : "SELL") + ";"
                    + s.hash + ";" + DoubleToString(s.score, 1) + ";" + DoubleToString(s.cLiq, 2) + ";" + DoubleToString(s.cTrig, 2) + ";"
                    + DoubleToString(s.cStruct, 2) + ";" + DoubleToString(s.cAlign, 2) + ";" + DoubleToString(s.cRetest, 2) + ";"
                    + DoubleToString(s.cVol, 2) + ";" + DoubleToString(s.cCost, 2) + ";" + DoubleToString(s.cRR, 2) + ";"
                    + DoubleToString(s.roomR, 2) + ";" + DoubleToString(s.riskDist, g_sym.digits) + ";" + DoubleToString(s.costFrac, 3) + ";"
                    + DoubleToString(s.stop, g_sym.digits) + ";" + DoubleToString(s.level, g_sym.digits) + ";" + decision + ";"
-                   + GlsRefusalText(s.refusal) + ";" + s.detail + ";" + DoubleToString(s.cCandle, 2) + ";" + s.candleName + ";"
-                   + RegimeCode(s.regime) + ";" + TrendClassText(s.trend15) + ";" + TrendClassText(s.trend5) + ";" + InpRunLabel + ";" + s.criteria;
+                   + GlsRefusalText(s.refusal) + ";" + detail + ";" + DoubleToString(s.cCandle, 2) + ";" + s.candleName + ";"
+                   + RegimeCode(s.regime) + ";" + TrendClassText(s.trend15) + ";" + TrendClassText(s.trend5) + ";" + InpRunLabel + ";" + criteria
+                   + ";" + s.zoneId + ";" + ((s.zoneTf > 0) ? "M" + IntegerToString(s.zoneTf) : "") + ";" + IntegerToString(s.zoneRetests) + ";"
+                   + DoubleToString(s.zoneQuality, 2) + ";" + DoubleToString(100.0 * s.zoneFill, 0);
       g_log.WriteSignalRow(h, row);
+     }
+
+   //--- Zones (F6) en attente de réaction ou refusées : une ligne par changement d'état de chaque zone
+   //--- (décision ATTENTE ou REFUS, motif précis, confirmations présentes / absentes dans le détail)
+   void              LogZoneDecisions(void)
+     {
+      for(int i = 0; i < ArraySize(g_zoneDecisions.items); i++)
+        {
+         SSignal z = g_zoneDecisions.items[i];
+         string key = z.zoneId + "|" + IntegerToString(z.dir);
+         int k = FindKey(m_zdKeys, key);
+         int state = z.refusal * 1000 + MathMin(z.zoneRetests, 999);
+         if(k >= 0 && m_zdState[k] == state)
+            continue;
+         if(k < 0)
+            k = AddKey(m_zdKeys, m_zdState, key);
+         m_zdState[k] = state;
+         z.triggerTime = (g_ctx.m1.count > 0) ? g_ctx.m1.time[g_ctx.m1.count - 1] : 0;
+         z.stage = 2;   // ligne de journal complète (le signal reste NON déclenché)
+         z.regime = g_ctx.regime;
+         z.trend15 = g_ctx.t15.cls;
+         z.trend5 = g_ctx.t5.cls;
+         LogSignal(z, (z.refusal == GLS_REFUSE_INCOMPLETE) ? "ATTENTE" : "REFUS", false);
+        }
      }
 
    void              EvaluateEntry(const MqlTick &tick, const datetime now)
@@ -759,8 +809,10 @@ public:
       vs.Build(g_ctx, GLS_SELL);
       SSignal sb;
       SSignal ss;
+      g_zoneDecisions.Clear();
       DetectFamily(InpFamily, g_ctx, vb, sb);
       DetectFamily(InpFamily, g_ctx, vs, ss);
+      LogZoneDecisions();
       double valuePerPrice = (g_sym.tickSize > 0.0) ? g_sym.tickValue / g_sym.tickSize : 0.0;
       double commPrice = (valuePerPrice > 0.0) ? 2.0 * g_commissionPerLotSide / valuePerPrice : 0.0;
       double extra = commPrice + SlippageAllowance();
@@ -919,6 +971,11 @@ public:
       p.estCost = spread * valuePerPrice * p.initialVolume + 2.0 * g_commissionPerLotSide * p.initialVolume;
       p.regime = sig.regime;
       p.candleId = sig.candleId;
+      p.zoneTf = (StringLen(sig.zoneId) > 0) ? sig.zoneTf : 0;
+      p.zoneTime = sig.zoneTime;
+      p.zoneInv = (StringFind(sig.zoneId, "|I") >= 0);
+      p.zoneRetests = sig.zoneRetests;
+      p.zoneQuality = sig.zoneQuality;
       g_pm.Add(p);
       int idx = g_pm.Find(p.ticket);
 
@@ -1014,6 +1071,10 @@ public:
          cdlConfirmed = 0;
          sigRejected = 0;
          sigExecuted = 0;
+         fvgDetected = 0;
+         fvgQualified = 0;
+         fvgRetested = 0;
+         fvgInvalidated = 0;
          RebuildStats();
         }
       bool ok = g_ctx.Update(g_sym.name, now, g_clock, InpEMAPeriodM5, InpM5SwingStrength, InpM15SwingStrength, InpTrendERMin, InpTransitionBars,
@@ -1144,34 +1205,109 @@ public:
         }
      }
 
-   void              LogFvgs(const CFvgMap &m)
+   //--- Compteurs du jour des FVG de l'unité de trading (hors doublons) : détectées, qualifiées, revisitées, invalidées
+   void              CountFvgs(const CFvgMap &m)
      {
+      if(m.tfMin != (int)InpFvgTF)
+         return;
       for(int i = 0; i < ArraySize(m.fvgs); i++)
         {
-         if(InpLogFvg == GLS_LOGD_NONE || !g_log.FilesEnabled() || (InpLogFvg == GLS_LOGD_MAIN && m.tfMin != 5))
-            return;
+         if(m.fvgs[i].duplicate || m.fvgs[i].created < g_guard.dayStart)
+            continue;
          string key = FvgKey(m.fvgs[i]);
-         //--- essentiel : création, puis comblement complet ou invalidation ; tout : chaque retour / comblement partiel
-         int state = (InpLogFvg == GLS_LOGD_ALL) ? m.fvgs[i].status * 100 + MathMin(m.fvgs[i].retests, 99)
-                     : ((m.fvgs[i].status == GLS_FVG_FILLED || m.fvgs[i].status == GLS_FVG_INVALIDATED) ? m.fvgs[i].status : 0);
+         int k = FindKey(m_fvgCntKeys, key);
+         if(k < 0)
+           {
+            k = AddKey(m_fvgCntKeys, m_fvgCntFlags, key);
+            m_fvgCntFlags[k] = 0;
+            fvgDetected++;
+           }
+         int f = m_fvgCntFlags[k];
+         if((f & 1) == 0 && m.fvgs[i].quality >= InpFvgMinQuality)
+           {
+            f |= 1;
+            fvgQualified++;
+           }
+         if((f & 2) == 0 && m.fvgs[i].retests >= 1)
+           {
+            f |= 2;
+            fvgRetested++;
+           }
+         if((f & 4) == 0 && m.fvgs[i].status == GLS_FVG_INVALIDATED)
+           {
+            f |= 4;
+            fvgInvalidated++;
+           }
+         m_fvgCntFlags[k] = f;
+        }
+     }
+
+   void              LogFvgs(const CFvgMap &m)
+     {
+      if(InpLogFvg == GLS_LOGD_NONE || !g_log.FilesEnabled() || (InpLogFvg == GLS_LOGD_MAIN && m.tfMin != (int)InpFvgTF))
+         return;
+      for(int i = 0; i < ArraySize(m.fvgs); i++)
+        {
+         if(InpLogFvg == GLS_LOGD_MAIN && m.fvgs[i].duplicate)
+            continue;   // même imbalance déjà suivie sur l'unité supérieure
+         string key = FvgKey(m.fvgs[i]);
+         //--- essentiel : création, 1er retour, comblement complet, invalidation ; tout : chaque retour / comblement partiel
+         int state = 0;
+         if(InpLogFvg == GLS_LOGD_ALL)
+            state = m.fvgs[i].status * 1000 + MathMin(m.fvgs[i].retests, 999) + (m.fvgs[i].obConf ? 100000 : 0);
+         else
+            if(m.fvgs[i].status == GLS_FVG_FILLED || m.fvgs[i].status == GLS_FVG_INVALIDATED)
+               state = 10 + m.fvgs[i].status;
+            else
+               state = (m.fvgs[i].retests >= 1) ? 1 : 0;
          int k = FindKey(m_fvgKeys, key);
          if(k >= 0 && m_fvgState[k] == state)
             continue;
          if(k < 0)
             k = AddKey(m_fvgKeys, m_fvgState, key);
          m_fvgState[k] = state;
-         string h = "creation;ut;sens;bas;haut;taille_pts;taille_atr;deplacement_atr;corps_deplacement;bos;choch;balayage;ob_bas;ob_haut;";
-         h += "dist_contexte_atr;retours;comblement;statut;maj_statut;qualite;ifvg;raison;label";
-         string row = TimeToString(m.fvgs[i].created, TIME_DATE | TIME_MINUTES) + ";M" + IntegerToString(m.fvgs[i].tfMin) + ";"
+         string h = "id;creation;ut;sens;bas;haut;taille_pts;taille_atr;deplacement_atr;corps_deplacement;deplacement;bos;choch;heure_cassure;balayage;";
+         h += "dist_sr_atr;retours;comblement;statut;maj_statut;qualite;qualifiee;ifvg;doublon_de;ob_confluence;ob_meme_deplacement;ob_id;raison;label";
+         string row = key + ";" + TimeToString(m.fvgs[i].created, TIME_DATE | TIME_MINUTES) + ";M" + IntegerToString(m.fvgs[i].tfMin) + ";"
                       + (m.fvgs[i].dir > 0 ? "HAUSSIER" : "BAISSIER") + ";" + DoubleToString(m.fvgs[i].lo, g_sym.digits) + ";"
                       + DoubleToString(m.fvgs[i].hi, g_sym.digits) + ";" + DoubleToString(m.fvgs[i].sizePts, 0) + ";" + DoubleToString(m.fvgs[i].sizeAtr, 2) + ";"
-                      + DoubleToString(m.fvgs[i].dispAtr, 2) + ";" + DoubleToString(m.fvgs[i].dispBody, 2) + ";" + (m.fvgs[i].bos ? "1" : "0") + ";"
-                      + (m.fvgs[i].choch ? "1" : "0") + ";" + (m.fvgs[i].sweep ? "1" : "0") + ";"
-                      + (m.fvgs[i].hasOB ? DoubleToString(m.fvgs[i].obLo, g_sym.digits) : "") + ";" + (m.fvgs[i].hasOB ? DoubleToString(m.fvgs[i].obHi, g_sym.digits) : "") + ";"
-                      + DoubleToString(m.fvgs[i].ctxDistAtr, 2) + ";" + IntegerToString(m.fvgs[i].retests) + ";" + DoubleToString(100.0 * m.fvgs[i].fillPct, 0) + ";"
-                      + FvgStatusText(m.fvgs[i].status) + ";" + TimeToString(m.fvgs[i].statusTime, TIME_DATE | TIME_MINUTES) + ";"
-                      + DoubleToString(m.fvgs[i].quality, 2) + ";" + (m.fvgs[i].inverted ? "1" : "0") + ";" + m.fvgs[i].reason + ";" + InpRunLabel;
+                      + DoubleToString(m.fvgs[i].dispAtr, 2) + ";" + DoubleToString(m.fvgs[i].dispBody, 2) + ";"
+                      + TimeToString(m.fvgs[i].dispTime, TIME_DATE | TIME_MINUTES) + ";" + (m.fvgs[i].bos ? "1" : "0") + ";"
+                      + (m.fvgs[i].choch ? "1" : "0") + ";" + (m.fvgs[i].bos ? TimeToString(m.fvgs[i].bosTime, TIME_DATE | TIME_MINUTES) : "") + ";"
+                      + (m.fvgs[i].sweep ? "1" : "0") + ";" + DoubleToString(m.fvgs[i].ctxDistAtr, 2) + ";" + IntegerToString(m.fvgs[i].retests) + ";"
+                      + DoubleToString(100.0 * m.fvgs[i].fillPct, 0) + ";" + FvgStatusText(m.fvgs[i].status) + ";"
+                      + TimeToString(m.fvgs[i].statusTime, TIME_DATE | TIME_MINUTES) + ";" + DoubleToString(m.fvgs[i].quality, 2) + ";"
+                      + (m.fvgs[i].quality >= InpFvgMinQuality ? "1" : "0") + ";" + (m.fvgs[i].inverted ? "1" : "0") + ";" + m.fvgs[i].parentKey + ";"
+                      + (m.fvgs[i].obConf ? "1" : "0") + ";" + (m.fvgs[i].obSameDisp ? "1" : "0") + ";" + m.fvgs[i].obKey + ";"
+                      + m.fvgs[i].reason + ";" + InpRunLabel;
          g_log.WriteFvgRow(h, row);
+        }
+     }
+
+   //--- Order Blocks : création puis 1er retour / invalidation
+   void              LogObs(const COrderBlockMap &m)
+     {
+      if(InpLogFvg == GLS_LOGD_NONE || !g_log.FilesEnabled())
+         return;
+      for(int i = 0; i < ArraySize(m.obs); i++)
+        {
+         string key = ObKey(m.obs[i]);
+         int state = m.obs[i].status;
+         int k = FindKey(m_obKeys, key);
+         if(k >= 0 && m_obState[k] == state)
+            continue;
+         if(k < 0)
+            k = AddKey(m_obKeys, m_obState, key);
+         m_obState[k] = state;
+         string h = "id;creation;ut;sens;bas;haut;bougie_ob;deplacement_debut;deplacement_fin;cassure;deplacement_atr;retours;statut;maj_statut;raison;label";
+         string row = key + ";" + TimeToString(m.obs[i].created, TIME_DATE | TIME_MINUTES) + ";M" + IntegerToString(m.obs[i].tfMin) + ";"
+                      + (m.obs[i].dir > 0 ? "HAUSSIER" : "BAISSIER") + ";" + DoubleToString(m.obs[i].lo, g_sym.digits) + ";"
+                      + DoubleToString(m.obs[i].hi, g_sym.digits) + ";" + TimeToString(m.obs[i].obTime, TIME_DATE | TIME_MINUTES) + ";"
+                      + TimeToString(m.obs[i].dispFrom, TIME_DATE | TIME_MINUTES) + ";" + TimeToString(m.obs[i].dispTo, TIME_DATE | TIME_MINUTES) + ";"
+                      + (m.obs[i].choch ? "CHOCH" : "BOS") + ";" + DoubleToString(m.obs[i].dispAtr, 2) + ";" + IntegerToString(m.obs[i].retests) + ";"
+                      + ObStatusText(m.obs[i].status) + ";" + TimeToString(m.obs[i].statusTime, TIME_DATE | TIME_MINUTES) + ";" + m.obs[i].reason + ";"
+                      + InpRunLabel;
+         g_log.WriteObRow(h, row);
         }
      }
 
@@ -1181,6 +1317,9 @@ public:
       LogCandles(g_ctx.cdlSell);
       LogFvgs(g_ctx.fvg5);
       LogFvgs(g_ctx.fvg1);
+      LogObs((int)InpFvgTF == 1 ? g_ctx.ob1 : g_ctx.ob5);
+      CountFvgs(g_ctx.fvg5);
+      CountFvgs(g_ctx.fvg1);
      }
 
    //--- Transaction serveur : une position a pu se fermer (stop, objectif...)
@@ -1568,8 +1707,11 @@ public:
          int zr = g_ctx.zones.Nearest(GLS_ZONE_RESIST, mid);
          g_dash.SetRow(row++, "Support : " + g_ctx.zones.Describe(zs, g_sym.digits), GLS_STATUS_INFO);
          g_dash.SetRow(row++, "Résistance : " + g_ctx.zones.Describe(zr, g_sym.digits), GLS_STATUS_INFO);
-         g_dash.SetRow(row++, StringFormat("FVG actives M5 : %d haussière(s) / %d baissière(s) | M1 : %d / %d", g_ctx.fvg5.CountActive(1),
-                                           g_ctx.fvg5.CountActive(-1), g_ctx.fvg1.CountActive(1), g_ctx.fvg1.CountActive(-1)), GLS_STATUS_INFO);
+         g_dash.SetRow(row++, StringFormat("FVG actives M5 : %d / %d | M1 (hors doublons) : %d / %d | OB M5 : %d / %d", g_ctx.fvg5.CountActive(1),
+                                           g_ctx.fvg5.CountActive(-1), g_ctx.fvg1.CountActive(1), g_ctx.fvg1.CountActive(-1),
+                                           g_ctx.ob5.CountActive(1), g_ctx.ob5.CountActive(-1)), GLS_STATUS_INFO);
+         g_dash.SetRow(row++, StringFormat("FVG M%d jour : %d détectées | %d qualifiées | %d retestées | %d invalidées", (int)InpFvgTF,
+                                           fvgDetected, fvgQualified, fvgRetested, fvgInvalidated), GLS_STATUS_INFO);
         }
       else
          g_dash.SetRow(row++, "Contexte : données indisponibles (" + g_ctx.error + ")", GLS_STATUS_WARN);

@@ -1,0 +1,25 @@
+; Gold Liquidity Scalper v1.11 - protocole FVG (section 10) : 6. + filtres de structure, liquidité et bougies (valeurs par défaut, confluence non exigée)
+; Mêmes périodes, mêmes données, mêmes coûts (spread réel, commission, délai d'exécution) pour les 6 variantes.
+; Analyse : python3 analyze_trades.py *_trades.csv --group-by label --baseline "F1|fvg1_reference" --variants 6 ...
+; (comparer aussi les variantes F6 entre elles : --baseline "F6|fvg2_detection").
+; Les CSV du dossier commun GLS\ s'ajoutent d'un passage à l'autre : effacer avant de relancer une MÊME variante.
+InpFamily=6
+InpRunLabel=fvg6_filtres
+InpAutoStartInTester=true
+InpWriteFiles=true
+InpNewsMode=1
+InpServerOffsetMode=1
+InpServerUTCOffsetHours=0
+InpServerDST=0
+InpCommissionPerLotSide=0.0
+InpUseRegimeFilter=true
+InpUseTrendFilter=true
+InpCdlBlockOpposing=true
+InpCdlBlockIndecision=true
+InpCdlBlockExtended=true
+InpUseSRObstacles=true
+InpUseFvgObstacles=true
+InpFvgMinQuality=0.55
+InpFvgMaxRetests=1
+InpFvgRequireReaction=true
+InpFvgObConfluence=0

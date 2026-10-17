@@ -54,6 +54,8 @@ public:
    CZoneMap          zones;
    CFvgMap           fvg5;
    CFvgMap           fvg1;
+   COrderBlockMap    ob5;          // Order Blocks M5 (règles propres, OrderBlocks.mqh)
+   COrderBlockMap    ob1;          // Order Blocks M1 (seulement si InpFvgTF = M1)
    CCandleAnalysis   cdlBuy;       // figures haussières (série réelle) + figures neutres
    CCandleAnalysis   cdlSell;      // figures baissières (série miroir)
    bool              dataGap;
@@ -174,10 +176,20 @@ public:
         {
          zones.Build(st5, st15, m5, atr5[m5.count - 1], serverNow);
          fvg5.Build(m5, atr5, st5, zones, 5, 300, pt);
+         ob5.Build(m5, atr5, st5, 5, 300);
+         LinkFvgOrderBlocks(fvg5, ob5, atr5);
         }
-      //--- structure, FVG et bougies M1
+      //--- structure, FVG et bougies M1 ; une FVG M1 contenue dans une FVG M5 est un doublon
       st1.Analyze(m1, InpM1SwingStrength, 20, erTrendMin, transitionBars * 15);
       fvg1.Build(m1, atr, st1, zones, 1, 120, pt);
+      MarkNestedFvgDuplicates(fvg1, fvg5);
+      if(InpFvgTF == GLS_FVGTF_M1)
+        {
+         ob1.Build(m1, atr, st1, 1, 120);
+         LinkFvgOrderBlocks(fvg1, ob1, atr);
+        }
+      else
+         ArrayResize(ob1.obs, 0);
       cdlBuy.Analyze(m1, atr, GLS_BUY, InpCdlLookback);
       cdlSell.Analyze(m1Mirror, atr, GLS_SELL, InpCdlLookback);
       EvaluateCandleContext(cdlBuy);

@@ -59,6 +59,7 @@ struct SZone
    double            strength;      // 0..1
    bool              valid;
    string            reason;
+   string            origin;        // unités des pivots : "M5", "M15" ou "M5+M15" (une seule zone, pas de doublon)
   };
 
 string ZoneRoleText(const int role)
@@ -87,34 +88,36 @@ class CZoneMap
 private:
    SPivot            m_piv[];
 
+   //--- Les maxEach derniers pivots de chaque type CONFIRMÉS à l'instant now (les pivots
+   //--- postérieurs n'influencent ni la sélection ni les zones : aucune donnée future)
+   void              AddPivotList(const SSwing &arr[], const bool isHigh, const int tf, const int maxEach, const datetime now)
+     {
+      int taken = 0;
+      int first = ArraySize(arr);
+      for(int i = ArraySize(arr) - 1; i >= 0 && taken < maxEach; i--)
+         if(arr[i].confirmTime <= now)
+           {
+            first = i;
+            taken++;
+           }
+      for(int i = first; i < ArraySize(arr); i++)
+        {
+         if(arr[i].confirmTime > now)
+            continue;
+         int n = ArraySize(m_piv);
+         ArrayResize(m_piv, n + 1);
+         m_piv[n].price = arr[i].price;
+         m_piv[n].isHigh = isHigh;
+         m_piv[n].tf = tf;
+         m_piv[n].time = arr[i].time;
+         m_piv[n].confirmTime = arr[i].confirmTime;
+        }
+     }
+
    void              AddPivots(const CStructure &st, const int tf, const int maxEach, const datetime now)
      {
-      int nh = ArraySize(st.highs);
-      for(int i = MathMax(0, nh - maxEach); i < nh; i++)
-        {
-         if(st.highs[i].confirmTime > now)
-            continue;
-         int n = ArraySize(m_piv);
-         ArrayResize(m_piv, n + 1);
-         m_piv[n].price = st.highs[i].price;
-         m_piv[n].isHigh = true;
-         m_piv[n].tf = tf;
-         m_piv[n].time = st.highs[i].time;
-         m_piv[n].confirmTime = st.highs[i].confirmTime;
-        }
-      int nl = ArraySize(st.lows);
-      for(int i = MathMax(0, nl - maxEach); i < nl; i++)
-        {
-         if(st.lows[i].confirmTime > now)
-            continue;
-         int n = ArraySize(m_piv);
-         ArrayResize(m_piv, n + 1);
-         m_piv[n].price = st.lows[i].price;
-         m_piv[n].isHigh = false;
-         m_piv[n].tf = tf;
-         m_piv[n].time = st.lows[i].time;
-         m_piv[n].confirmTime = st.lows[i].confirmTime;
-        }
+      AddPivotList(st.highs, true, tf, maxEach, now);
+      AddPivotList(st.lows, false, tf, maxEach, now);
      }
 
    void              SortPivotsByPrice(void)
@@ -252,6 +255,7 @@ public:
          z.breakTime = 0;
          int highs = 0;
          int lows = 0;
+         bool has5 = false;
          datetime firstConf = m_piv[i].confirmTime;
          datetime lastPiv = m_piv[i].confirmTime;
          //--- réactions indépendantes : pivots séparés d'au moins N barres M5
@@ -265,6 +269,8 @@ public:
                lows++;
             if(m_piv[k].tf == 15)
                z.major = true;
+            else
+               has5 = true;
             if(m_piv[k].confirmTime < firstConf)
                firstConf = m_piv[k].confirmTime;
             if(m_piv[k].confirmTime > lastPiv)
@@ -295,7 +301,8 @@ public:
          z.valid = (z.touches >= InpZoneMinTouches || z.major);
          z.strength = Clamp(0.3 + 0.15 * MathMin(z.touches - 1, 3) + (z.major ? 0.2 : 0.0) + (z.equal ? 0.1 : 0.0)
                             + (z.state == GLS_ZST_FLIPPED ? 0.1 : 0.0), 0.0, 1.0);
-         z.reason = StringFormat("%d réaction(s)%s%s, %s", z.touches, z.major ? ", M15" : "", z.equal ? ", sommets/creux égaux" : "", ZoneStateText(z.state));
+         z.origin = (z.major && has5) ? "M5+M15" : (z.major ? "M15" : "M5");
+         z.reason = StringFormat("%s, %d réaction(s)%s, %s", z.origin, z.touches, z.equal ? ", sommets/creux égaux" : "", ZoneStateText(z.state));
          int nz = ArraySize(zones);
          ArrayResize(zones, nz + 1);
          zones[nz] = z;

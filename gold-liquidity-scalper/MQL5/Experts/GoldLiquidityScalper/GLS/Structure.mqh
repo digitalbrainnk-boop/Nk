@@ -201,10 +201,11 @@ public:
      }
 
    //--- Cassure haussière (dir > 0) ou baissière entre les barres from et to (incluses) ?
-   //--- isChoch = true si la cassure trouvée est un CHOCH
-   bool              BreakBetween(const int dir, const int from, const int to, bool &isChoch) const
+   //--- isChoch = true si la cassure trouvée est un CHOCH ; evTime = heure de l'événement (clôture de sa barre)
+   bool              BreakBetween(const int dir, const int from, const int to, bool &isChoch, datetime &evTime) const
      {
       isChoch = false;
+      evTime = 0;
       for(int i = ArraySize(events) - 1; i >= 0; i--)
         {
          if(events[i].index < from)
@@ -215,6 +216,7 @@ public:
          if((dir > 0) == up)
            {
             isChoch = (events[i].type == GLS_EVT_CHOCH_UP || events[i].type == GLS_EVT_CHOCH_DOWN);
+            evTime = events[i].time;
             return true;
            }
         }

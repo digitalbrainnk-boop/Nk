@@ -1,4 +1,4 @@
-; Gold Liquidity Scalper v1.10 - comparaison A/B des filtres (famille F1 par défaut : changer InpFamily au besoin)
+; Gold Liquidity Scalper v1.11 - comparaison A/B des filtres (famille F1 par défaut : changer InpFamily au besoin)
 ; Référence : filtres v1.10 (régime, tendance, bougies, obstacles S/R) désactivés = règles de contexte de la v1.00
 ; (EMA200 M5, structure M15, efficience M15) ; le score inclut toutefois la composante « bougies » (v1.10).
 ; Même période, mêmes données, mêmes coûts pour toutes les variantes ; analyse :
@@ -20,3 +20,4 @@ InpCdlBlockOpposing=false
 InpCdlBlockIndecision=false
 InpCdlBlockExtended=false
 InpUseSRObstacles=false
+InpUseFvgObstacles=false

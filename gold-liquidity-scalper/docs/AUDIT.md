@@ -1,4 +1,4 @@
-# Audit de robustesse — version 1.10
+# Audit de robustesse — version 1.11
 
 Ce document indique, **exigence par exigence**, ce qui est réellement fait et
 vérifié. Il ne déclare **pas** le robot prêt pour un compte réel.
@@ -13,9 +13,9 @@ vérifié. Il ne déclare **pas** le robot prêt pour un compte réel.
 | Validée en démo | testée sur un compte démo réel : **NON pour toutes les lignes** |
 | Validée statistiquement | protocole sur données réelles : **NON pour toutes les lignes** |
 
-Preuves : `tests/test_main.cpp` (41 tests, 1923 vérifications, 0 échec avec g++
-et clang++), `tools/test_analyze_trades.py` (12 tests), exécution de la suite sous
-AddressSanitizer / UndefinedBehaviorSanitizer (ligne 51 : aucun signalement). Les données de test sont
+Preuves : `tests/test_main.cpp` (49 tests, 2793 vérifications, 0 échec avec g++ ;
+passe clang++ consignée ligne 51), `tools/test_analyze_trades.py` (13 tests),
+exécution de la suite sous AddressSanitizer / UndefinedBehaviorSanitizer (ligne 51). Les données de test sont
 **synthétiques** : aucun chiffre de ce dépôt n'a de valeur de performance.
 
 ## 1. Module bougies japonaises
@@ -65,13 +65,33 @@ AddressSanitizer / UndefinedBehaviorSanitizer (ligne 51 : aucun signalement). Le
 |---|---|---|---|---|
 | 32 | Code existant inspecté, pas de détecteur dupliqué | oui | — | aucun détecteur FVG en v1.00 ; un seul module `Fvg.mqh` |
 | 33 | 3 bougies clôturées, formules haussière / baissière | oui | oui | `FVG / IFVG / OB` (bornes exactes, symétrie) |
-| 34 | Attributs : sens, bornes, UT, heure, taille pts/ATR, déplacement, BOS/CHOCH, balayage, proximité S/R/OB, retours, comblement, statut, raison | oui | partielle | bornes, heure, taille, déplacement, BOS, OB, statuts testés ; balayage et proximité S/R exercés |
-| 35 | Score de qualité configurable, explicable, sans double comptage | oui | partielle | poids `InpFvgW*`, raison textuelle ; BOS > sans BOS vérifié |
+| 34 | Attributs : identifiant, sens, bornes, UT, heure, taille pts/ATR, déplacement, BOS/CHOCH, balayage, proximité S/R, retours, comblement, statut, raison | oui | partielle | identifiant, bornes, heure, taille, déplacement, BOS daté, statuts testés ; balayage et proximité S/R exercés |
+| 35 | Score de qualité configurable, explicable, sans double comptage | oui | partielle | poids `InpFvgW*`, raison textuelle ; BOS > sans BOS vérifié ; l'OB ne fait plus partie de la qualité (v1.11) |
 | 36 | Retours, comblement, invalidation (définitions explicites) | oui | oui | 1er / 2e retour, 40 % / 80 % / 100 %, invalidation par clôture |
 | 37 | Historique conservé | oui | oui | `_fvg.csv` (création puis comblement / invalidation) |
 | 38 | IFVG règle séparée, désactivable | oui | oui | désactivée par défaut ; activée : zone inversée, identifiant distinct |
 | 39 | Une FVG ne déclenche jamais seule ; attente d'une réaction | oui | oui | `F6 retest de FVG` (contact sans réaction → attente) |
 | 40 | Refus si UT contradictoires, zone invalidée, R:R insuffisant | oui | oui | invalidation testée ; espace / obstacles testés (F5) ; tendance M5 opposée refusée pour F6 (continuation) |
+
+## 3 bis. FVG et Order Blocks — compléments v1.11
+
+| # | Exigence | Implémentée | Testée | Preuve / remarque |
+|---|---|---|---|---|
+| 52 | FVG et Order Block distincts, jamais fusionnés dans une règle | oui | oui | `Order Blocks (règles propres) et lien FVG` : OB sans FVG, FVG sans OB, qualité de la FVG identique avec ou sans OB |
+| 53 | OB détecté selon ses propres règles objectives | oui | oui | dernière bougie opposée avant une cassure impulsive ; bornes, création, retour, invalidation, symétrie baissière |
+| 54 | Confluence FVG + OB utilisée seulement si les résultats la justifient | oui | oui | option ignorée par défaut ; en mode exigé : filtre sans point de score (`F6 : confluence OB…`) ; **gain non démontré** (pas de données réelles) |
+| 55 | Pas de double comptage FVG / OB / cassure d'un même déplacement | oui | oui | lien « même déplacement » journalisé ; confluence sans points ; alignement M5 calculé sans la cassure déjà comptée (`F6 : cassure du déplacement non recomptée`) |
+| 56 | Rôles M15 / M5 / M1, origine des zones, doublons entre unités | oui | oui | origine `M5`/`M15`/`M5+M15` des zones S/R ; FVG M1 contenues dans une FVG M5 marquées doublons (`doublons FVG M1 / M5`) |
+| 57 | Aucune zone n'apparaît rétroactivement | oui | oui | `absence de repaint` : pivots, BOS/CHOCH, FVG, OB et zones connus à T identiques avec ou sans données ultérieures ; correction : sélection des pivots des zones parmi les seuls pivots confirmés |
+| 58 | Signaux confirmés sur bougies clôturées | oui | oui | toutes les séries sont des barres clôturées |
+| 59 | Aucune FVG ne contourne les protections | oui | oui | invariants des passages F6 (risque par trade, trades/jour, positions, stop jamais élargi) ; petit compte F6 : refus « volume minimal » |
+| 60 | Six variantes statistiques (référence, détection seule, qualité, retest + confirmation, confluence OB, filtres), mêmes périodes et coûts | oui (préréglages `fvg_*.set` + outil) | sur données synthétiques | `variantes du protocole FVG` : chaque variante respecte les invariants ; **étude sur données réelles : non faite** |
+| 61 | Mesures : net après coûts, espérance, PF, réussite, drawdown, nombre de trades, sessions, régimes, zones fraîches / revisitées | oui | oui (outil) | colonnes `zone_id`, `zone_retests`, `zone_quality` ; rapport EA « par fraîcheur de la zone » |
+| 62 | Ne conserver un filtre que s'il améliore hors échantillon ; sinon le désactiver et le signaler | oui | oui (outil) | « Verdict des filtres » : CONSERVER (candidat) / DÉSACTIVER avec motifs ; **aucun verdict réel rendu** faute de données |
+| 63 | Journal par zone et par signal (identifiant, sens, UT, bornes, création, taille, qualité, retours, comblement, état, confirmations, décision, motif, résultat) | oui | oui | `_fvg.csv`, `_ob.csv`, `_signals.csv` (décisions EXECUTE / ATTENTE / REFUS une fois par état de zone), `_trades.csv` ; nombre de champs constant vérifié pour chaque CSV |
+| 64 | Tableau de bord : zones détectées, qualifiées, retestées, invalidées ; signaux exécutés | oui | partielle | lignes « FVG Mx jour » et « Jour » affichées ; seule la cohérence détectées ≥ qualifiées est vérifiée |
+| 65 | Statistiques issues des données réelles du robot | oui | oui | rapports et CSV construits depuis l'historique des transactions ; aucun chiffre saisi |
+| 66 | Compilation MQL5 avec erreurs et avertissements réels | **non** | — | MetaEditor injoignable : la politique réseau de l'environnement refuse les hôtes MetaQuotes (réponse 403) ; seul le banc C++ strict a été exécuté |
 
 ## 4. Audit de robustesse
 
@@ -87,7 +107,7 @@ AddressSanitizer / UndefinedBehaviorSanitizer (ligne 51 : aucun signalement). Le
 | 48 | Surveillance et alertes configurables, jamais présentées comme preuve de succès | oui | oui | `alertes` (anti-répétition, catégories, échec d'envoi compté, testeur) |
 | 49 | Gestion des versions, aucun déploiement automatique sur le réel | oui | oui (v1.00) | `CHANGELOG.md` ; aucun paramètre modifié par le programme ; confirmation explicite sur compte réel |
 | 50 | Petit capital | oui | oui | `petit compte (10)` : aucune position, refus « volume minimal » journalisé |
-| 51 | Analyse mémoire et comportements indéfinis | — | oui | les 41 tests exécutés sous AddressSanitizer + UndefinedBehaviorSanitizer (g++ -O1, 4 groupes) : aucune erreur, aucune fuite, aucun comportement indéfini signalé |
+| 51 | Analyse mémoire et comportements indéfinis ; second compilateur | — | v1.10 : oui ; v1.11 : en cours | v1.10 : 41 tests sous AddressSanitizer + UndefinedBehaviorSanitizer et clang++ sans signalement. v1.11 : passes clang++ et sanitizers en cours au moment de ce commit |
 
 ## 5. Défauts et risques résiduels connus
 
@@ -109,6 +129,15 @@ AddressSanitizer / UndefinedBehaviorSanitizer (ligne 51 : aucun signalement). Le
    chaque nouvelle barre M1).
 8. Notifications mobiles et e-mails : nécessitent la configuration du terminal
    (identifiant MetaQuotes, serveur SMTP) ; un échec est compté et affiché.
+9. Order Blocks calculés sur l'unité `InpFvgTF` seulement ; tolérance de
+   confluence (`InpObConfluenceATR`) et règles de l'OB non calibrées.
+10. Doublons détectés entre FVG M1 et M5 uniquement (pas de FVG M15 dans cette version).
+11. La cassure d'une FVG peut lui être attribuée jusqu'à 2 barres après sa
+    création (barres clôturées) : sa qualité peut donc augmenter pendant 2 barres.
+12. Si un plan de position est reconstruit sans variables globales, la zone
+    d'origine du trade n'est plus connue (colonnes `zone_*` vides).
+13. Recouvrement résiduel : pour F6, la figure de réaction (bougies) et le CHOCH M1
+    proviennent des mêmes barres de réaction et sont notés dans deux composantes.
 
 ## 6. Conditions avant tout usage réel
 

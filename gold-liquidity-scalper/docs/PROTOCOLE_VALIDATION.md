@@ -115,6 +115,45 @@ passage de validation avec un délai d'exécution élevé fixe et un spread fixe
 élevé dans le testeur ; l'espérance doit rester positive. Le tableau de bord et le
 journal mesurent en démo les requotes, rejets, glissements et latences réels (§ 5).
 
+## 3 ter. Étude des FVG (variantes obligatoires)
+
+Six variantes, **mêmes périodes** (développement, validation, test final), mêmes
+données et mêmes hypothèses de coûts (spread réel des ticks, commission réelle,
+délai d'exécution aléatoire, stress des coûts de l'outil) :
+
+| # | Variante | Fichier | Contenu |
+|---|---|---|---|
+| 1 | référence sans FVG | `fvg_1_reference.set` | F1, filtres v1.10 et obstacles FVG désactivés |
+| 2 | détection FVG seule | `fvg_2_detection.set` | F6 sans seuil de qualité, sans limite de retours, **sans réaction** (recherche, testeur uniquement) |
+| 3 | + qualité | `fvg_3_qualite.set` | 2 + `InpFvgMinQuality` = 0,55 |
+| 4 | + retest et confirmation | `fvg_4_retest_confirmation.set` | 3 + retours ≤ 1 + réaction confirmée (règles F6) |
+| 5 | + confluence FVG + OB | `fvg_5_confluence_ob.set` | 4 + Order Block en confluence exigé |
+| 6 | + filtres structure, liquidité, bougies | `fvg_6_filtres.set` | 4 + régime, tendance, bougies, obstacles S/R et FVG (valeurs par défaut) |
+
+```
+python3 tools/analyze_trades.py GLS_BACKTEST_*_trades.csv --group-by label \
+    --baseline "F6|fvg2_detection" --dev 2021-01-01:2023-12-31 --val 2024-01-01:2024-12-31 \
+    --variants 6 --criteria tools/criteria_default.json --out etude_fvg.md
+```
+
+(et une seconde fois avec `--baseline "F1|fvg1_reference"` pour comparer la
+famille F6 à la stratégie de référence.) Le rapport donne pour chaque variante et
+chaque période : résultat net après coûts, espérance par transaction (devise et R),
+profit factor, taux de réussite, drawdown maximal (et Monte-Carlo), nombre de
+transactions, répartitions par **session** et par **régime**, et **zones fraîches
+(1er retour) comparées aux zones déjà revisitées** (colonnes `zone_id`,
+`zone_retests` de `_trades.csv`).
+
+**Règle de conservation** (section « Verdict des filtres » du rapport, appliquée
+automatiquement) : une variante n'est conservée que si son espérance R dépasse
+celle de la référence en développement **et** en validation (et au test final une
+fois déverrouillé), avec le nombre minimal de trades dans chaque période et une
+espérance positive sous stress des coûts en validation. Sinon le verdict est
+**DÉSACTIVER** : le filtre correspondant doit être désactivé dans les paramètres
+et la décision consignée (ex. « confluence OB : désactivée, aucun gain hors
+échantillon »). Aucun chiffre ne doit être reporté s'il ne provient pas des
+fichiers produits par le robot.
+
 ## 4. Analyse et décision
 
 ```
