@@ -12,6 +12,20 @@
 
 #define GLS_USED_RING 20
 
+//--- Figures de bougies désactivées et régimes autorisés par famille (paramètres)
+void AnalysisConfigInit(void)
+  {
+   CandleConfigInit(InpCdlDisabled);
+   for(int f = 0; f < ArraySize(g_regimeMask); f++)
+      g_regimeMask[f] = 0;
+   g_regimeMask[GLS_FAMILY_SWEEP] = ParseRegimeMask(InpRegimesF1);
+   g_regimeMask[GLS_FAMILY_PULLBACK] = ParseRegimeMask(InpRegimesF2);
+   g_regimeMask[GLS_FAMILY_RANGE_BREAK] = ParseRegimeMask(InpRegimesF3);
+   g_regimeMask[GLS_FAMILY_SQUEEZE] = ParseRegimeMask(InpRegimesF4);
+   g_regimeMask[GLS_FAMILY_SR_BOUNCE] = ParseRegimeMask(InpRegimesF5);
+   g_regimeMask[GLS_FAMILY_FVG] = ParseRegimeMask(InpRegimesF6);
+  }
+
 class CGlsEngine
   {
 private:
@@ -26,6 +40,10 @@ private:
    bool              m_wasConnected;
    string            m_checkLines[];
    int               m_checkStatus[];
+   string            m_cdlKeys[];       // figures déjà journalisées (clé) et dernier statut
+   int               m_cdlState[];
+   string            m_fvgKeys[];       // FVG déjà journalisées (clé) et dernier état
+   int               m_fvgState[];
 
 public:
    bool              symbolOk;
@@ -46,12 +64,17 @@ public:
    int               pendingOrders;
    double            lastSpread;
    int               lastSession;
+   int               cdlDetected;       // figures détectées aujourd'hui
+   int               cdlConfirmed;      // figures confirmées aujourd'hui
+   int               sigRejected;       // signaux complets refusés aujourd'hui
+   int               sigExecuted;       // transactions exécutées aujourd'hui
+   string            lastCandleText;
 
                      CGlsEngine(void) : m_spreadPos(0), m_spreadCount(0), m_lastBarTime(0), m_lastReconcile(0), m_lastFinalize(0),
                      m_reconnectAtTick(0), m_wasConnected(true), symbolOk(false), symbolError(""), running(false), stateCoherent(false),
                      needResync(true), startedAt(0), env("?"), account(0), isReal(false), tester(false), optimization(false), visual(false),
                      lastSignalText("aucun"), lastRefusalText("aucun"), lastExecText("aucune"), pendingOrders(0), lastSpread(0.0),
-                     lastSession(GLS_SESSION_OFF) {}
+                     lastSession(GLS_SESSION_OFF), cdlDetected(0), cdlConfirmed(0), sigRejected(0), sigExecuted(0), lastCandleText("aucune") {}
 
    //+---------------------------------------------------------------+
    //| Utilitaires                                                    |
@@ -186,6 +209,9 @@ public:
       else
          env = (mode == ACCOUNT_TRADE_MODE_REAL) ? "REEL" : ((mode == ACCOUNT_TRADE_MODE_CONTEST) ? "CONCOURS" : "DEMO");
 
+      //--- configuration des modules d'analyse (avant la validation)
+      AnalysisConfigInit();
+
       string err = "";
       if(!ValidateInputs(err))
         {
@@ -291,6 +317,18 @@ public:
                                        else
                                           if(InpSingleTargetR <= 0.0)
                                              err = "objectif unique invalide";
+      if(StringLen(err) == 0 && InpWCandle < 0.0)
+         err = "poids des bougies négatif";
+      if(StringLen(err) == 0 && (InpFamily < 1 || InpFamily > GLS_FAMILY_MAX))
+         err = "famille inconnue";
+      if(StringLen(err) == 0 && InpUseRegimeFilter && g_regimeMask[InpFamily] == 0)
+         err = "aucun régime valide autorisé pour la famille active (InpRegimesF*)";
+      if(StringLen(err) == 0 && InpFvgWDisp + InpFvgWSize + InpFvgWStructure + InpFvgWSweep + InpFvgWFresh + InpFvgWContext <= 0.0)
+         err = "poids de qualité FVG nuls";
+      if(StringLen(err) == 0 && (InpCdlConfirmBars < 1 || InpCdlLookback < 3 || InpCdlDojiBodyRatio >= InpCdlSmallBodyRatio))
+         err = "paramètres de bougies incohérents";
+      if(StringLen(err) == 0 && (InpZoneMergeATR <= 0.0 || InpZoneBreakCloses < 1 || InpMaxBarGapMin < 1))
+         err = "paramètres de zones / données incohérents";
       return (StringLen(err) == 0);
      }
 
@@ -583,6 +621,11 @@ public:
          detail = "cotation ou barres obsolètes / incohérentes";
          return GLS_REFUSE_DATA;
         }
+      if(g_ctx.dataGap)
+        {
+         detail = g_ctx.dataGapText;
+         return GLS_REFUSE_DATA;
+        }
       int minsToClose = 0;
       if(!BrokerSessionOpen(g_sym.name, now, minsToClose))
         {
@@ -680,16 +723,24 @@ public:
    //+---------------------------------------------------------------+
    void              LogSignal(const SSignal &s, const string decision)
      {
-      if(!g_log.FilesEnabled() || s.stage < 2)
+      if(s.stage < 2)
          return;
-      string h = "time;family;dir;id;score;c_liq;c_trig;c_struct;c_align;c_retest;c_vol;c_cost;c_rr;room_r;risk_price;cost_frac;stop;level;decision;reason;detail";
+      if(decision == "EXECUTE")
+         sigExecuted++;
+      else
+         sigRejected++;
+      if(!g_log.FilesEnabled())
+         return;
+      string h = "time;family;dir;id;score;c_liq;c_trig;c_struct;c_align;c_retest;c_vol;c_cost;c_rr;room_r;risk_price;cost_frac;stop;level;decision;reason;detail;";
+      h += "c_candle;candle;regime;trend_m15;trend_m5;label;criteria";
       string row = TimeToString(s.triggerTime, TIME_DATE | TIME_MINUTES) + ";" + GlsFamilyCode(s.family) + ";" + (s.dir == GLS_BUY ? "BUY" : "SELL") + ";"
                    + s.hash + ";" + DoubleToString(s.score, 1) + ";" + DoubleToString(s.cLiq, 2) + ";" + DoubleToString(s.cTrig, 2) + ";"
                    + DoubleToString(s.cStruct, 2) + ";" + DoubleToString(s.cAlign, 2) + ";" + DoubleToString(s.cRetest, 2) + ";"
                    + DoubleToString(s.cVol, 2) + ";" + DoubleToString(s.cCost, 2) + ";" + DoubleToString(s.cRR, 2) + ";"
                    + DoubleToString(s.roomR, 2) + ";" + DoubleToString(s.riskDist, g_sym.digits) + ";" + DoubleToString(s.costFrac, 3) + ";"
                    + DoubleToString(s.stop, g_sym.digits) + ";" + DoubleToString(s.level, g_sym.digits) + ";" + decision + ";"
-                   + GlsRefusalText(s.refusal) + ";" + s.detail;
+                   + GlsRefusalText(s.refusal) + ";" + s.detail + ";" + DoubleToString(s.cCandle, 2) + ";" + s.candleName + ";"
+                   + RegimeCode(s.regime) + ";" + TrendClassText(s.trend15) + ";" + TrendClassText(s.trend5) + ";" + InpRunLabel + ";" + s.criteria;
       g_log.WriteSignalRow(h, row);
      }
 
@@ -712,7 +763,7 @@ public:
       DetectFamily(InpFamily, g_ctx, vs, ss);
       double valuePerPrice = (g_sym.tickSize > 0.0) ? g_sym.tickValue / g_sym.tickSize : 0.0;
       double commPrice = (valuePerPrice > 0.0) ? 2.0 * g_commissionPerLotSide / valuePerPrice : 0.0;
-      double extra = commPrice + InpSlippageAllowancePrice;
+      double extra = commPrice + SlippageAllowance();
       FinalizeSignal(sb, g_ctx, vb, tick.bid, tick.ask, extra, now);
       FinalizeSignal(ss, g_ctx, vs, tick.bid, tick.ask, extra, now);
 
@@ -833,6 +884,9 @@ public:
       g_guard.OnExecSuccess();
       MarkSignalUsed(sig.id);
       g_guard.tradesToday++;
+      //--- qualité d'exécution : glissement mesuré, réinjecté dans l'estimation des coûts
+      g_exec.RecordFill((double)sig.dir * (res.fillPrice - res.requestedPrice), g_sym.point, spread);
+      g_observedSlippage = g_exec.ExpectedAdverseSlippage();
 
       //--- plan de position à partir de l'exécution RÉELLE
       SPlan p;
@@ -863,6 +917,8 @@ public:
          p.riskMoney = perLot * p.initialVolume + 2.0 * g_commissionPerLotSide * p.initialVolume;
       double valuePerPrice = (g_sym.tickSize > 0.0) ? g_sym.tickValue / g_sym.tickSize : 0.0;
       p.estCost = spread * valuePerPrice * p.initialVolume + 2.0 * g_commissionPerLotSide * p.initialVolume;
+      p.regime = sig.regime;
+      p.candleId = sig.candleId;
       g_pm.Add(p);
       int idx = g_pm.Find(p.ticket);
 
@@ -912,12 +968,14 @@ public:
       if(!c && m_wasConnected)
         {
          g_log.Warn("CONNEXION", "connexion au serveur perdue : nouvelles entrées suspendues");
+         g_alerts.Notify(GLS_ALERT_CONNECTION, "conn_lost", "connexion au serveur perdue (entrées suspendues)");
          needResync = true;
          stateCoherent = false;
         }
       if(c && !m_wasConnected)
         {
          g_log.Info("CONNEXION", "connexion rétablie : contrôle de l'état réel avant reprise");
+         g_alerts.Notify(GLS_ALERT_CONNECTION, "conn_back", "connexion rétablie (état relu avant reprise)");
          m_reconnectAtTick = (int)GetTickCount();
          needResync = true;
         }
@@ -952,11 +1010,18 @@ public:
       if(g_guard.CheckRollover(now, AccountInfoDouble(ACCOUNT_EQUITY)))
         {
          g_log.Info("JOUR", "nouvelle journée de trading : compteurs journaliers réinitialisés");
+         cdlDetected = 0;
+         cdlConfirmed = 0;
+         sigRejected = 0;
+         sigExecuted = 0;
          RebuildStats();
         }
-      bool ok = g_ctx.Update(g_sym.name, now, g_clock, InpEMAPeriodM5, InpM5SwingStrength, InpM15SwingStrength, InpTrendERMin, InpTransitionBars);
+      bool ok = g_ctx.Update(g_sym.name, now, g_clock, InpEMAPeriodM5, InpM5SwingStrength, InpM15SwingStrength, InpTrendERMin, InpTransitionBars,
+                             tick.ask - tick.bid);
       if(!ok)
          g_log.Debug("DONNEES", g_ctx.error);
+      else
+         LogAnalysis();
       lastSession = g_clock.SessionAt(now);
       g_pm.OnBar(g_ctx, tick.bid, tick.ask, now);
       g_pm.FinalizeClosed(env, account);
@@ -997,6 +1062,125 @@ public:
         }
       if(g_dash.Created())
          UpdateDashboard();
+     }
+
+   //+---------------------------------------------------------------+
+   //| Journal des analyses : figures de bougies et FVG              |
+   //| (une ligne à la détection, puis à chaque changement d'état)   |
+   //+---------------------------------------------------------------+
+   int               FindKey(const string &keys[], const string key) const
+     {
+      for(int i = ArraySize(keys) - 1; i >= 0; i--)
+         if(keys[i] == key)
+            return i;
+      return -1;
+     }
+
+   int               AddKey(string &keys[], int &states[], const string key)
+     {
+      int n = ArraySize(keys);
+      if(n >= 600)
+        {
+         //--- mémoire bornée : on oublie les 100 plus anciennes (déjà journalisées)
+         for(int i = 100; i < n; i++)
+           {
+            keys[i - 100] = keys[i];
+            states[i - 100] = states[i];
+           }
+         n -= 100;
+        }
+      ArrayResize(keys, n + 1);
+      ArrayResize(states, n + 1);
+      keys[n] = key;
+      states[n] = -1;
+      return n;
+     }
+
+   void              LogCandles(const CCandleAnalysis &ca)
+     {
+      for(int i = 0; i < ArraySize(ca.pats); i++)
+        {
+         //--- par défaut : seules les figures ORIENTÉES et interprétables dans leur contexte sont suivies
+         bool main = (ca.pats[i].dir != 0 && ca.pats[i].interpretable);
+         if(!main && InpLogCandles != GLS_LOGD_ALL)
+            continue;
+         string key = CandleCode(ca.pats[i].id) + "|" + IntegerToString(ca.pats[i].dir) + "|" + IntegerToString((long)ca.pats[i].time);
+         int st = ca.pats[i].status;
+         int k = FindKey(m_cdlKeys, key);
+         if(k >= 0 && m_cdlState[k] == st)
+            continue;
+         if(k < 0)
+           {
+            k = AddKey(m_cdlKeys, m_cdlState, key);
+            if(main)
+               cdlDetected++;
+           }
+         if(st == GLS_CDLST_CONFIRMED && main)
+            cdlConfirmed++;
+         m_cdlState[k] = st;
+         string name = CandleName(ca.pats[i].id, ca.pats[i].dir);
+         if(main)
+            lastCandleText = TimeToString(ca.pats[i].time, TIME_MINUTES) + " " + name + " (" + CandleStatusText(st) + ")";
+         bool finalState = (st == GLS_CDLST_CONFIRMED || st == GLS_CDLST_INVALIDATED || st == GLS_CDLST_EXPIRED);
+         if(!g_log.FilesEnabled() || InpLogCandles == GLS_LOGD_NONE || (InpLogCandles == GLS_LOGD_MAIN && !finalState))
+            continue;
+         SCandle c;
+         CandleMetrics(g_ctx.m1, g_ctx.atr, ca.pats[i].bar, c);
+         double lo = (ca.viewDir == GLS_BUY) ? ca.pats[i].low : -ca.pats[i].high;
+         double hi = (ca.viewDir == GLS_BUY) ? ca.pats[i].high : -ca.pats[i].low;
+         string h = "heure;ut;figure;code;sens;categorie;statut;force;contexte_ok;pres_zone;obstacle;bruit_spread;tendance;interpretable;";
+         h += "corps_ratio;meche_sup_ratio;meche_inf_ratio;meche_sup_corps;meche_inf_corps;position_cloture;amplitude_atr;taille_relative;";
+         h += "casse_haut_prec;casse_bas_prec;bas;haut;spread;label";
+         string row = TimeToString(ca.pats[i].time, TIME_DATE | TIME_MINUTES) + ";M1;" + name + ";" + CandleCode(ca.pats[i].id) + ";"
+                      + IntegerToString(ca.pats[i].dir) + ";" + IntegerToString(ca.pats[i].category) + ";" + CandleStatusText(st) + ";"
+                      + DoubleToString(ca.pats[i].strength, 2) + ";" + (ca.pats[i].contextOk ? "1" : "0") + ";" + (ca.pats[i].nearZone ? "1" : "0") + ";"
+                      + (ca.pats[i].obstacle ? "1" : "0") + ";" + (ca.pats[i].noisy ? "1" : "0") + ";" + IntegerToString(ca.pats[i].trendAlign) + ";"
+                      + (ca.pats[i].interpretable ? "1" : "0") + ";" + DoubleToString(c.bodyRatio, 2) + ";" + DoubleToString(c.upperRatio, 2) + ";"
+                      + DoubleToString(c.lowerRatio, 2) + ";" + DoubleToString(c.upperToBody, 2) + ";" + DoubleToString(c.lowerToBody, 2) + ";"
+                      + DoubleToString(c.closeLoc, 2) + ";" + DoubleToString(c.rangeAtr, 2) + ";" + DoubleToString(c.relSize, 2) + ";"
+                      + (c.breaksPrevHigh ? "1" : "0") + ";" + (c.breaksPrevLow ? "1" : "0") + ";" + DoubleToString(lo, g_sym.digits) + ";"
+                      + DoubleToString(hi, g_sym.digits) + ";" + DoubleToString(g_ctx.spreadNow, g_sym.digits) + ";" + InpRunLabel;
+         g_log.WriteCandleRow(h, row);
+        }
+     }
+
+   void              LogFvgs(const CFvgMap &m)
+     {
+      for(int i = 0; i < ArraySize(m.fvgs); i++)
+        {
+         if(InpLogFvg == GLS_LOGD_NONE || !g_log.FilesEnabled() || (InpLogFvg == GLS_LOGD_MAIN && m.tfMin != 5))
+            return;
+         string key = FvgKey(m.fvgs[i]);
+         //--- essentiel : création, puis comblement complet ou invalidation ; tout : chaque retour / comblement partiel
+         int state = (InpLogFvg == GLS_LOGD_ALL) ? m.fvgs[i].status * 100 + MathMin(m.fvgs[i].retests, 99)
+                     : ((m.fvgs[i].status == GLS_FVG_FILLED || m.fvgs[i].status == GLS_FVG_INVALIDATED) ? m.fvgs[i].status : 0);
+         int k = FindKey(m_fvgKeys, key);
+         if(k >= 0 && m_fvgState[k] == state)
+            continue;
+         if(k < 0)
+            k = AddKey(m_fvgKeys, m_fvgState, key);
+         m_fvgState[k] = state;
+         string h = "creation;ut;sens;bas;haut;taille_pts;taille_atr;deplacement_atr;corps_deplacement;bos;choch;balayage;ob_bas;ob_haut;";
+         h += "dist_contexte_atr;retours;comblement;statut;maj_statut;qualite;ifvg;raison;label";
+         string row = TimeToString(m.fvgs[i].created, TIME_DATE | TIME_MINUTES) + ";M" + IntegerToString(m.fvgs[i].tfMin) + ";"
+                      + (m.fvgs[i].dir > 0 ? "HAUSSIER" : "BAISSIER") + ";" + DoubleToString(m.fvgs[i].lo, g_sym.digits) + ";"
+                      + DoubleToString(m.fvgs[i].hi, g_sym.digits) + ";" + DoubleToString(m.fvgs[i].sizePts, 0) + ";" + DoubleToString(m.fvgs[i].sizeAtr, 2) + ";"
+                      + DoubleToString(m.fvgs[i].dispAtr, 2) + ";" + DoubleToString(m.fvgs[i].dispBody, 2) + ";" + (m.fvgs[i].bos ? "1" : "0") + ";"
+                      + (m.fvgs[i].choch ? "1" : "0") + ";" + (m.fvgs[i].sweep ? "1" : "0") + ";"
+                      + (m.fvgs[i].hasOB ? DoubleToString(m.fvgs[i].obLo, g_sym.digits) : "") + ";" + (m.fvgs[i].hasOB ? DoubleToString(m.fvgs[i].obHi, g_sym.digits) : "") + ";"
+                      + DoubleToString(m.fvgs[i].ctxDistAtr, 2) + ";" + IntegerToString(m.fvgs[i].retests) + ";" + DoubleToString(100.0 * m.fvgs[i].fillPct, 0) + ";"
+                      + FvgStatusText(m.fvgs[i].status) + ";" + TimeToString(m.fvgs[i].statusTime, TIME_DATE | TIME_MINUTES) + ";"
+                      + DoubleToString(m.fvgs[i].quality, 2) + ";" + (m.fvgs[i].inverted ? "1" : "0") + ";" + m.fvgs[i].reason + ";" + InpRunLabel;
+         g_log.WriteFvgRow(h, row);
+        }
+     }
+
+   void              LogAnalysis(void)
+     {
+      LogCandles(g_ctx.cdlBuy);
+      LogCandles(g_ctx.cdlSell);
+      LogFvgs(g_ctx.fvg5);
+      LogFvgs(g_ctx.fvg1);
      }
 
    //--- Transaction serveur : une position a pu se fermer (stop, objectif...)
@@ -1227,6 +1411,7 @@ public:
       g_store.Set("run", 0.0);
       g_store.Flush();
       g_log.Info("BOUTON", StringFormat("robot ARRÊTÉ : plus de nouvelles entrées ; %d position(s) restent gérées avec leurs stops", g_pm.AliveCount()));
+      g_alerts.Notify(GLS_ALERT_STOP, "stop", "robot arrêté par le bouton (positions toujours gérées)");
      }
 
    int               CountEaPositions(void) const
@@ -1371,13 +1556,32 @@ public:
                     + TimeToString(g_clock.ServerToUtc(now), TIME_MINUTES), window ? GLS_STATUS_OK : GLS_STATUS_INFO);
       g_dash.SetRow(row++, "Annonces : " + g_news.statusText, g_news.Reliable() ? GLS_STATUS_OK : GLS_STATUS_WARN);
       if(g_ctx.ready)
-         g_dash.SetRow(row++, "Contexte : M15 " + GlsTrendText(g_ctx.st15.trend) + " (" + GlsRegimeText(g_ctx.st15.regime) + "), M5 " + g_ctx.st5.EventText()
-                       + (g_ctx.EmaSide() > 0 ? ", > EMA200" : (g_ctx.EmaSide() < 0 ? ", < EMA200" : "")), GLS_STATUS_INFO);
+        {
+         bool allowed = !InpUseRegimeFilter || RegimeAllowed(InpFamily, g_ctx.regime);
+         g_dash.SetRow(row++, "Tendance : M15 " + TrendClassText(g_ctx.t15.cls) + ", M5 " + TrendClassText(g_ctx.t5.cls) + " | régime "
+                       + RegimeCode(g_ctx.regime) + (allowed ? "" : " (non autorisé)"), allowed ? GLS_STATUS_INFO : GLS_STATUS_WARN);
+         g_dash.SetRow(row++, "  M15 : " + g_ctx.t15.reason, GLS_STATUS_INFO);
+         g_dash.SetRow(row++, "Structure M5 : " + g_ctx.st5.EventText() + (g_ctx.EmaSide() > 0 ? ", prix > EMA200" : (g_ctx.EmaSide() < 0 ? ", prix < EMA200" : ""))
+                       + (g_ctx.dataGap ? " | " + g_ctx.dataGapText : ""), g_ctx.dataGap ? GLS_STATUS_WARN : GLS_STATUS_INFO);
+         double mid = 0.5 * (SymbolInfoDouble(g_sym.name, SYMBOL_BID) + SymbolInfoDouble(g_sym.name, SYMBOL_ASK));
+         int zs = g_ctx.zones.Nearest(GLS_ZONE_SUPPORT, mid);
+         int zr = g_ctx.zones.Nearest(GLS_ZONE_RESIST, mid);
+         g_dash.SetRow(row++, "Support : " + g_ctx.zones.Describe(zs, g_sym.digits), GLS_STATUS_INFO);
+         g_dash.SetRow(row++, "Résistance : " + g_ctx.zones.Describe(zr, g_sym.digits), GLS_STATUS_INFO);
+         g_dash.SetRow(row++, StringFormat("FVG actives M5 : %d haussière(s) / %d baissière(s) | M1 : %d / %d", g_ctx.fvg5.CountActive(1),
+                                           g_ctx.fvg5.CountActive(-1), g_ctx.fvg1.CountActive(1), g_ctx.fvg1.CountActive(-1)), GLS_STATUS_INFO);
+        }
       else
          g_dash.SetRow(row++, "Contexte : données indisponibles (" + g_ctx.error + ")", GLS_STATUS_WARN);
+      g_dash.SetRow(row++, StringFormat("Jour : figures %d détectées / %d confirmées | signaux %d rejetés / %d exécutés",
+                                        cdlDetected, cdlConfirmed, sigRejected, sigExecuted), GLS_STATUS_INFO);
+      g_dash.SetRow(row++, "Dernière figure : " + lastCandleText, GLS_STATUS_INFO);
       g_dash.SetRow(row++, "Dernier signal : " + lastSignalText, GLS_STATUS_INFO);
       g_dash.SetRow(row++, "Dernier refus : " + lastRefusalText, GLS_STATUS_INFO);
       g_dash.SetRow(row++, "Dernière exécution : " + lastExecText, GLS_STATUS_INFO);
+      g_dash.SetRow(row++, "Exécution : " + g_exec.Summary(), (g_exec.rejects + g_exec.uncertain > 0) ? GLS_STATUS_WARN : GLS_STATUS_INFO);
+      g_dash.SetRow(row++, StringFormat("Alertes : %d envoyée(s), %d échec(s) | ", g_alerts.sent, g_alerts.failures) + g_alerts.lastText,
+                    g_alerts.failures > 0 ? GLS_STATUS_WARN : GLS_STATUS_INFO);
       g_dash.SetRow(row++, "Protection : " + g_guard.StatusText(now), g_guard.EntryBlockReason(now) == GLS_REFUSE_NONE ? GLS_STATUS_OK : GLS_STATUS_FAIL);
       g_dash.SetRow(row++, StringFormat("Risque : %.2f %%/trade | ouvert %.2f %s | DD %.2f %%/%.1f %%", InpRiskPercent, g_guard.openRiskMoney, ccy,
                                         g_guard.drawdownPct, InpMaxDrawdownPct), GLS_STATUS_INFO);
@@ -1401,6 +1605,7 @@ public:
         }
       g_dash.Destroy();
       g_log.Info("FIN", "EA retiré (raison " + IntegerToString(reason) + ") ; les positions ouvertes conservent leurs stops sur le serveur");
+      g_alerts.Notify(GLS_ALERT_STOP, "deinit", "EA retiré du graphique (raison " + IntegerToString(reason) + ") : positions non gérées par l'EA tant qu'il est arrêté");
      }
 
    //--- Critère personnalisé du testeur : espérance en R / écart-type x racine(N) (SQN borné)

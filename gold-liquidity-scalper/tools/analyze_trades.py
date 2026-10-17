@@ -15,13 +15,21 @@ Principes :
   - l'échantillon de test final n'est évalué qu'avec --unlock-test, une fois
     la sélection figée (pour éviter de "regarder" le test pendant la mise au
     point) ;
-  - si aucune famille ne satisfait les critères : aucune n'est retenue.
+  - si aucune famille ne satisfait les critères : aucune n'est retenue ;
+  - robustesse : Monte-Carlo (rééchantillonnage des résultats en R : drawdown
+    et résultat total en distribution), retrait des 5 % meilleurs trades,
+    stress des coûts ;
+  - comparaison A/B : --group-by label regroupe par libellé d'essai
+    (paramètre InpRunLabel de l'EA) et --baseline compare chaque variante à
+    la référence (écart d'espérance R avec intervalle bootstrap indicatif).
 
 Bibliothèque standard uniquement. Exemple :
   python3 analyze_trades.py GLS_BACKTEST_*_trades.csv \
       --dev 2021-01-01:2023-12-31 --val 2024-01-01:2024-12-31 \
       --test 2025-01-01:2025-12-31 --variants 4 \
       --criteria criteria_default.json --out rapport.md
+  python3 analyze_trades.py ref_trades.csv bougies_trades.csv --group-by label \
+      --baseline "F1|reference" --dev ... --val ... --variants 6
 """
 import argparse
 import csv
@@ -43,6 +51,8 @@ DEFAULT_CRITERIA = {
     "max_adjusted_p_value": 0.05,
     "stress_extra_cost_price": 0.20,
     "min_stressed_expectancy_r": 0.0,
+    "mc_paths": 1000,
+    "max_mc_drawdown_r_p95": 20.0,
 }
 
 NUMERIC = ["score", "duration_s", "entry", "exit", "volume", "risk_money", "risk_points", "net", "gross",
@@ -62,7 +72,7 @@ def parse_time(text):
     raise ValueError("date illisible : %r" % text)
 
 
-def load_trades(paths, per_file):
+def load_trades(paths, per_file, group_by="family"):
     trades = []
     for path in paths:
         label = os.path.splitext(os.path.basename(path))[0]
@@ -79,7 +89,10 @@ def load_trades(paths, per_file):
                         t[k] = 0.0
                 t["open_dt"] = parse_time(row["open_time"])
                 t["close_dt"] = parse_time(row["close_time"])
-                t["group"] = row["family"] + ("|" + label if per_file else "")
+                t["regime"] = row.get("regime") or "?"
+                t["label"] = row.get("label") or "sans_libelle"
+                t["candle"] = row.get("candle") or "aucune"
+                t["group"] = row["family"] + ("|" + label if per_file else "") + ("|" + t["label"] if group_by == "label" else "")
                 trades.append(t)
     trades.sort(key=lambda x: x["close_dt"])
     return trades
@@ -154,6 +167,52 @@ def bootstrap_ci(values, n_boot=2000, alpha=0.05, seed=12345):
     lo = means[int(alpha / 2 * n_boot)]
     hi = means[int((1 - alpha / 2) * n_boot) - 1]
     return (lo, hi)
+
+
+def bootstrap_diff_ci(a, b, n_boot=1000, alpha=0.05, seed=777):
+    """IC bootstrap de la différence des moyennes (a - b), échantillons rééchantillonnés séparément."""
+    if len(a) < 2 or len(b) < 2:
+        return (float("nan"), float("nan"))
+    rng = random.Random(seed)
+    diffs = []
+    na, nb = len(a), len(b)
+    for _ in range(n_boot):
+        ma = sum(a[rng.randrange(na)] for _ in range(na)) / na
+        mb = sum(b[rng.randrange(nb)] for _ in range(nb)) / nb
+        diffs.append(ma - mb)
+    diffs.sort()
+    return (diffs[int(alpha / 2 * n_boot)], diffs[int((1 - alpha / 2) * n_boot) - 1])
+
+
+def quantile(sorted_values, p):
+    return sorted_values[min(len(sorted_values) - 1, int(p * len(sorted_values)))]
+
+
+def monte_carlo(rs, n_paths=1000, seed=4242):
+    """Rééchantillonnage AVEC remise des résultats en R (composition et ordre des trades) :
+    distribution du drawdown maximal et du résultat total sur le même nombre de trades.
+    Hypothèse : trades indépendants (la dépendance réelle entre trades n'est pas modélisée)."""
+    if len(rs) < 2 or n_paths < 1:
+        return None
+    rng = random.Random(seed)
+    n = len(rs)
+    dds = []
+    totals = []
+    for _ in range(n_paths):
+        cum = peak = dd = 0.0
+        for _ in range(n):
+            cum += rs[rng.randrange(n)]
+            if cum > peak:
+                peak = cum
+            elif peak - cum > dd:
+                dd = peak - cum
+        dds.append(dd)
+        totals.append(cum)
+    dds.sort()
+    totals.sort()
+    return {"dd_p50": quantile(dds, 0.50), "dd_p95": quantile(dds, 0.95), "dd_p99": quantile(dds, 0.99),
+            "total_p05": quantile(totals, 0.05), "total_p50": quantile(totals, 0.50),
+            "p_loss": sum(1 for x in totals if x <= 0.0) / len(totals), "paths": n_paths}
 
 
 def period_key(d, period):
@@ -235,6 +294,11 @@ def metrics(trades, criteria, n_variants):
         # stress des coûts : coût supplémentaire en points, converti en R
         stressed = [t["r_multiple"] - stress_in_r(t, criteria) for t in with_r]
         m["stressed_expectancy_r"] = sum(stressed) / len(stressed)
+        # dépendance aux meilleurs trades : espérance sans les 5 % meilleurs
+        k = max(1, int(0.05 * len(rs)))
+        trimmed = sorted(rs)[:-k]
+        m["expectancy_r_wo_top5"] = (sum(trimmed) / len(trimmed)) if trimmed else float("nan")
+        m["mc"] = monte_carlo(rs, int(criteria.get("mc_paths", 1000)))
     m["avg_duration_min"] = sum(t["duration_s"] for t in trades) / len(trades) / 60.0
     m["commission"] = sum(t["commission"] for t in trades)
     m["swap"] = sum(t["swap"] for t in trades)
@@ -273,6 +337,10 @@ def evaluate(m, criteria, split):
     out.append(("p-valeur corrigée", pa, "<= %.3f" % criteria["max_adjusted_p_value"], pa <= criteria["max_adjusted_p_value"]))
     se = m.get("stressed_expectancy_r", float("nan"))
     out.append(("espérance R sous stress", se, "> %.2f" % criteria["min_stressed_expectancy_r"], se > criteria["min_stressed_expectancy_r"]))
+    if criteria.get("max_mc_drawdown_r_p95") is not None:
+        mc = m.get("mc")
+        v = mc["dd_p95"] if mc else float("inf")
+        out.append(("drawdown Monte-Carlo p95 R", v, "<= %.1f" % criteria["max_mc_drawdown_r_p95"], v <= criteria["max_mc_drawdown_r_p95"]))
     return out
 
 
@@ -304,7 +372,7 @@ def fmt(x, nd=2):
 # ---------------------------------------------------------------------------
 # Rapport
 # ---------------------------------------------------------------------------
-def build_report(trades, splits, criteria, n_variants, unlock_test):
+def build_report(trades, splits, criteria, n_variants, unlock_test, baseline=None):
     envs = sorted(set(t["env"] for t in trades))
     lines = ["# Rapport de comparaison des familles", ""]
     lines.append("Généré le %s. Environnements : %s." % (dt.datetime.now().strftime("%Y-%m-%d %H:%M"), ", ".join(envs)))
@@ -346,6 +414,46 @@ def build_report(trades, splits, criteria, n_variants, unlock_test):
                 fmt(m["max_dd_r"]), m["longest_loss_streak"], fmt(100 * m["positive_period_ratio"], 0) + " %",
                 fmt(m.get("stressed_expectancy_r", float("nan"))), fmt(m["avg_slippage_pts"], 1)))
         lines.append("")
+        lines.append("Robustesse (Monte-Carlo : %d tirages avec remise des résultats en R, trades supposés indépendants) :" %
+                     int(criteria.get("mc_paths", 1000)))
+        lines.append("")
+        lines.append("| Groupe | DD médian R | DD p95 R | DD p99 R | Total p05 R | Total médian R | P(total <= 0) | Esp. R sans 5 % meilleurs |")
+        lines.append("|---|---|---|---|---|---|---|---|")
+        for g in groups:
+            m = results[(g, split)][0]
+            mc = m.get("mc")
+            if not mc:
+                continue
+            lines.append("| %s | %s | %s | %s | %s | %s | %s | %s |" % (
+                g, fmt(mc["dd_p50"]), fmt(mc["dd_p95"]), fmt(mc["dd_p99"]), fmt(mc["total_p05"]), fmt(mc["total_p50"]),
+                fmt(100 * mc["p_loss"], 1) + " %", fmt(m.get("expectancy_r_wo_top5", float("nan")))))
+        lines.append("")
+        if baseline:
+            ref = [t["r_multiple"] for t in trades if t["group"] == baseline and start <= t["close_dt"] < end and t["risk_money"] > 0]
+            lines.append("Comparaison avec la référence **%s** (%d trades) :" % (baseline, len(ref)))
+            lines.append("")
+            if not ref:
+                lines.append("_Référence absente de cette période : aucune comparaison._")
+            else:
+                ref_mean = sum(ref) / len(ref)
+                lines.append("| Variante | Trades | Esp. R | Écart d'esp. R | IC95 de l'écart | Trades vs réf. |")
+                lines.append("|---|---|---|---|---|---|")
+                for g in groups:
+                    if g == baseline:
+                        continue
+                    var = [t["r_multiple"] for t in trades if t["group"] == g and start <= t["close_dt"] < end and t["risk_money"] > 0]
+                    if not var:
+                        lines.append("| %s | 0 | | | | |" % g)
+                        continue
+                    lo, hi = bootstrap_diff_ci(var, ref)
+                    lines.append("| %s | %d | %s | %s | [%s ; %s] | %s %% |" % (
+                        g, len(var), fmt(sum(var) / len(var)), fmt(sum(var) / len(var) - ref_mean), fmt(lo), fmt(hi),
+                        fmt(100.0 * len(var) / len(ref), 0)))
+                lines.append("")
+                lines.append("_Les variantes sont rejouées sur les MÊMES données de marché : les échantillons ne sont pas "
+                             "indépendants et l'intervalle est indicatif. Un filtre n'est conservé que s'il améliore le "
+                             "résultat en développement ET en validation, sans réduire l'échantillon sous les minimums._")
+            lines.append("")
         lines.append("Critères pré-enregistrés :")
         lines.append("")
         for g in groups:
@@ -367,7 +475,9 @@ def build_report(trades, splits, criteria, n_variants, unlock_test):
             lines.append("")
             for title, key in (("Session", lambda t: t["session"]), ("Sortie", lambda t: t["exit_reason"]),
                                ("Tranche de score (calibration)", lambda t: "%02d-%02d" % (int(t["score"] // 10) * 10, int(t["score"] // 10) * 10 + 9)),
-                               ("Sens", lambda t: t["dir"]), ("Entrée sur retest", lambda t: t.get("retest", "?"))):
+                               ("Sens", lambda t: t["dir"]), ("Entrée sur retest", lambda t: t.get("retest", "?")),
+                               ("Régime à l'entrée", lambda t: t.get("regime", "?")),
+                               ("Figure de bougie retenue", lambda t: t.get("candle", "aucune"))):
                 lines.append("| %s | Trades | Réussite %% | Net | Esp. R |" % title)
                 lines.append("|---|---|---|---|---|")
                 for k, n, wr, net, er in breakdown(sub, key):
@@ -428,6 +538,9 @@ def main(argv=None):
     ap.add_argument("--criteria", help="fichier JSON des critères pré-enregistrés")
     ap.add_argument("--per-file", action="store_true", help="un groupe par fichier (variantes de paramètres)")
     ap.add_argument("--env", help="ne garder qu'un environnement (BACKTEST, DEMO, REEL)")
+    ap.add_argument("--group-by", choices=["family", "label"], default="family",
+                    help="label : un groupe par famille et libellé d'essai (InpRunLabel), pour les comparaisons A/B")
+    ap.add_argument("--baseline", help="groupe de référence pour la comparaison A/B, ex. \"F1|reference\"")
     ap.add_argument("--out", default="rapport_comparaison.md")
     args = ap.parse_args(argv)
 
@@ -436,7 +549,7 @@ def main(argv=None):
         with open(args.criteria, encoding="utf-8") as fh:
             user = json.load(fh)
         criteria.update(user)
-    trades = load_trades(args.files, args.per_file)
+    trades = load_trades(args.files, args.per_file, args.group_by)
     if args.env:
         trades = [t for t in trades if t["env"] == args.env]
     if not trades:
@@ -451,7 +564,10 @@ def main(argv=None):
             if keys[i][0] < keys[j][1] and keys[j][0] < keys[i][1]:
                 print("ERREUR : les périodes se chevauchent.")
                 return 2
-    report, _, _ = build_report(trades, splits, criteria, args.variants, args.unlock_test)
+    if args.baseline and args.baseline not in set(t["group"] for t in trades):
+        print("ERREUR : groupe de référence introuvable : %s (groupes : %s)" % (args.baseline, ", ".join(sorted(set(t["group"] for t in trades)))))
+        return 3
+    report, _, _ = build_report(trades, splits, criteria, args.variants, args.unlock_test, args.baseline)
     with open(args.out, "w", encoding="utf-8") as fh:
         fh.write(report)
     print("Rapport écrit : %s (%d trades lus)" % (args.out, len(trades)))

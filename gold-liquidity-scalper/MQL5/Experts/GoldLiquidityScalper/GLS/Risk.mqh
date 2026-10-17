@@ -19,6 +19,14 @@
 
 //--- Commission estimée par lot et par côté (max du paramètre et de la valeur observée)
 double g_commissionPerLotSide = 0.0;
+//--- Glissement défavorable moyen OBSERVÉ (prix), mis à jour après chaque exécution
+double g_observedSlippage = 0.0;
+
+//--- Glissement retenu pour le risque et les coûts : max(paramètre, observé)
+double SlippageAllowance(void)
+  {
+   return MathMax(InpSlippageAllowancePrice, g_observedSlippage);
+  }
 
 struct SSizing
   {
@@ -97,7 +105,7 @@ bool ComputeVolume(const int dir, const double entry, const double stop, const d
       out.detail = "equity nulle";
       return false;
      }
-   double stopWithSlip = stop - (double)dir * InpSlippageAllowancePrice;
+   double stopWithSlip = stop - (double)dir * SlippageAllowance();
    double perLotPrice = 0.0;
    string d = "";
    if(!LossPerLot(dir, entry, stopWithSlip, perLotPrice, d))

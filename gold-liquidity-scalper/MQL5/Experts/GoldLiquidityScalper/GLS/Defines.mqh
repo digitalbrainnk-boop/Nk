@@ -7,7 +7,7 @@
 #define GLS_DEFINES_MQH
 
 #define GLS_NAME            "Gold Liquidity Scalper"
-#define GLS_VERSION         "1.00"
+#define GLS_VERSION         "1.10"
 #define GLS_OBJ_PREFIX      "GLS_"
 #define GLS_COMMENT_TAG     "GLS"
 #define GLS_EPS             1e-9
@@ -18,7 +18,18 @@ enum ENUM_GLS_FAMILY
    GLS_FAMILY_SWEEP       = 1, // F1 Balayage de liquidité + réintégration + structure
    GLS_FAMILY_PULLBACK    = 2, // F2 Tendance + pullback + reprise
    GLS_FAMILY_RANGE_BREAK = 3, // F3 Cassure de range + confirmation + retest
-   GLS_FAMILY_SQUEEZE     = 4  // F4 Compression + expansion confirmée
+   GLS_FAMILY_SQUEEZE     = 4, // F4 Compression + expansion confirmée
+   GLS_FAMILY_SR_BOUNCE   = 5, // F5 Réaction confirmée sur support/résistance
+   GLS_FAMILY_FVG         = 6  // F6 Retest de FVG avec réaction confirmée
+  };
+
+#define GLS_FAMILY_MAX 6
+
+//--- Unité de temps des FVG utilisées par F6
+enum ENUM_GLS_FVG_TF
+  {
+   GLS_FVGTF_M1 = 1, // M1
+   GLS_FVGTF_M5 = 5  // M5
   };
 
 //--- Mode d'entrée (famille F1)
@@ -59,6 +70,14 @@ enum ENUM_GLS_NOSL_ACTION
    GLS_NOSL_ALERT = 1  // Alerter et suspendre les entrées (déconseillé)
   };
 
+//--- Détail des journaux d'analyse (bougies, FVG)
+enum ENUM_GLS_LOG_DETAIL
+  {
+   GLS_LOGD_NONE = 0, // Aucun
+   GLS_LOGD_MAIN = 1, // Essentiel (figures interprétables à leur statut final, FVG M5)
+   GLS_LOGD_ALL  = 2  // Tout (volumineux : recherche uniquement)
+  };
+
 //--- Niveau de journalisation
 enum ENUM_GLS_LOG_LEVEL
   {
@@ -94,6 +113,8 @@ enum ENUM_GLS_LOG_LEVEL
 #define GLS_LVL_M15_SWING   3
 #define GLS_LVL_PREV_DAY    4
 #define GLS_LVL_ASIA        5
+#define GLS_LVL_ZONE        6
+#define GLS_LVL_FVG         7
 
 //--- Plans de sortie
 #define GLS_EXITPLAN_THIRDS 3
@@ -159,6 +180,12 @@ enum ENUM_GLS_LOG_LEVEL
 #define GLS_REFUSE_COST             30
 #define GLS_REFUSE_STALE_SIGNAL     31
 #define GLS_REFUSE_SYMBOL           32
+#define GLS_REFUSE_REGIME           33
+#define GLS_REFUSE_TREND            34
+#define GLS_REFUSE_CANDLE_OPPOSING  35
+#define GLS_REFUSE_EXTENDED         36
+#define GLS_REFUSE_INDECISION       37
+#define GLS_REFUSE_NO_PATTERN       38
 
 //+------------------------------------------------------------------+
 //| Textes                                                            |
@@ -171,6 +198,8 @@ string GlsFamilyCode(const int family)
       case GLS_FAMILY_PULLBACK:    return "F2";
       case GLS_FAMILY_RANGE_BREAK: return "F3";
       case GLS_FAMILY_SQUEEZE:     return "F4";
+      case GLS_FAMILY_SR_BOUNCE:   return "F5";
+      case GLS_FAMILY_FVG:         return "F6";
      }
    return "F?";
   }
@@ -183,6 +212,8 @@ string GlsFamilyName(const int family)
       case GLS_FAMILY_PULLBACK:    return "Tendance + pullback";
       case GLS_FAMILY_RANGE_BREAK: return "Cassure de range";
       case GLS_FAMILY_SQUEEZE:     return "Compression/expansion";
+      case GLS_FAMILY_SR_BOUNCE:   return "Réaction sur S/R";
+      case GLS_FAMILY_FVG:         return "Retest de FVG";
      }
    return "Inconnue";
   }
@@ -296,6 +327,12 @@ string GlsRefusalText(const int reason)
       case GLS_REFUSE_COST:           return "coût d'exécution trop élevé";
       case GLS_REFUSE_STALE_SIGNAL:   return "signal antérieur au démarrage";
       case GLS_REFUSE_SYMBOL:         return "symbole non conforme (XAU/USD requis)";
+      case GLS_REFUSE_REGIME:         return "régime de marché non autorisé pour cette famille";
+      case GLS_REFUSE_TREND:          return "tendance contradictoire (M15/M5)";
+      case GLS_REFUSE_CANDLE_OPPOSING: return "figure de bougie contraire confirmée";
+      case GLS_REFUSE_EXTENDED:       return "impulsion déjà étendue (entrée tardive)";
+      case GLS_REFUSE_INDECISION:     return "bougie de déclenchement indécise (doji)";
+      case GLS_REFUSE_NO_PATTERN:     return "aucune figure de bougie confirmée";
      }
    return "inconnue";
   }

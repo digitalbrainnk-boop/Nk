@@ -16,6 +16,8 @@
 #include "SymbolSpec.mqh"
 #include "Logger.mqh"
 #include "Risk.mqh"
+#include "Trend.mqh"
+#include "Candles.mqh"
 
 struct STradeRecord
   {
@@ -49,6 +51,8 @@ struct STradeRecord
    bool              complete;
    int               lastDealReason;
    string            lastOutComment;
+   int               regime;
+   int               candleId;
   };
 
 void TradeRecordReset(STradeRecord &r)
@@ -83,6 +87,8 @@ void TradeRecordReset(STradeRecord &r)
    r.complete = false;
    r.lastDealReason = -1;
    r.lastOutComment = "";
+   r.regime = 0;
+   r.candleId = 0;
   }
 
 //--- Commentaire d'entrée : "GLS<famille><B|S>[R] <score> <hash>", ex. "GLS1B 86 7F3A9C"
@@ -111,7 +117,7 @@ bool ParseEntryComment(const string c, int &family, int &dir, bool &retest, doub
    if(StringLen(c) < 5 || StringSubstr(c, 0, 3) != GLS_COMMENT_TAG)
       return false;
    int f = (int)StringGetCharacter(c, 3) - '0';
-   if(f < 1 || f > 4)
+   if(f < 1 || f > GLS_FAMILY_MAX)
       return false;
    ushort d = StringGetCharacter(c, 4);
    if(d != 'B' && d != 'S')
@@ -501,9 +507,9 @@ public:
 
    string            Breakdown(const int mode) const
      {
-      //--- mode 0 = session, 1 = famille, 2 = raison de sortie, 3 = tranche de score
+      //--- mode 0 = session, 1 = famille, 2 = raison de sortie, 3 = tranche de score, 4 = régime
       string out = "";
-      int maxKey = (mode == 0) ? 5 : (mode == 1 ? 5 : (mode == 2 ? GLS_EXIT_COUNT : 11));
+      int maxKey = (mode == 0) ? 5 : (mode == 1 ? GLS_FAMILY_MAX + 1 : (mode == 2 ? GLS_EXIT_COUNT : (mode == 3 ? 11 : GLS_RG_DISORDER + 1)));
       for(int key = 0; key < maxKey; key++)
         {
          int c = 0;
@@ -525,7 +531,10 @@ public:
                   if(mode == 2)
                      k = trades[i].exitReason;
                   else
-                     k = (int)MathFloor(trades[i].score / 10.0);
+                     if(mode == 3)
+                        k = (int)MathFloor(trades[i].score / 10.0);
+                     else
+                        k = trades[i].regime;
             if(k != key)
                continue;
             c++;
@@ -548,7 +557,10 @@ public:
                if(mode == 2)
                   label = GlsExitCode(key);
                else
-                  label = StringFormat("score %d-%d", key * 10, key * 10 + 9);
+                  if(mode == 3)
+                     label = StringFormat("score %d-%d", key * 10, key * 10 + 9);
+                  else
+                     label = RegimeCode(key);
          out += GroupLine(label, c, w, s, r, rc);
         }
       return out;
@@ -572,13 +584,15 @@ public:
       t += "\r\nPar configuration (famille) :\r\n" + Breakdown(1);
       t += "\r\nPar méthode de sortie :\r\n" + Breakdown(2);
       t += "\r\nPar tranche de score (contrôle de calibration) :\r\n" + Breakdown(3);
+      t += "\r\nPar régime de marché à l'entrée :\r\n" + Breakdown(4);
       return t;
      }
 
    static string     CsvHeader(void)
      {
       string h = "env;account;symbol;position_id;family;dir;hash;score;retest;session;open_time;close_time;duration_s;entry;exit;volume;";
-      h += "risk_money;risk_points;net;gross;commission;swap;fee;r_multiple;exit_reason;exit_plan;slippage_pts;spread_pts;est_cost;mfe_r;mae_r;point";
+      h += "risk_money;risk_points;net;gross;commission;swap;fee;r_multiple;exit_reason;exit_plan;slippage_pts;spread_pts;est_cost;mfe_r;mae_r;point;";
+      h += "regime;label;candle";
       return h;
      }
 
@@ -596,7 +610,8 @@ public:
                    + DoubleToString(r.swap, 2) + ";" + DoubleToString(r.fee, 2) + ";" + DoubleToString(r.rMultiple, 3) + ";"
                    + GlsExitCode(r.exitReason) + ";" + IntegerToString(r.exitPlan) + ";" + DoubleToString(r.slippagePts, 1) + ";"
                    + DoubleToString(r.spreadPts, 1) + ";" + DoubleToString(r.estCost, 2) + ";"
-                   + DoubleToString(r.mfeR, 2) + ";" + DoubleToString(r.maeR, 2) + ";" + DoubleToString(g_sym.point, g_sym.digits);
+                   + DoubleToString(r.mfeR, 2) + ";" + DoubleToString(r.maeR, 2) + ";" + DoubleToString(g_sym.point, g_sym.digits) + ";"
+                   + RegimeCode(r.regime) + ";" + InpRunLabel + ";" + ((r.candleId > 0) ? CandleCode(r.candleId) : "");
       return row;
      }
   };

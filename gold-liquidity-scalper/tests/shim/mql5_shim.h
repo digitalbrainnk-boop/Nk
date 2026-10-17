@@ -812,6 +812,7 @@ struct SimState
   bool echo = false;
   int lastError = 0;
   bool weekendClosed = true;
+  bool pushOk = true;
   std::vector<std::string> slViolations; // stop élargi ou supprimé
   int sltpCount = 0;
 };
@@ -936,6 +937,12 @@ inline datetime TimeTradeServer() { return Sim().now; }
 inline datetime TimeGMT() { return Sim().now; }
 inline datetime TimeLocal() { return Sim().now; }
 inline uint GetTickCount() { return (uint)((ulong)Sim().now * 1000UL); }
+inline ulong GetMicrosecondCount()
+{
+  static ulong us = 0;
+  us += 1500; // chaque appel avance de 1,5 ms (latence simulée)
+  return us;
+}
 inline void Sleep(int) {}
 
 //--- journal
@@ -968,6 +975,16 @@ inline int MessageBox(const string &text, const string &caption = string(""), in
   (void)flags;
   Sim().messageBoxes.push_back(text.s);
   return Sim().messageBoxAnswer;
+}
+inline bool SendNotification(const string &text)
+{
+  Sim().alerts.push_back("PUSH " + text.s);
+  return Sim().pushOk;
+}
+inline bool SendMail(const string &subject, const string &text)
+{
+  Sim().alerts.push_back("MAIL " + subject.s + " " + text.s);
+  return Sim().pushOk;
 }
 inline int GetLastError() { return Sim().lastError; }
 inline void ResetLastError() { Sim().lastError = 0; }

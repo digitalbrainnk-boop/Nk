@@ -166,14 +166,26 @@ public:
 
       bool wasDaily = dailyLossHit;
       bool wasDD = drawdownHit;
+      bool wasConsec = consecHit;
+      bool wasTrades = tradesHit;
       dailyLossHit = (InpMaxDailyLossPct > 0.0 && dailyLossPct >= InpMaxDailyLossPct);
       drawdownHit = (InpMaxDrawdownPct > 0.0 && drawdownPct >= InpMaxDrawdownPct);
       consecHit = (InpMaxConsecutiveLosses > 0 && consecLosses >= InpMaxConsecutiveLosses);
       tradesHit = (InpMaxTradesPerDay > 0 && tradesToday >= InpMaxTradesPerDay);
       if(dailyLossHit && !wasDaily)
+        {
          g_log.Warn("PROTECTION", StringFormat("limite de perte journalière atteinte : %.2f %% >= %.2f %%", dailyLossPct, InpMaxDailyLossPct));
+         g_alerts.Notify(GLS_ALERT_RISK, "daily", StringFormat("limite de perte journalière atteinte (%.2f %%) : nouvelles entrées bloquées", dailyLossPct));
+        }
       if(drawdownHit && !wasDD)
+        {
          g_log.Warn("PROTECTION", StringFormat("limite de drawdown atteinte : %.2f %% >= %.2f %%", drawdownPct, InpMaxDrawdownPct));
+         g_alerts.Notify(GLS_ALERT_RISK, "dd", StringFormat("limite de drawdown atteinte (%.2f %%) : nouvelles entrées bloquées", drawdownPct));
+        }
+      if(consecHit && !wasConsec)
+         g_alerts.Notify(GLS_ALERT_RISK, "consec", StringFormat("%d pertes consécutives : nouvelles entrées bloquées pour la journée", consecLosses));
+      if(tradesHit && !wasTrades)
+         g_alerts.Notify(GLS_ALERT_RISK, "trades", StringFormat("%d transactions aujourd'hui : maximum atteint", tradesToday));
      }
 
    //--- Raison de blocage des nouvelles entrées (GLS_REFUSE_NONE si autorisé)

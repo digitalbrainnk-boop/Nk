@@ -60,7 +60,11 @@ static void ResetEaMemory()
   Renew(g_pm);
   Renew(g_dash);
   Renew(g_engine);
+  Renew(g_exec);
+  Renew(g_alerts);
   g_commissionPerLotSide = 0.0;
+  g_observedSlippage = 0.0;
+  AnalysisConfigInit();
 }
 
 static void ResetAll()
@@ -70,8 +74,32 @@ static void ResetAll()
   ResetEaMemory();
 }
 
+//--- Filtres de contexte v1.10 (régime, tendance, bougies, obstacles S/R) désactivés :
+//--- utilisé UNIQUEMENT pour exercer les chemins d'exécution et de gestion sur une
+//--- marche aléatoire. Chaque filtre est testé séparément (unitaires + comparaison A/B).
+static void RelaxContextFilters()
+{
+  InpUseRegimeFilter = false;
+  InpUseTrendFilter = false;
+  InpCdlBlockOpposing = false;
+  InpCdlBlockIndecision = false;
+  InpCdlBlockExtended = false;
+  InpUseSRObstacles = false;
+}
+
+//--- filtre optionnel (argument) : sous-chaînes séparées par '|' ; seuls les tests correspondants sont lancés
+static std::vector<std::string> g_filters;
+
 static void RunTest(const char *name, void (*fn)())
 {
+  if (!g_filters.empty())
+  {
+    bool match = false;
+    for (const std::string &f : g_filters)
+      match = match || std::string(name).find(f) != std::string::npos;
+    if (!match)
+      return;
+  }
   g_testName = name;
   int before = g_failures;
   ResetAll();
@@ -106,6 +134,7 @@ static void FillSeries(CBarSeries &s, datetime start, const std::vector<Bar> &ba
     s.high[(int)i] = bars[i].h;
     s.low[(int)i] = bars[i].l;
     s.close[(int)i] = bars[i].c;
+    s.volume[(int)i] = 100.0;
   }
 }
 
@@ -350,9 +379,14 @@ static void TestSweepDetection()
   SSignal sell;
   DetectFamily(GLS_FAMILY_SWEEP, g_ctx, vs, sell);
   CHECK(!sell.valid, "pas de vente sur ce schéma");
-  // finalisation : prix réels, score borné
+  // filtre de régime actif sans M15 (régime inconnu) : refus, jamais d'autorisation par défaut
   InpUseEmaFilter = false;
   InpMinScore = 0;
+  SSignal sigRg = sig;
+  FinalizeSignal(sigRg, g_ctx, vb, 1997.00, 1997.20, 0.0, 1741600800 + 115 * 60);
+  CHECK(sigRg.refusal == GLS_REFUSE_REGIME, "régime inconnu -> refus : " << GlsRefusalText(sigRg.refusal).s);
+  // finalisation : prix réels, score borné (contexte M5/M15 absent de ce test unitaire)
+  InpUseRegimeFilter = false;
   FinalizeSignal(sig, g_ctx, vb, 1997.00, 1997.20, 0.0, 1741600800 + 115 * 60);
   CHECK(sig.score >= 0.0 && sig.score <= 100.0, "score borné : " << sig.score);
   CHECK(sig.stop < sig.entryPrice && sig.riskDist > 0.0, "stop sous l'entrée");
@@ -768,9 +802,11 @@ static void FlushTimers(int n)
   }
 }
 
-static void TestPipelineFamily(int family)
+static void TestPipelineFamily(int family, bool relax)
 {
   SetupMarket(10000.0, 19, 1234u + (unsigned)family);
+  if (relax)
+    RelaxContextFilters();
   InpFamily = (ENUM_GLS_FAMILY)family;
   InpMinScore = 0;
   InpNewsMode = GLS_NEWS_OFF;
@@ -787,7 +823,7 @@ static void TestPipelineFamily(int family)
   ReplayBars(i0, Sim().m1.size(), 0.20, rs);
   FlushTimers(5);
   int entries = CountMagicIn();
-  std::string label = "F" + std::to_string(family);
+  std::string label = "F" + std::to_string(family) + (relax ? " (filtres v1.10 désactivés)" : " (paramètres par défaut)");
   CHECK(entries > 0, label << " : aucune entrée sur 12 jours de données synthétiques (règles inatteignables ?)");
   CheckRunInvariants(rs, label.c_str());
   // le fichier de trades contient une ligne par position fermée
@@ -807,15 +843,18 @@ static void TestPipelineFamily(int family)
   OnDeinit(0);
 }
 
-static void TestPipelineF1() { TestPipelineFamily(GLS_FAMILY_SWEEP); }
-static void TestPipelineF2() { TestPipelineFamily(GLS_FAMILY_PULLBACK); }
-static void TestPipelineF3() { TestPipelineFamily(GLS_FAMILY_RANGE_BREAK); }
-static void TestPipelineF4() { TestPipelineFamily(GLS_FAMILY_SQUEEZE); }
+static void TestPipelineF1() { TestPipelineFamily(GLS_FAMILY_SWEEP, true); }
+static void TestPipelineF2() { TestPipelineFamily(GLS_FAMILY_PULLBACK, true); }
+static void TestPipelineF3() { TestPipelineFamily(GLS_FAMILY_RANGE_BREAK, true); }
+static void TestPipelineF4() { TestPipelineFamily(GLS_FAMILY_SQUEEZE, true); }
+static void TestPipelineF5() { TestPipelineFamily(GLS_FAMILY_SR_BOUNCE, false); }
+static void TestPipelineF6() { TestPipelineFamily(GLS_FAMILY_FVG, false); }
 
 //--- redémarrage après une prise partielle : aucune prise partielle rejouée
 static void TestRestartAfterPartial(bool wipeGlobals)
 {
   SetupMarket(10000.0, 19, 777u);
+  RelaxContextFilters();
   InpMinScore = 0;
   InpNewsMode = GLS_NEWS_OFF;
   InpRiskPercent = 1.0;
@@ -1010,6 +1049,18 @@ static void TestConnectionCheck()
       if (st.second.find("DÉSACTIVÉ") != std::string::npos)
         found = true;
   CHECK(found, "ligne d'échec affichée dans le panneau");
+  // panneau complet (ligne de cause « algo » incluse) : aucune ligne tronquée en fin de tableau
+  ReplayBars(i0 + 2, i0 + 4, 0.2, rs);
+  const char *needed[] = {"Tendance : ", "Support : ", "FVG actives", "Dernière figure", "Exécution : ", "Alertes : ", "Protection : ", "Risque : "};
+  for (const char *n : needed)
+  {
+    bool shown = false;
+    for (auto &kv : S.objects)
+      for (auto &st : kv.second.strs)
+        if (st.second.find(n) == 0)
+          shown = true;
+    CHECK(shown, "ligne du tableau de bord affichée : " << n);
+  }
 }
 
 //--- petit compte : le volume minimal dépasse le budget -> aucune position
@@ -1081,8 +1132,961 @@ static void TestDuplicateGuard()
   CHECK(g_engine.SignalUsed("F1|B|1741600800|1995.00"), "mémoire des signaux exécutés après redémarrage");
 }
 
-int main()
+//==========================================================================
+// v1.10 : bougies japonaises
+//==========================================================================
+//--- baisse régulière (contexte des retournements haussiers) ; c0 = dernière clôture
+static std::vector<Bar> DeclinePrefix(int n, double start, double &c0)
 {
+  std::vector<Bar> v;
+  double px = start;
+  for (int i = 0; i < n; i++)
+  {
+    double c = px - 0.35;
+    v.push_back({px, px + 0.3, c - 0.3, c});
+    px = c;
+  }
+  c0 = px;
+  return v;
+}
+
+//--- hausse régulière (contexte des continuations haussières)
+static std::vector<Bar> RisePrefix(int n, double start, double &c0)
+{
+  std::vector<Bar> v;
+  double px = start;
+  for (int i = 0; i < n; i++)
+  {
+    double c = px + 0.35;
+    v.push_back({px, c + 0.3, px - 0.3, c});
+    px = c;
+  }
+  c0 = px;
+  return v;
+}
+
+//--- figure haussière type se terminant sur la dernière barre
+static std::vector<Bar> CandleCase(int id)
+{
+  double c0 = 0.0;
+  bool rise = (id == GLS_CDL_IMPULSE || id == GLS_CDL_CONTINUATION);
+  std::vector<Bar> v = rise ? RisePrefix(40, 1990.0, c0) : DeclinePrefix(40, 2014.0, c0);
+  switch (id)
+  {
+  case GLS_CDL_HAMMER:
+    v.push_back({c0, c0 + 0.32, c0 - 1.5, c0 + 0.3});
+    break;
+  case GLS_CDL_INVHAMMER:
+    v.push_back({c0, c0 + 1.8, c0 - 0.02, c0 + 0.3});
+    break;
+  case GLS_CDL_ENGULF:
+    v.push_back({c0, c0 + 0.1, c0 - 0.7, c0 - 0.6});
+    v.push_back({c0 - 0.62, c0 + 0.25, c0 - 0.65, c0 + 0.2});
+    break;
+  case GLS_CDL_PIERCING:
+    v.push_back({c0, c0 + 0.05, c0 - 1.05, c0 - 1.0});
+    v.push_back({c0 - 1.0, c0 - 0.35, c0 - 1.1, c0 - 0.4});
+    break;
+  case GLS_CDL_STAR:
+    v.push_back({c0, c0 + 0.05, c0 - 1.05, c0 - 1.0});
+    v.push_back({c0 - 1.1, c0 - 1.0, c0 - 1.2, c0 - 1.05});
+    v.push_back({c0 - 1.05, c0 - 0.25, c0 - 1.1, c0 - 0.3});
+    break;
+  case GLS_CDL_REJCONF:
+    v.push_back({c0, c0 + 0.15, c0 - 1.2, c0 + 0.1});
+    v.push_back({c0 + 0.1, c0 + 0.55, c0 + 0.05, c0 + 0.5});
+    break;
+  case GLS_CDL_DOJI:
+    v.push_back({c0, c0 + 0.5, c0 - 0.5, c0 + 0.02});
+    break;
+  case GLS_CDL_IMPULSE:
+    v.push_back({c0, c0 + 2.05, c0 - 0.05, c0 + 2.0});
+    break;
+  case GLS_CDL_CONTINUATION:
+    v.push_back({c0, c0 + 1.65, c0 - 0.05, c0 + 1.6});
+    v.push_back({c0 + 1.5, c0 + 1.55, c0 + 1.2, c0 + 1.3});
+    v.push_back({c0 + 1.3, c0 + 1.5, c0 + 1.25, c0 + 1.45});
+    v.push_back({c0 + 1.45, c0 + 1.95, c0 + 1.4, c0 + 1.9});
+    break;
+  case GLS_CDL_FAILBREAK:
+    v.push_back({c0, c0 + 0.25, c0 - 1.0, c0 + 0.2});
+    break;
+  }
+  return v;
+}
+
+//--- analyse d'une série (vue achat = série réelle, vue vente = miroir) ; renvoie l'indice
+//--- de la figure 'id' formée à la barre 'bar' (-1 = dernière barre), ou -1
+static int FindPattern(const std::vector<Bar> &bars, int viewDir, int id, CCandleAnalysis &ca, int bar = -1)
+{
+  CBarSeries s;
+  FillSeries(s, 1741600800, bars);
+  MqlArray<double> atr;
+  CalcATR(s, 14, atr);
+  if (bar < 0)
+    bar = s.count - 1;
+  if (viewDir == GLS_SELL)
+  {
+    CBarSeries m;
+    m.MirrorFrom(s);
+    ca.Analyze(m, atr, GLS_SELL, InpCdlLookback);
+  }
+  else
+    ca.Analyze(s, atr, GLS_BUY, InpCdlLookback);
+  for (int i = 0; i < ArraySize(ca.pats); i++)
+    if (ca.pats[i].id == id && ca.pats[i].bar == bar)
+      return i;
+  return -1;
+}
+
+static void TestCandleMetrics()
+{
+  CBarSeries s;
+  FillSeries(s, 0, {{100.0, 101.0, 99.0, 100.5}, {100.0, 100.0, 100.0, 100.0}, {100.0, 100.2, 99.8, 100.01}});
+  MqlArray<double> atr;
+  ArrayResize(atr, 3);
+  for (int i = 0; i < 3; i++)
+    atr[i] = 1.0;
+  SCandle c;
+  CandleMetrics(s, atr, 0, c);
+  CHECK(c.valid, "bougie normale mesurable");
+  CHECK_NEAR(c.body, 0.5, 1e-9, "corps");
+  CHECK_NEAR(c.upper, 0.5, 1e-9, "mèche haute");
+  CHECK_NEAR(c.lower, 1.0, 1e-9, "mèche basse");
+  CHECK_NEAR(c.bodyRatio, 0.25, 1e-9, "corps / amplitude");
+  CHECK_NEAR(c.closeLoc, 0.75, 1e-9, "position de la clôture");
+  CHECK_NEAR(c.rangeAtr, 2.0, 1e-9, "amplitude en ATR");
+  CHECK(c.dir == 1, "bougie haussière");
+  // amplitude nulle : aucune mesure relative (pas de division par zéro, pas de figure)
+  CandleMetrics(s, atr, 1, c);
+  CHECK(!c.valid && c.bodyRatio == 0.0 && c.dir == 0, "amplitude nulle -> bougie non mesurable");
+  SCandlePattern p;
+  bool any = false;
+  for (int id = 1; id < GLS_CDL_COUNT; id++)
+    any = any || DetectCandleAt(id, s, atr, 1, p);
+  CHECK(!any, "aucune figure sur une bougie d'amplitude nulle");
+  CandleMetrics(s, atr, 2, c);
+  CHECK(c.valid && c.dir == 0, "corps <= seuil doji : bougie neutre");
+  CandleMetrics(s, atr, 5, c);
+  CHECK(!c.valid, "index hors série refusé");
+  // série entière d'amplitude nulle : l'analyse ne produit rien et ne plante pas
+  std::vector<Bar> flat(60, Bar{2000.0, 2000.0, 2000.0, 2000.0});
+  CCandleAnalysis ca;
+  FindPattern(flat, GLS_BUY, GLS_CDL_DOJI, ca);
+  CHECK(ArraySize(ca.pats) == 0, "série plate : aucune figure");
+}
+
+static void TestCandlePatterns()
+{
+  const int ids[] = {GLS_CDL_HAMMER, GLS_CDL_INVHAMMER, GLS_CDL_ENGULF, GLS_CDL_PIERCING, GLS_CDL_STAR,
+                     GLS_CDL_REJCONF, GLS_CDL_IMPULSE, GLS_CDL_CONTINUATION, GLS_CDL_FAILBREAK};
+  for (int id : ids)
+  {
+    std::vector<Bar> bull = CandleCase(id);
+    CCandleAnalysis ca;
+    int k = FindPattern(bull, GLS_BUY, id, ca);
+    std::string name = CandleName(id, 1).s;
+    CHECK(k >= 0, name << " détecté(e)");
+    if (k >= 0)
+    {
+      CHECK(ca.pats[k].dir == 1 && ca.pats[k].contextOk, name << " : sens haussier et contexte cohérent");
+      CHECK(ca.pats[k].strength > 0.0 && ca.pats[k].strength <= 1.0, name << " : force bornée");
+      CHECK(ca.pats[k].low < ca.pats[k].high, name << " : extrêmes de la figure");
+    }
+    // même figure en miroir : figure baissière symétrique (vue vente)
+    std::vector<Bar> bear = MirrorBars(bull, 4000.0);
+    CCandleAnalysis cs;
+    int ks = FindPattern(bear, GLS_SELL, id, cs);
+    std::string bname = CandleName(id, -1).s;
+    CHECK(ks >= 0 && cs.pats[ks].dir == -1, bname << " (miroir) détecté(e) en vue vente");
+    // la vue achat ne lit pas la figure baissière comme une figure haussière exploitable
+    CCandleAnalysis cb;
+    int kb = FindPattern(bear, GLS_BUY, id, cb);
+    CHECK(kb < 0 || !cb.pats[kb].contextOk, bname << " : pas de lecture haussière cohérente");
+  }
+  CHECK(CandleName(GLS_CDL_HAMMER, -1).s == "étoile filante" && CandleName(GLS_CDL_INVHAMMER, -1).s == "pendu"
+            && CandleName(GLS_CDL_PIERCING, -1).s == "couverture en nuage noir" && CandleName(GLS_CDL_STAR, -1).s == "étoile du soir",
+        "noms des figures baissières");
+  // doji : figure neutre, analysée une seule fois (vue achat), sans confirmation possible
+  CCandleAnalysis cd;
+  int kd = FindPattern(CandleCase(GLS_CDL_DOJI), GLS_BUY, GLS_CDL_DOJI, cd);
+  CHECK(kd >= 0 && cd.pats[kd].dir == 0 && cd.pats[kd].status == GLS_CDLST_INFO, "doji neutre (information)");
+  CCandleAnalysis cds;
+  CHECK(FindPattern(CandleCase(GLS_CDL_DOJI), GLS_SELL, GLS_CDL_DOJI, cds) < 0, "doji non dupliqué en vue vente");
+  CHECK(cd.IsIndecisionAt(40), "bougie de déclenchement doji repérée");
+}
+
+static void TestCandleStatus()
+{
+  // marteau seul : formé, en attente de confirmation (aucune donnée future utilisée)
+  std::vector<Bar> h = CandleCase(GLS_CDL_HAMMER);
+  int bar = (int)h.size() - 1;
+  double c0 = h.back().o;
+  CCandleAnalysis ca;
+  int k = FindPattern(h, GLS_BUY, GLS_CDL_HAMMER, ca);
+  CHECK(k >= 0 && ca.pats[k].status == GLS_CDLST_DETECTED, "marteau : détecté, non confirmé");
+  // confirmation : clôture au-dessus du plus haut de la figure
+  std::vector<Bar> conf = h;
+  conf.push_back({c0 + 0.3, c0 + 0.6, c0 + 0.25, c0 + 0.5});
+  k = FindPattern(conf, GLS_BUY, GLS_CDL_HAMMER, ca, bar);
+  CHECK(k >= 0 && ca.pats[k].status == GLS_CDLST_CONFIRMED && ca.pats[k].confirmBar == bar + 1, "marteau confirmé");
+  string nm;
+  CHECK(ca.ConfirmedReversalSince(bar - 1, nm), "retournement confirmé disponible");
+  // invalidation : clôture sous le plus bas de la figure avant confirmation
+  std::vector<Bar> inv = h;
+  inv.push_back({c0 + 0.3, c0 + 0.35, c0 - 1.7, c0 - 1.6});
+  k = FindPattern(inv, GLS_BUY, GLS_CDL_HAMMER, ca, bar);
+  CHECK(k >= 0 && ca.pats[k].status == GLS_CDLST_INVALIDATED, "marteau invalidé");
+  // expiration : pas de confirmation dans InpCdlConfirmBars barres
+  std::vector<Bar> exp = h;
+  for (int i = 0; i <= InpCdlConfirmBars; i++)
+    exp.push_back({c0 + 0.3, c0 + 0.31, c0, c0 + 0.1});
+  k = FindPattern(exp, GLS_BUY, GLS_CDL_HAMMER, ca, bar);
+  CHECK(k >= 0 && ca.pats[k].status == GLS_CDLST_EXPIRED, "marteau expiré");
+  // figure désactivable par paramètre
+  CandleConfigInit("HAM");
+  CHECK(FindPattern(h, GLS_BUY, GLS_CDL_HAMMER, ca) < 0, "figure désactivée : ignorée");
+  CandleConfigInit(InpCdlDisabled);
+  CHECK(!g_cdlEnabled[GLS_CDL_ABSORB], "absorption apparente désactivée par défaut");
+  CHECK(FindPattern(h, GLS_BUY, GLS_CDL_HAMMER, ca) >= 0, "figure réactivée");
+}
+
+//==========================================================================
+// v1.10 : tendance et régime
+//==========================================================================
+static void TestTrendRegime()
+{
+  CBarSeries s;
+  std::vector<Bar> bars;
+  double px = 2000.0;
+  for (int i = 0; i < 300; i++)
+  {
+    bars.push_back({px, px + 0.6, px - 0.2, px + 0.4});
+    px += 0.4;
+  }
+  FillSeries(s, 0, bars);
+  MqlArray<double> ema;
+  CalcEMA(s.close, s.count, 200, ema);
+  CStructure st;
+  st.ready = true;
+  st.er = 0.05;
+  // prix au-dessus d'une EMA montante, structure neutre : l'EMA seule ne suffit PAS
+  CTrendModel t;
+  t.Evaluate(s, st, ema, 0.8, 10, 0.3, 3);
+  CHECK(t.ready && t.emaVote == 1 && t.slopeVote == 1, "votes EMA/pente haussiers");
+  CHECK(t.cls != GLS_TCLASS_BULL && t.dir == 0, "EMA seule insuffisante : " << TrendClassText(t.cls).s);
+  // structure + sommets/creux haussiers + EMA : tendance haussière
+  st.trend = GLS_TREND_BULL;
+  st.swingBias = 1;
+  t.Evaluate(s, st, ema, 0.8, 10, 0.3, 3);
+  CHECK(t.cls == GLS_TCLASS_BULL && t.dir == 1, "tendance haussière confirmée : " << t.reason.s);
+  // élément contraire (sommets/creux baissiers) : pas de tendance
+  st.swingBias = -1;
+  t.Evaluate(s, st, ema, 0.8, 10, 0.3, 3);
+  CHECK(t.cls == GLS_TCLASS_RANGE, "votes contradictoires, ER faible : latérale");
+  st.er = 0.5;
+  t.Evaluate(s, st, ema, 0.8, 10, 0.3, 3);
+  CHECK(t.cls == GLS_TCLASS_TRANSITION, "votes contradictoires, ER élevé : transition");
+  // CHOCH récent : transition même si les votes sont alignés
+  st.swingBias = 1;
+  st.lastEvent = GLS_EVT_CHOCH_UP;
+  st.lastEventIndex = s.count - 2;
+  t.Evaluate(s, st, ema, 0.8, 10, 0.3, 3);
+  CHECK(t.cls == GLS_TCLASS_TRANSITION, "CHOCH récent : transition");
+  st.lastEvent = GLS_EVT_NONE;
+  // symétrie baissière
+  CBarSeries m;
+  FillSeries(m, 0, MirrorBars(bars, 6000.0));
+  MqlArray<double> emaM;
+  CalcEMA(m.close, m.count, 200, emaM);
+  CStructure sb;
+  sb.ready = true;
+  sb.trend = GLS_TREND_BEAR;
+  sb.swingBias = -1;
+  sb.er = 0.5;
+  CTrendModel tb;
+  tb.Evaluate(m, sb, emaM, 0.8, 10, 0.3, 3);
+  CHECK(tb.cls == GLS_TCLASS_BEAR && tb.dir == -1, "tendance baissière (miroir)");
+  // historique insuffisant
+  CStructure none;
+  CTrendModel tn;
+  tn.Evaluate(s, none, ema, 0.8, 10, 0.3, 3);
+  CHECK(!tn.ready && tn.cls == GLS_TCLASS_UNKNOWN, "structure non prête : tendance inconnue");
+
+  // régimes
+  st.er = 0.5;
+  st.trend = GLS_TREND_BULL;
+  st.swingBias = 1;
+  t.Evaluate(s, st, ema, 0.8, 10, 0.3, 3);
+  string why;
+  CHECK(ClassifyRegime(t, s, 1.0, 1.0, why) == GLS_RG_TREND, "régime tendance");
+  CHECK(ClassifyRegime(t, s, 2.0, 1.0, why) == GLS_RG_VOLATILE, "volatilité excessive : " << why.s);
+  CHECK(ClassifyRegime(tn, s, 1.0, 1.0, why) == GLS_RG_UNKNOWN, "tendance inconnue : régime inconnu");
+  st.swingBias = -1;
+  st.er = 0.05;
+  CTrendModel tr;
+  tr.Evaluate(s, st, ema, 0.8, 10, 0.3, 3);
+  CHECK(ClassifyRegime(tr, s, 1.0, 1.0, why) == GLS_RG_RANGE, "régime range");
+  CBarSeries chop;
+  std::vector<Bar> cb;
+  for (int i = 0; i < 40; i++)
+    cb.push_back(i % 2 ? Bar{2000.0, 2000.6, 1999.4, 2000.5} : Bar{2000.5, 2000.6, 1999.4, 2000.0});
+  FillSeries(chop, 0, cb);
+  CHECK(ClassifyRegime(tr, chop, 1.0, 1.0, why) == GLS_RG_DISORDER, "alternance permanente : désordre (" << why.s << ")");
+  CHECK_NEAR(AlternationRatio(chop, 12), 1.0, 1e-9, "taux d'alternance");
+  // masques de régimes par famille
+  CHECK(ParseRegimeMask(" tendance , Range,xyz") == ((1 << GLS_RG_TREND) | (1 << GLS_RG_RANGE)), "liste de régimes (casse, espaces, inconnus)");
+  CHECK(RegimeAllowed(GLS_FAMILY_PULLBACK, GLS_RG_TREND) && !RegimeAllowed(GLS_FAMILY_PULLBACK, GLS_RG_RANGE), "F2 : tendance seulement");
+  bool anyVol = false;
+  for (int f = 1; f <= GLS_FAMILY_MAX; f++)
+    anyVol = anyVol || RegimeAllowed(f, GLS_RG_VOLATILE) || RegimeAllowed(f, GLS_RG_DISORDER) || RegimeAllowed(f, GLS_RG_UNKNOWN);
+  CHECK(!anyVol, "volatil / désordre / inconnu interdits par défaut");
+}
+
+//==========================================================================
+// v1.10 : supports / résistances
+//==========================================================================
+static void AddSwing(MqlArray<SSwing> &arr, double price, datetime t, datetime conf)
+{
+  int n = ArraySize(arr);
+  ArrayResize(arr, n + 1);
+  arr[n].index = n;
+  arr[n].price = price;
+  arr[n].time = t;
+  arr[n].confirmTime = conf;
+  arr[n].brokenTime = 0;
+}
+
+static void FillM5(CBarSeries &s, datetime t0, const std::vector<Bar> &bars)
+{
+  FillSeries(s, t0, bars);
+  s.periodSec = 300;
+  for (int i = 0; i < s.count; i++)
+    s.time[i] = t0 + (datetime)i * 300;
+}
+
+static int ZoneAt(const CZoneMap &zm, double price)
+{
+  for (int i = 0; i < ArraySize(zm.zones); i++)
+    if (price >= zm.zones[i].lo && price <= zm.zones[i].hi)
+      return i;
+  return -1;
+}
+
+static void TestZones()
+{
+  const datetime T0 = 1741600800;
+  CBarSeries m5;
+  FillM5(m5, T0, std::vector<Bar>(120, Bar{2000.0, 2000.3, 1999.7, 2000.0}));
+  CStructure st5, st15;
+  // 3 creux indépendants proches (dont 2 « égaux ») -> un support
+  AddSwing(st5.lows, 1995.00, T0 + 10 * 300, T0 + 13 * 300);
+  AddSwing(st5.lows, 1995.05, T0 + 30 * 300, T0 + 33 * 300);
+  AddSwing(st5.lows, 1994.98, T0 + 50 * 300, T0 + 53 * 300);
+  // 2 creux trop rapprochés dans le temps : une seule réaction
+  AddSwing(st5.lows, 1990.00, T0 + 60 * 300, T0 + 63 * 300);
+  AddSwing(st5.lows, 1990.02, T0 + 62 * 300, T0 + 65 * 300);
+  // sommet isolé M5 (1 réaction) et sommet M15 isolé (niveau majeur)
+  AddSwing(st5.highs, 2006.0, T0 + 40 * 300, T0 + 43 * 300);
+  AddSwing(st15.highs, 2010.0, T0 + 20 * 300, T0 + 26 * 300);
+  // pivot non encore confirmé à l'instant de l'analyse : ignoré
+  AddSwing(st5.highs, 2020.0, T0 + 118 * 300, T0 + 121 * 300);
+  CZoneMap zm;
+  datetime now = T0 + 120 * 300;
+  zm.Build(st5, st15, m5, 1.0, now);
+  int s1 = ZoneAt(zm, 1995.0);
+  CHECK(s1 >= 0, "support 1995 regroupé");
+  if (s1 >= 0)
+  {
+    const SZone &z = zm.zones[s1];
+    CHECK(z.touches == 3 && z.valid && z.role == GLS_ZONE_SUPPORT && z.equal, "3 réactions indépendantes, creux égaux : " << z.reason.s);
+    CHECK_NEAR(z.lo, 1994.98 - InpZonePadATR, 1e-9, "largeur adaptée à l'ATR (bas)");
+    CHECK_NEAR(z.hi, 1995.05 + InpZonePadATR, 1e-9, "largeur adaptée à l'ATR (haut)");
+    CHECK(z.confirmTime == T0 + 13 * 300, "zone connue à la confirmation du 1er pivot");
+  }
+  int s2 = ZoneAt(zm, 1990.0);
+  CHECK(s2 >= 0 && zm.zones[s2].touches == 1 && !zm.zones[s2].valid, "réactions non indépendantes : zone non valide");
+  int r1 = ZoneAt(zm, 2006.0);
+  CHECK(r1 >= 0 && !zm.zones[r1].valid, "sommet M5 isolé : non valide");
+  int r2 = ZoneAt(zm, 2010.0);
+  CHECK(r2 >= 0 && zm.zones[r2].valid && zm.zones[r2].major && zm.zones[r2].role == GLS_ZONE_RESIST, "sommet M15 : résistance majeure");
+  CHECK(ZoneAt(zm, 2020.0) < 0, "pivot non confirmé ignoré (pas de donnée future)");
+  CHECK(zm.Nearest(GLS_ZONE_SUPPORT, 1998.0) == s1, "support le plus proche sous le prix");
+
+  // inversion de rôle : résistance 2002 cassée (2 clôtures), retestée puis tenue
+  CStructure sr, none;
+  AddSwing(sr.highs, 2002.00, T0 + 10 * 300, T0 + 13 * 300);
+  AddSwing(sr.highs, 2002.05, T0 + 30 * 300, T0 + 33 * 300);
+  std::vector<Bar> b(41, Bar{2000.0, 2000.3, 1999.7, 2000.0});
+  b.push_back({2000.0, 2003.1, 1999.9, 2003.0}); // 1re clôture au-delà
+  CBarSeries m;
+  FillM5(m, T0, b);
+  zm.Build(sr, none, m, 1.0, T0 + 50 * 300);
+  int z = ZoneAt(zm, 2002.0);
+  CHECK(z >= 0 && zm.zones[z].state == GLS_ZST_ACTIVE && zm.zones[z].role == GLS_ZONE_RESIST, "une seule clôture au-delà : rôle inchangé");
+  b.push_back({2003.0, 2003.4, 2002.8, 2003.2}); // 2e clôture : cassure confirmée
+  FillM5(m, T0, b);
+  zm.Build(sr, none, m, 1.0, T0 + 50 * 300);
+  z = ZoneAt(zm, 2002.0);
+  CHECK(z >= 0 && zm.zones[z].state == GLS_ZST_BROKEN && zm.zones[z].role == GLS_ZONE_PENDING, "cassure confirmée : rôle en attente");
+  std::vector<Bar> flip = b;
+  flip.push_back({2003.2, 2003.3, 2002.1, 2002.8}); // retour dans la zone, clôture au-dessus
+  FillM5(m, T0, flip);
+  zm.Build(sr, none, m, 1.0, T0 + 50 * 300);
+  z = ZoneAt(zm, 2002.0);
+  CHECK(z >= 0 && zm.zones[z].state == GLS_ZST_FLIPPED && zm.zones[z].role == GLS_ZONE_SUPPORT, "retest tenu : ancienne résistance devenue support");
+  std::vector<Bar> fail = b;
+  fail.push_back({2003.2, 2003.3, 2001.4, 2001.5}); // retour sous la zone
+  FillM5(m, T0, fail);
+  zm.Build(sr, none, m, 1.0, T0 + 50 * 300);
+  z = ZoneAt(zm, 2002.0);
+  CHECK(z >= 0 && zm.zones[z].state == GLS_ZST_FAILED_BREAK && zm.zones[z].role == GLS_ZONE_RESIST, "cassure ratée : rôle d'origine conservé");
+}
+
+//==========================================================================
+// v1.10 : FVG / IFVG / OB
+//==========================================================================
+static std::vector<Bar> FvgBullBars()
+{
+  std::vector<Bar> v(30, Bar{2000.0, 2000.3, 1999.7, 2000.0});
+  v.push_back({2000.1, 2000.3, 1999.7, 1999.9}); // 30 : bougie opposée (OB si cassure)
+  v.push_back({2000.0, 2000.5, 1999.8, 2000.2}); // 31 = i-2 : haut 2000.5
+  v.push_back({2000.2, 2002.6, 2000.1, 2002.5}); // 32 = i-1 : déplacement
+  v.push_back({2002.5, 2003.0, 2001.0, 2002.8}); // 33 = i : bas 2001.0 > 2000.5
+  return v;
+}
+
+static int FindFvg(const CFvgMap &m, int dir, int i3, bool inverted)
+{
+  for (int k = 0; k < ArraySize(m.fvgs); k++)
+    if (m.fvgs[k].dir == dir && m.fvgs[k].i3 == i3 && m.fvgs[k].inverted == inverted)
+      return k;
+  return -1;
+}
+
+static void BuildFvg(const std::vector<Bar> &bars, CFvgMap &m, CStructure &st, CBarSeries &s)
+{
+  FillSeries(s, 1741600800, bars);
+  MqlArray<double> atr;
+  CalcATR(s, 14, atr);
+  CZoneMap zm;
+  m.Build(s, atr, st, zm, 1, 120, 0.01);
+}
+
+static void TestFvg()
+{
+  CStructure none;
+  CBarSeries s;
+  CFvgMap m;
+  std::vector<Bar> b = FvgBullBars();
+  BuildFvg(b, m, none, s);
+  int k = FindFvg(m, 1, 33, false);
+  CHECK(k >= 0, "FVG haussière détectée (bas[i] > haut[i-2])");
+  if (k < 0)
+    return;
+  const SFvg &f = m.fvgs[k];
+  CHECK_NEAR(f.lo, 2000.5, 1e-9, "borne basse = haut[i-2]");
+  CHECK_NEAR(f.hi, 2001.0, 1e-9, "borne haute = bas[i]");
+  CHECK_NEAR(f.sizePts, 50.0, 1e-6, "taille en points");
+  CHECK(f.created == s.CloseTime(33), "connue à la clôture de la 3e bougie");
+  CHECK(f.status == GLS_FVG_FRESH && f.fillPct == 0.0 && f.retests == 0, "fraîche");
+  CHECK(f.dispAtr > 2.0 && f.dispBody > 0.9, "déplacement mesuré : " << f.dispAtr);
+  CHECK(!f.bos && !f.hasOB, "sans cassure de structure : ni BOS ni OB");
+  CHECK(f.quality > 0.0 && f.quality <= 1.0, "qualité bornée : " << f.quality);
+  CHECK(FindFvg(m, -1, 33, false) < 0, "pas de FVG baissière sur ce schéma");
+  double qNoBos = f.quality;
+  // déplacement avec BOS : OB objectif = dernière bougie opposée avant le déplacement
+  CStructure st;
+  st.AddEvent(GLS_EVT_BOS_UP, 32, 2000.3, s.CloseTime(32));
+  BuildFvg(b, m, st, s);
+  k = FindFvg(m, 1, 33, false);
+  CHECK(k >= 0 && m.fvgs[k].bos && !m.fvgs[k].choch && m.fvgs[k].hasOB, "BOS et OB adjacent");
+  if (k >= 0)
+  {
+    CHECK_NEAR(m.fvgs[k].obLo, 1999.7, 1e-9, "OB bas");
+    CHECK_NEAR(m.fvgs[k].obHi, 2000.3, 1e-9, "OB haut");
+    CHECK(m.fvgs[k].quality > qNoBos, "BOS : qualité supérieure, sans double comptage du déplacement");
+  }
+  // suivi : retours, comblement, statut
+  b.push_back({2002.8, 2002.9, 2000.8, 2001.5}); // 34 : 1er retour, 40 %
+  BuildFvg(b, m, none, s);
+  k = FindFvg(m, 1, 33, false);
+  CHECK(k >= 0 && m.fvgs[k].retests == 1 && m.fvgs[k].status == GLS_FVG_PARTIAL, "1er retour : partiellement comblée");
+  if (k >= 0)
+    CHECK_NEAR(m.fvgs[k].fillPct, 0.4, 1e-9, "comblement 40 %");
+  b.push_back({2001.5, 2002.5, 2001.4, 2002.4}); // 35 : sortie de zone
+  b.push_back({2002.4, 2002.5, 2000.6, 2001.2}); // 36 : 2e retour, 80 %
+  BuildFvg(b, m, none, s);
+  k = FindFvg(m, 1, 33, false);
+  CHECK(k >= 0 && m.fvgs[k].retests == 2, "2e retour compté");
+  if (k >= 0)
+    CHECK_NEAR(m.fvgs[k].fillPct, 0.8, 1e-9, "comblement 80 %");
+  b.push_back({2001.2, 2001.3, 2000.4, 2000.45}); // 37 : comblée, clôture au-dessus du seuil d'invalidation
+  BuildFvg(b, m, none, s);
+  k = FindFvg(m, 1, 33, false);
+  CHECK(k >= 0 && m.fvgs[k].status == GLS_FVG_FILLED && m.fvgs[k].fillPct == 1.0, "comblée");
+  b.push_back({2000.45, 2000.5, 1999.9, 2000.0}); // 38 : clôture sous bas - tampon
+  BuildFvg(b, m, none, s);
+  k = FindFvg(m, 1, 33, false);
+  CHECK(k >= 0 && m.fvgs[k].status == GLS_FVG_INVALIDATED && m.fvgs[k].statusTime == s.CloseTime(38), "invalidée par une clôture");
+  CHECK(FindFvg(m, -1, 38, true) < 0, "IFVG désactivée par défaut");
+  // IFVG : règle distincte
+  InpUseIFVG = true;
+  BuildFvg(b, m, none, s);
+  int ki = FindFvg(m, -1, 38, true);
+  CHECK(ki >= 0, "IFVG : zone invalidée retournée");
+  if (ki >= 0)
+  {
+    CHECK_NEAR(m.fvgs[ki].lo, 2000.5, 1e-9, "IFVG mêmes bornes");
+    CHECK(m.fvgs[ki].created == s.CloseTime(38) && m.fvgs[ki].status == GLS_FVG_FRESH, "IFVG connue à l'invalidation");
+    CHECK(FvgKey(m.fvgs[ki]) != FvgKey(m.fvgs[k]), "identifiant distinct");
+  }
+  InpUseIFVG = false;
+  // symétrie : FVG baissière (haut[i] < bas[i-2])
+  std::vector<Bar> bear = MirrorBars(FvgBullBars(), 4000.0);
+  BuildFvg(bear, m, none, s);
+  k = FindFvg(m, -1, 33, false);
+  CHECK(k >= 0, "FVG baissière (miroir)");
+  if (k >= 0)
+  {
+    CHECK_NEAR(m.fvgs[k].lo, 1999.0, 1e-9, "baissière : bas = haut[i]");
+    CHECK_NEAR(m.fvgs[k].hi, 1999.5, 1e-9, "baissière : haut = bas[i-2]");
+  }
+}
+
+//==========================================================================
+// v1.10 : familles F5 (réaction S/R) et F6 (retest de FVG)
+//==========================================================================
+static std::vector<Bar> ZoneReactionBars(bool confirm)
+{
+  std::vector<Bar> v = FlatPrefix(100, 2000.0, 0.5);
+  double c0 = 0.0;
+  std::vector<Bar> d = DeclinePrefix(11, 2000.0, c0); // jusqu'à 1996.15 (plus bas 1995.85)
+  v.insert(v.end(), d.begin(), d.end());
+  v.push_back({1996.0, 1996.35, 1995.1, 1996.3}); // marteau dans la zone 1995.0-1995.4
+  if (confirm)
+    v.push_back({1996.3, 1996.9, 1996.2, 1996.8}); // confirmation : clôture > haut du marteau
+  return v;
+}
+
+static void PrepareCandleContext(const std::vector<Bar> &bars)
+{
+  PrepareM1Context(bars);
+  g_ctx.cdlBuy.Analyze(g_ctx.m1, g_ctx.atr, GLS_BUY, InpCdlLookback);
+  g_ctx.cdlSell.Analyze(g_ctx.m1Mirror, g_ctx.atr, GLS_SELL, InpCdlLookback);
+}
+
+static void TestSRBounce()
+{
+  const datetime T0 = 1741600800;
+  InpUseExternalLevels = false;
+  PrepareCandleContext(ZoneReactionBars(true));
+  CDirView vb;
+  vb.AddZone(vb.supports, 1995.0, 1995.4, 0.8, GLS_LVL_ZONE, T0, 3, false, "test");
+  SSignal sig;
+  DetectFamily(GLS_FAMILY_SR_BOUNCE, g_ctx, vb, sig);
+  CHECK(sig.valid && sig.family == GLS_FAMILY_SR_BOUNCE, "F5 : réaction confirmée sur support : " << sig.detail.s);
+  CHECK_NEAR(sig.level, 1995.4, 1e-9, "F5 niveau = haut de la zone");
+  CHECK(sig.stop < 1995.0 && sig.retestEntry, "F5 stop sous la zone");
+  CHECK(sig.cRetest == 1.0, "F5 : réaction tenue dans la zone");
+  // finalisation : contrôles communs, puis obstacles (résistance proche, prix dans une résistance)
+  InpUseRegimeFilter = false;
+  InpUseEmaFilter = false;
+  InpMinScore = 0;
+  datetime now = T0 + 113 * 60;
+  SSignal base = sig;
+  FinalizeSignal(base, g_ctx, vb, 1996.80, 1997.00, 0.0, now);
+  CHECK(base.refusal == GLS_REFUSE_NONE, "F5 finalisé sans refus : " << GlsRefusalText(base.refusal).s << " " << base.criteria.s);
+  CHECK(base.score >= 0.0 && base.score <= 100.0 && base.candleId != GLS_CDL_NONE, "score borné, preuve de bougie retenue : " << base.candleName.s);
+  vb.AddZone(vb.obstacles, 1997.3, 1997.8, 0.8, GLS_LVL_ZONE, T0, 3, false, "R");
+  SSignal near = sig;
+  FinalizeSignal(near, g_ctx, vb, 1996.80, 1997.00, 0.0, now);
+  CHECK(near.refusal == GLS_REFUSE_RR, "résistance à moins de 1R : refus (" << near.roomR << "R)");
+  ArrayResize(vb.obstacles, 0);
+  vb.AddZone(vb.obstacles, 1996.9, 1997.4, 0.8, GLS_LVL_ZONE, T0, 3, false, "R");
+  SSignal in = sig;
+  FinalizeSignal(in, g_ctx, vb, 1996.80, 1997.00, 0.0, now);
+  CHECK(in.refusal == GLS_REFUSE_RR && in.criteria.s.find("prix dans une résistance") != std::string::npos, "achat dans une résistance refusé");
+  ArrayResize(vb.obstacles, 0);
+  vb.AddZone(vb.obstacles, 2003.0, 2003.5, 0.8, GLS_LVL_ZONE, T0, 3, false, "R");
+  SSignal far = sig;
+  FinalizeSignal(far, g_ctx, vb, 1996.80, 1997.00, 0.0, now);
+  CHECK(far.refusal == GLS_REFUSE_NONE && far.roomR > 2.0, "résistance lointaine : espace suffisant (" << far.roomR << "R)");
+  ArrayResize(vb.obstacles, 0);
+  vb.AddZone(vb.obstacles, 1997.3, 1997.8, 0.8, GLS_LVL_ZONE, now + 60, 3, false, "R");
+  SSignal late = sig;
+  FinalizeSignal(late, g_ctx, vb, 1996.80, 1997.00, 0.0, now);
+  ArrayResize(vb.obstacles, 0);
+  CHECK(late.refusal == GLS_REFUSE_NONE, "zone pas encore connue : ignorée (pas de donnée future)");
+
+  // sans confirmation : attente (une figure seule ne déclenche rien)
+  ResetEaMemory();
+  InpUseExternalLevels = false;
+  PrepareCandleContext(ZoneReactionBars(false));
+  SSignal s2;
+  DetectFamily(GLS_FAMILY_SR_BOUNCE, g_ctx, vb, s2);
+  CHECK(!s2.valid && s2.refusal == GLS_REFUSE_INCOMPLETE, "F5 : marteau non confirmé -> attente");
+  // zone cassée par une clôture
+  ResetEaMemory();
+  InpUseExternalLevels = false;
+  std::vector<Bar> brk = ZoneReactionBars(false);
+  brk.push_back({1996.3, 1996.4, 1994.4, 1994.5});
+  PrepareCandleContext(brk);
+  SSignal s3;
+  DetectFamily(GLS_FAMILY_SR_BOUNCE, g_ctx, vb, s3);
+  CHECK(!s3.valid, "F5 : zone cassée -> refus");
+  // zone trop faible
+  ResetEaMemory();
+  InpUseExternalLevels = false;
+  PrepareCandleContext(ZoneReactionBars(true));
+  CDirView vw;
+  vw.AddZone(vw.supports, 1995.0, 1995.4, 0.3, GLS_LVL_ZONE, T0, 1, false, "faible");
+  SSignal s4;
+  DetectFamily(GLS_FAMILY_SR_BOUNCE, g_ctx, vw, s4);
+  CHECK(!s4.valid && s4.stage == 0, "F5 : zone sous la force minimale ignorée");
+  // symétrie : réaction baissière sous une résistance (vue vente)
+  ResetEaMemory();
+  InpUseExternalLevels = false;
+  InpUseRegimeFilter = false;
+  InpUseEmaFilter = false;
+  InpMinScore = 0;
+  PrepareCandleContext(MirrorBars(ZoneReactionBars(true), 4000.0));
+  CDirView vs;
+  vs.dir = GLS_SELL;
+  vs.AddZone(vs.supports, 2004.6, 2005.0, 0.8, GLS_LVL_ZONE, T0, 3, false, "test");
+  SSignal s5;
+  DetectFamily(GLS_FAMILY_SR_BOUNCE, g_ctx, vs, s5);
+  CHECK(s5.valid && s5.dir == GLS_SELL, "F5 vente sous une résistance (miroir)");
+  FinalizeSignal(s5, g_ctx, vs, 2003.00, 2003.20, 0.0, now);
+  CHECK_NEAR(s5.level, 2004.6, 1e-9, "F5 vente : niveau = bas de la résistance");
+  CHECK(s5.stop > 2005.0 + 0.2, "F5 vente : stop au-dessus de la zone + spread");
+}
+
+static void TestFvgRetest()
+{
+  const datetime T0 = 1741600800;
+  InpUseExternalLevels = false;
+  PrepareCandleContext(ZoneReactionBars(true));
+  CDirView vb;
+  vb.AddZone(vb.fvgZones, 1995.0, 1995.4, 0.8, GLS_LVL_FVG, T0, 1, false, "test");
+  SSignal sig;
+  DetectFamily(GLS_FAMILY_FVG, g_ctx, vb, sig);
+  CHECK(sig.valid && sig.family == GLS_FAMILY_FVG, "F6 : retour dans la FVG + réaction confirmée : " << sig.detail.s);
+  CHECK(sig.stop < 1995.0 && sig.levelKind == GLS_LVL_FVG, "F6 stop sous la FVG");
+  CHECK(sig.cRetest == 1.0 && sig.cLiq == 0.8, "F6 : qualité de la FVG comptée une fois (cLiq), retest = réaction tenue");
+  // la FVG seule ne déclenche jamais : sans réaction confirmée, attente
+  ResetEaMemory();
+  InpUseExternalLevels = false;
+  PrepareCandleContext(ZoneReactionBars(false));
+  SSignal s2;
+  DetectFamily(GLS_FAMILY_FVG, g_ctx, vb, s2);
+  CHECK(!s2.valid && s2.refusal == GLS_REFUSE_INCOMPLETE, "F6 : contact sans réaction -> attente");
+  // trop de retours, qualité insuffisante, zone trop ancienne : ignorées
+  ResetEaMemory();
+  InpUseExternalLevels = false;
+  PrepareCandleContext(ZoneReactionBars(true));
+  CDirView vr;
+  vr.AddZone(vr.fvgZones, 1995.0, 1995.4, 0.8, GLS_LVL_FVG, T0, InpFvgMaxRetests + 1, false, "retours");
+  vr.AddZone(vr.fvgZones, 1995.0, 1995.4, InpFvgMinQuality - 0.1, GLS_LVL_FVG, T0, 1, false, "faible");
+  vr.AddZone(vr.fvgZones, 1995.0, 1995.4, 0.8, GLS_LVL_FVG, T0 - InpFvgMaxAgeBars * 300 - 7200, 1, false, "ancienne");
+  SSignal s3;
+  DetectFamily(GLS_FAMILY_FVG, g_ctx, vr, s3);
+  CHECK(!s3.valid && s3.stage == 0, "F6 : FVG non éligibles ignorées");
+  // FVG invalidée par une clôture sous la zone
+  ResetEaMemory();
+  InpUseExternalLevels = false;
+  std::vector<Bar> brk = ZoneReactionBars(false);
+  brk.push_back({1996.3, 1996.4, 1994.4, 1994.5});
+  PrepareCandleContext(brk);
+  SSignal s4;
+  DetectFamily(GLS_FAMILY_FVG, g_ctx, vb, s4);
+  CHECK(!s4.valid, "F6 : FVG invalidée -> refus");
+}
+
+//==========================================================================
+// v1.10 : qualité d'exécution, pannes, alertes, intégrité des données
+//==========================================================================
+static void TestExecStats()
+{
+  CExecStats e;
+  e.RecordSend(TRADE_RETCODE_DONE, 10.0);
+  e.RecordSend(TRADE_RETCODE_REQUOTE, 5.0);
+  e.RecordSend(TRADE_RETCODE_NO_MONEY, 5.0);
+  e.RecordSend(TRADE_RETCODE_TIMEOUT, 5.0);
+  CHECK(e.sends == 4 && e.fills == 1 && e.requotes == 1 && e.rejects == 1 && e.uncertain == 1, "classement des codes retour");
+  CHECK_NEAR(e.latencyMaxMs, 10.0, 1e-9, "latence max");
+  CHECK(e.ExpectedAdverseSlippage() == 0.0, "aucun glissement sans exécution");
+  e.RecordFill(0.05, 0.01, 0.20);
+  e.RecordFill(-0.03, 0.01, 0.20);
+  CHECK_NEAR(e.slipMaxPts, 5.0, 1e-9, "glissement max en points");
+  CHECK_NEAR(e.ExpectedAdverseSlippage(), 0.025, 1e-12, "glissement défavorable moyen (favorable compté 0)");
+  for (int i = 0; i < 30; i++)
+    e.RecordFill(0.10, 0.01, 0.20);
+  CHECK_NEAR(e.ExpectedAdverseSlippage(), 0.10, 1e-12, "fenêtre glissante de 20 exécutions");
+  CHECK(e.Summary().s.find("4 envoi(s)") != std::string::npos, "résumé lisible");
+  // le glissement observé élargit le coût estimé (jamais l'inverse)
+  g_observedSlippage = InpSlippageAllowancePrice + 0.5;
+  CHECK_NEAR(SlippageAllowance(), InpSlippageAllowancePrice + 0.5, 1e-12, "glissement observé utilisé s'il est supérieur");
+  g_observedSlippage = 0.0;
+  CHECK_NEAR(SlippageAllowance(), InpSlippageAllowancePrice, 1e-12, "jamais sous l'hypothèse configurée");
+}
+
+static void TestAlerts()
+{
+  SimState &S = Sim();
+  S.tester = false;
+  S.now = 1741600800;
+  InpAlertPush = true;
+  g_alerts.Notify(GLS_ALERT_RISK, "perte", "perte journalière atteinte");
+  g_alerts.Notify(GLS_ALERT_RISK, "perte", "perte journalière atteinte");
+  CHECK(g_alerts.sent == 1, "alerte répétée limitée (anti-répétition)");
+  S.now += InpAlertThrottleSec;
+  g_alerts.Notify(GLS_ALERT_RISK, "perte", "perte journalière atteinte");
+  CHECK(g_alerts.sent == 2, "alerte renvoyée après le délai");
+  g_alerts.Notify(GLS_ALERT_STOP, "arret", "robot arrêté");
+  CHECK(g_alerts.sent == 3, "autre alerte indépendante");
+  InpAlertRisk = false;
+  g_alerts.Notify(GLS_ALERT_RISK, "dd", "drawdown");
+  CHECK(g_alerts.sent == 3, "catégorie désactivée : aucune alerte");
+  S.pushOk = false;
+  g_alerts.Notify(GLS_ALERT_ERROR, "err", "erreur d'exécution");
+  CHECK(g_alerts.failures == 1, "échec d'envoi de notification compté (jamais présenté comme réussi)");
+  S.tester = true;
+  int before = g_alerts.sent;
+  g_alerts.Notify(GLS_ALERT_ERROR, "err2", "erreur");
+  CHECK(g_alerts.sent == before, "testeur : aucune alerte externe");
+}
+
+//--- pipeline F5 (filtres v1.10 désactivés pour multiplier les envois) avec codes retour injectés
+static void RunInjected(const std::vector<uint> &codes, std::function<void(size_t)> perBar)
+{
+  SetupMarket(10000.0, 19, 1234u + (unsigned)GLS_FAMILY_SR_BOUNCE);
+  RelaxContextFilters();
+  InpFamily = GLS_FAMILY_SR_BOUNCE;
+  InpMinScore = 0;
+  InpNewsMode = GLS_NEWS_OFF;
+  InpUseSessions = false;
+  Sim().injectRetcodes = codes;
+  size_t i0 = StartEa(7);
+  RunStats rs;
+  ReplayBars(i0, Sim().m1.size(), 0.20, rs, perBar);
+  FlushTimers(5);
+  CheckRunInvariants(rs, "codes injectés");
+}
+
+static void TestExecRequotes()
+{
+  int sendsAtFirstFill = -1;
+  RunInjected({TRADE_RETCODE_REQUOTE, TRADE_RETCODE_REQUOTE}, [&](size_t) {
+    if (sendsAtFirstFill < 0 && g_exec.fills > 0)
+      sendsAtFirstFill = g_exec.sends;
+  });
+  CHECK(g_exec.requotes == 2, "2 requotes comptées : " << g_exec.requotes);
+  CHECK(sendsAtFirstFill == 3, "nouvelle tentative bornée puis exécution (3 envois) : " << sendsAtFirstFill);
+  CHECK(CountMagicIn() > 0, "exécution après requotes");
+  CHECK(g_exec.Summary().s.find("2 requote(s)") != std::string::npos, "résumé d'exécution");
+}
+
+static void TestExecErrorsSuspend()
+{
+  SimState &S = Sim();
+  datetime suspAt = 0;
+  int sendsAtSusp = -1;
+  std::vector<datetime> sendTimes;
+  int lastSends = 0;
+  RunInjected({TRADE_RETCODE_NO_MONEY, TRADE_RETCODE_INVALID_VOLUME, TRADE_RETCODE_NO_MONEY}, [&](size_t) {
+    if (g_exec.sends != lastSends)
+    {
+      lastSends = g_exec.sends;
+      sendTimes.push_back(S.now);
+    }
+    if (suspAt == 0 && g_guard.execSuspended)
+    {
+      suspAt = S.now;
+      sendsAtSusp = g_exec.sends;
+    }
+  });
+  CHECK(suspAt != 0, "3 erreurs consécutives : entrées suspendues");
+  CHECK(sendsAtSusp == 3, "erreurs non récupérables : aucune nouvelle tentative (" << sendsAtSusp << " envois)");
+  CHECK(g_exec.rejects >= 3, "rejets comptés");
+  for (size_t i = 1; i < sendTimes.size() && i < 3; i++)
+    CHECK(sendTimes[i] - sendTimes[i - 1] >= InpErrorCooldownSec, "refroidissement respecté entre deux erreurs");
+  std::string day = TimeToString(suspAt, TIME_DATE).s;
+  for (const SimDeal &d : S.deals)
+    if (d.entry == DEAL_ENTRY_IN && d.magic == (ulong)InpMagic && d.time >= suspAt)
+      CHECK(TimeToString(d.time, TIME_DATE).s != day, "entrée le jour même malgré la suspension");
+  std::string j = S.files["GLS\\" + g_log.Base().s + "_journal.csv"];
+  CHECK(j.find("erreurs d'exécution consécutives") != std::string::npos, "suspension journalisée");
+}
+
+static void TestExecTimeout()
+{
+  RunInjected({TRADE_RETCODE_TIMEOUT}, nullptr);
+  CHECK(g_exec.uncertain == 1, "délai dépassé : résultat incertain compté");
+  CHECK(CountMagicIn() > 0, "reprise après resynchronisation");
+}
+
+static void TestDataGap()
+{
+  SetupMarket(10000.0, 19, 1234u + (unsigned)GLS_FAMILY_SR_BOUNCE);
+  SimState &S = Sim();
+  size_t g = IndexAtOrAfter(ShimTimegm(2025, 3, 3, 0, 0, 0) + 8 * 86400 + 10 * 3600);
+  S.m1.erase(S.m1.begin() + (long)g, S.m1.begin() + (long)g + 10); // 10 minutes manquantes
+  SimBuildAggregates();
+  datetime gapEnd = S.m1[g].time;
+  RelaxContextFilters();
+  InpFamily = GLS_FAMILY_SR_BOUNCE;
+  InpMinScore = 0;
+  InpNewsMode = GLS_NEWS_OFF;
+  InpUseSessions = false;
+  size_t i0 = StartEa(7);
+  RunStats rs;
+  bool sawGap = false;
+  ReplayBars(i0, S.m1.size(), 0.20, rs, [&](size_t i) {
+    if (S.m1[i].time >= gapEnd && S.m1[i].time < gapEnd + 20 * 60 && g_ctx.dataGap)
+      sawGap = true;
+  });
+  CHECK(sawGap, "trou de données détecté");
+  for (const SimDeal &d : S.deals)
+    if (d.entry == DEAL_ENTRY_IN && d.magic == (ulong)InpMagic)
+      CHECK(d.time < gapEnd || d.time >= gapEnd + 29 * 60, "entrée pendant la fenêtre de données incomplètes");
+  CheckRunInvariants(rs, "trou de données");
+}
+
+//==========================================================================
+// v1.10 : comparaison A/B des filtres (données synthétiques : AUCUNE valeur
+// de performance ; on vérifie que chaque filtre agit, ne contourne aucune
+// limite de risque, et que les invariants restent vrais)
+//==========================================================================
+struct AbRun
+{
+  int entries = 0;
+  int executed = 0;
+  int rows = 0;
+  int rrRefusals = 0;
+  std::map<std::string, int> criteria;
+  std::vector<std::vector<std::string>> exec;
+};
+
+static AbRun RunAb(int family, const char *label, std::function<void()> cfg)
+{
+  ResetAll();
+  SetupMarket(10000.0, 19, 1234u + (unsigned)family);
+  InpFamily = (ENUM_GLS_FAMILY)family;
+  InpMinScore = 0;
+  InpNewsMode = GLS_NEWS_OFF;
+  InpUseSessions = false;
+  InpRunLabel = label;
+  cfg();
+  size_t i0 = StartEa(7);
+  RunStats rs;
+  ReplayBars(i0, Sim().m1.size(), 0.20, rs);
+  FlushTimers(5);
+  CheckRunInvariants(rs, label);
+  AbRun r;
+  r.entries = CountMagicIn();
+  std::istringstream in(Sim().files["GLS\\" + g_log.Base().s + "_signals.csv"]);
+  std::string line;
+  const char *keys[] = {"-régime ", "-M15 opposée", "-M5 opposée", "-figure contraire", "-bougie de déclenchement", "-mouvement de", "-prix dans une"};
+  while (std::getline(in, line))
+  {
+    std::vector<std::string> f;
+    std::string x;
+    std::istringstream ls(line);
+    while (std::getline(ls, x, ';'))
+      f.push_back(x);
+    if (f.size() < 28 || f[0] == "time")
+      continue;
+    r.rows++;
+    if (f[18] == "EXECUTE")
+    {
+      r.executed++;
+      r.exec.push_back(f);
+    }
+    if (f[19] == GlsRefusalText(GLS_REFUSE_RR).s)
+      r.rrRefusals++;
+    for (const char *k : keys)
+      if (line.find(k) != std::string::npos)
+        r.criteria[k]++;
+  }
+  OnDeinit(0);
+  return r;
+}
+
+static void TestFilterAB()
+{
+  const int fam = GLS_FAMILY_SWEEP;
+  AbRun ref = RunAb(fam, "reference", [] { RelaxContextFilters(); });
+  AbRun rg = RunAb(fam, "regime", [] { RelaxContextFilters(); InpUseRegimeFilter = true; });
+  AbRun tr = RunAb(fam, "tendance", [] { RelaxContextFilters(); InpUseTrendFilter = true; });
+  AbRun cd = RunAb(fam, "bougies", [] { RelaxContextFilters(); InpCdlBlockOpposing = true; InpCdlBlockIndecision = true; InpCdlBlockExtended = true; });
+  AbRun ob = RunAb(fam, "obstacles", [] { RelaxContextFilters(); InpUseSRObstacles = true; });
+  AbRun all = RunAb(fam, "defaut", [] {});
+  std::cout << "         F1 entrées (synthétique, sans valeur de performance) : référence " << ref.entries << ", +régime " << rg.entries
+            << ", +tendance " << tr.entries << ", +bougies " << cd.entries << ", +obstacles S/R " << ob.entries << ", tous (défaut) " << all.entries << "\n";
+  CHECK(ref.entries > 0, "référence : des entrées");
+  CHECK(rg.criteria["-régime "] > 0, "filtre de régime actif");
+  for (auto &f : rg.exec)
+    CHECK(f[23] == "TENDANCE" || f[23] == "RANGE" || f[23] == "TRANSITION", "F1 exécuté en régime non autorisé : " << f[23]);
+  CHECK(tr.criteria["-M15 opposée"] + tr.criteria["-M5 opposée"] > 0, "filtre de tendance actif");
+  CHECK(cd.criteria["-figure contraire"] + cd.criteria["-bougie de déclenchement"] + cd.criteria["-mouvement de"] > 0, "filtres de bougies actifs");
+  CHECK(ob.rrRefusals > ref.rrRefusals, "obstacles S/R : plus de refus d'espace (" << ob.rrRefusals << " vs " << ref.rrRefusals << ")");
+  for (auto &f : all.exec)
+    CHECK(f[19] == GlsRefusalText(GLS_REFUSE_NONE).s, "exécution malgré un refus : " << f[19]);
+  CHECK(ref.criteria["-régime "] == 0 && ref.criteria["-prix dans une"] == 0, "référence : filtres v1.10 réellement désactivés");
+}
+
+//--- volume des journaux (bougies / FVG) au niveau par défaut
+static void TestLogVolume()
+{
+  SetupMarket(10000.0, 19, 1234u);
+  InpMinScore = 0;
+  InpNewsMode = GLS_NEWS_OFF;
+  size_t i0 = StartEa(7);
+  RunStats rs;
+  ReplayBars(i0, Sim().m1.size(), 0.20, rs);
+  auto lines = [](const std::string &f) {
+    int n = 0;
+    for (char c : Sim().files[f])
+      if (c == '\n')
+        n++;
+    return n;
+  };
+  int cdl = lines("GLS\\" + g_log.Base().s + "_bougies.csv");
+  int fvg = lines("GLS\\" + g_log.Base().s + "_fvg.csv");
+  int days = 8; // jours de cotation rejoués (12 jours calendaires)
+  std::cout << "         journal : " << cdl << " lignes bougies, " << fvg << " lignes FVG sur " << days << " jours de cotation\n";
+  CHECK(cdl > 0 && fvg > 0, "journaux bougies et FVG écrits");
+  CHECK(cdl / days < 600 && fvg / days < 600, "volume de journal maîtrisé au niveau par défaut");
+  // niveau par défaut : une ligne par figure, à son statut FINAL (confirmée / invalidée / expirée)
+  std::istringstream in(Sim().files["GLS\\" + g_log.Base().s + "_bougies.csv"]);
+  std::string line;
+  int bad = 0;
+  while (std::getline(in, line))
+  {
+    std::vector<std::string> f;
+    std::string x;
+    std::istringstream ls(line);
+    while (std::getline(ls, x, ';'))
+      f.push_back(x);
+    if (f.size() < 7 || f[0] == "heure")
+      continue;
+    if (f[6] != CandleStatusText(GLS_CDLST_CONFIRMED).s && f[6] != CandleStatusText(GLS_CDLST_INVALIDATED).s && f[6] != CandleStatusText(GLS_CDLST_EXPIRED).s)
+      bad++;
+  }
+  CHECK(bad == 0, "niveau par défaut : statuts finaux uniquement (" << bad << " ligne(s) intermédiaire(s))");
+}
+
+int main(int argc, char **argv)
+{
+  if (argc > 1)
+  {
+    std::string f;
+    std::istringstream in(argv[1]);
+    while (std::getline(in, f, '|'))
+      if (!f.empty())
+        g_filters.push_back(f);
+  }
   std::signal(SIGFPE, OnFpe);
   feenableexcept(FE_DIVBYZERO | FE_INVALID);
   RunTest("utilitaires (heures, DST, hachage)", TestUtils);
@@ -1095,10 +2099,22 @@ int main()
   RunTest("protections journalières", TestGuard);
   RunTest("statistiques : partiels agrégés", TestStatsAggregation);
   RunTest("signal déjà exécuté", TestDuplicateGuard);
+  RunTest("bougies : mesures et amplitude nulle", TestCandleMetrics);
+  RunTest("bougies : figures haussières et miroirs baissiers", TestCandlePatterns);
+  RunTest("bougies : confirmation, invalidation, expiration", TestCandleStatus);
+  RunTest("tendance et régimes", TestTrendRegime);
+  RunTest("supports / résistances", TestZones);
+  RunTest("FVG / IFVG / OB", TestFvg);
+  RunTest("F5 réaction sur support/résistance + obstacles", TestSRBounce);
+  RunTest("F6 retest de FVG", TestFvgRetest);
+  RunTest("qualité d'exécution (statistiques)", TestExecStats);
+  RunTest("alertes", TestAlerts);
   RunTest("intégration F1", TestPipelineF1);
   RunTest("intégration F2", TestPipelineF2);
   RunTest("intégration F3", TestPipelineF3);
   RunTest("intégration F4", TestPipelineF4);
+  RunTest("intégration F5 (paramètres par défaut)", TestPipelineF5);
+  RunTest("intégration F6 (paramètres par défaut)", TestPipelineF6);
   RunTest("redémarrage après TP1 (variables globales)", TestRestartKeepGlobals);
   RunTest("redémarrage après TP1 (sans variables globales)", TestRestartWipeGlobals);
   RunTest("position sans stop : protection", TestNoStopProtect);
@@ -1108,6 +2124,12 @@ int main()
   RunTest("bouton vérifier la connexion", TestConnectionCheck);
   RunTest("petit compte (10)", TestSmallAccount);
   RunTest("coupure de connexion", TestDisconnect);
+  RunTest("pannes : requotes", TestExecRequotes);
+  RunTest("pannes : erreurs consécutives -> suspension", TestExecErrorsSuspend);
+  RunTest("pannes : délai dépassé", TestExecTimeout);
+  RunTest("intégrité : trou de données", TestDataGap);
+  RunTest("comparaison A/B des filtres (F1)", TestFilterAB);
+  RunTest("volume des journaux", TestLogVolume);
   std::cout << "\n" << g_checks << " vérifications, " << g_failures << " échec(s)\n";
   return g_failures == 0 ? 0 : 1;
 }

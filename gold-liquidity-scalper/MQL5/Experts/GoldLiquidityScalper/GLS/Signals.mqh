@@ -40,7 +40,8 @@ struct SSignal
    double            cRetest;      // qualité du retest
    double            cVol;         // conditions de volatilité
    double            cCost;        // coût d'exécution
-   double            cRR;          // espace jusqu'à la liquidité opposée
+   double            cRR;          // espace jusqu'à la liquidité / zone opposée
+   double            cCandle;      // preuve apportée par les bougies (comptée une seule fois)
    double            score;
    double            roomR;
    double            riskDist;     // distance entrée -> stop au prix d'exécution estimé
@@ -48,6 +49,25 @@ struct SSignal
    double            costFrac;
    string            detail;
    int               refusal;
+   int               regime;
+   int               trend15;
+   int               trend5;
+   int               candleId;     // figure retenue comme preuve (0 = aucune)
+   string            candleName;
+   string            criteria;     // critères satisfaits (+) et échoués (-), séparés par '|'
+  };
+
+//--- Zone dans l'espace de la vue (support pour un achat, résistance retournée pour une vente)
+struct SViewZone
+  {
+   double            lo;
+   double            hi;
+   double            quality;
+   int               kind;        // GLS_LVL_ZONE / GLS_LVL_FVG
+   datetime          known;       // instant où la zone est connue
+   int               retests;
+   bool              inverted;    // IFVG
+   string            label;
   };
 
 //+------------------------------------------------------------------+
@@ -59,13 +79,69 @@ public:
    int               dir;
    SLevel            sweepable[];
    SLevel            opposing[];
+   SViewZone         supports[];    // zones favorables (support pour un achat, résistance pour une vente)
+   SViewZone         fvgZones[];    // FVG du sens du trade (unité InpFvgTF)
+   SViewZone         obstacles[];   // zones opposées : résistances / supports (force >= InpSRMinStrength), FVG contraires (unité InpFvgTF)
 
                      CDirView(void) : dir(GLS_BUY) {}
+
+   void              AddZone(SViewZone &arr[], const double lo, const double hi, const double quality, const int kind,
+                             const datetime known, const int retests, const bool inverted, const string label)
+     {
+      int n = ArraySize(arr);
+      ArrayResize(arr, n + 1);
+      arr[n].lo = (dir == GLS_BUY) ? lo : -hi;
+      arr[n].hi = (dir == GLS_BUY) ? hi : -lo;
+      arr[n].quality = quality;
+      arr[n].kind = kind;
+      arr[n].known = known;
+      arr[n].retests = retests;
+      arr[n].inverted = inverted;
+      arr[n].label = label;
+     }
+
+   void              AddFvgs(const CFvgMap &m)
+     {
+      for(int i = 0; i < ArraySize(m.fvgs); i++)
+        {
+         if(m.fvgs[i].status != GLS_FVG_FRESH && m.fvgs[i].status != GLS_FVG_PARTIAL)
+            continue;
+         if(m.fvgs[i].dir == dir)
+           {
+            if(m.tfMin == (int)InpFvgTF && (!m.fvgs[i].inverted || InpUseIFVG))
+               AddZone(fvgZones, m.fvgs[i].lo, m.fvgs[i].hi, m.fvgs[i].quality, GLS_LVL_FVG, m.fvgs[i].created,
+                       m.fvgs[i].retests, m.fvgs[i].inverted, m.fvgs[i].reason);
+           }
+         else
+            if(InpUseSRObstacles && m.tfMin == (int)InpFvgTF && m.fvgs[i].quality >= InpFvgMinQuality)
+               AddZone(obstacles, m.fvgs[i].lo, m.fvgs[i].hi, m.fvgs[i].quality, GLS_LVL_FVG, m.fvgs[i].created,
+                       m.fvgs[i].retests, m.fvgs[i].inverted, m.fvgs[i].reason);
+        }
+     }
 
    void              Build(const CMarketContext &ctx, const int d)
      {
       dir = d;
       ctx.liq.DirectionalView(d, sweepable, opposing);
+      ArrayResize(supports, 0);
+      ArrayResize(fvgZones, 0);
+      ArrayResize(obstacles, 0);
+      int favRole = (d == GLS_BUY) ? GLS_ZONE_SUPPORT : GLS_ZONE_RESIST;
+      int oppRole = (d == GLS_BUY) ? GLS_ZONE_RESIST : GLS_ZONE_SUPPORT;
+      for(int i = 0; i < ArraySize(ctx.zones.zones); i++)
+        {
+         if(!ctx.zones.zones[i].valid)
+            continue;
+         if(ctx.zones.zones[i].role == favRole)
+            AddZone(supports, ctx.zones.zones[i].lo, ctx.zones.zones[i].hi, ctx.zones.zones[i].strength, GLS_LVL_ZONE,
+                    ctx.zones.zones[i].confirmTime, ctx.zones.zones[i].touches, false, ctx.zones.zones[i].reason);
+         else
+            if(ctx.zones.zones[i].role == oppRole && InpUseSRObstacles && ctx.zones.zones[i].strength >= InpSRMinStrength)
+               AddZone(obstacles, ctx.zones.zones[i].lo, ctx.zones.zones[i].hi, ctx.zones.zones[i].strength, GLS_LVL_ZONE,
+                       ctx.zones.zones[i].confirmTime, ctx.zones.zones[i].touches, false, ctx.zones.zones[i].reason);
+        }
+      AddFvgs(ctx.fvg5);
+      AddFvgs(ctx.fvg1);
      }
   };
 
@@ -94,6 +170,7 @@ void SignalReset(SSignal &s)
    s.cVol = 0.0;
    s.cCost = 0.0;
    s.cRR = 0.0;
+   s.cCandle = 0.0;
    s.score = 0.0;
    s.roomR = 0.0;
    s.riskDist = 0.0;
@@ -101,6 +178,12 @@ void SignalReset(SSignal &s)
    s.costFrac = 0.0;
    s.detail = "";
    s.refusal = GLS_REFUSE_NO_SETUP;
+   s.regime = GLS_RG_UNKNOWN;
+   s.trend15 = GLS_TCLASS_UNKNOWN;
+   s.trend5 = GLS_TCLASS_UNKNOWN;
+   s.candleId = GLS_CDL_NONE;
+   s.candleName = "";
+   s.criteria = "";
   }
 
 //--- Note partielle (composantes propres à la famille) pour départager des candidats
@@ -328,16 +411,11 @@ bool EvaluateSweepPattern(const CMarketContext &ctx, const CBarSeries &b, const 
    double depthF = (depthAtr >= 0.1 && depthAtr <= 0.8) ? 1.0 : 0.8;
    sig.cLiq = Clamp(base * depthF, 0.0, 1.0);
 
-   double trigQ = 1.0 - 0.15 * (r - e) - 0.15 * accept;
-   if(SafeDiv(b.LowerWick(e), b.Range(e), 0.0) >= 0.5)
-      trigQ += 0.1;
-   sig.cTrig = Clamp(trigQ, 0.0, 1.0);
-
-   double disp = (b.BodyRatio(c) >= 0.6 && b.CloseLocation(c) >= 0.7) ? 1.0 : Ramp(b.BodyRatio(c), 0.3, 0.6);
-   sig.cStruct = Clamp((fallback ? 0.6 : 0.7) + 0.3 * disp, 0.0, 1.0);
-
+   //--- la FORME des bougies (mèches, corps) n'est évaluée qu'une fois, dans la composante "bougies"
+   sig.cTrig = Clamp(1.0 - 0.15 * (r - e) - 0.15 * accept, 0.0, 1.0);
+   sig.cStruct = Clamp((fallback ? 0.6 : 0.7) + 0.3 * Ramp((b.close[c] - choch) / atr, 0.0, 0.3), 0.0, 1.0);
    if(retest)
-      sig.cRetest = (SafeDiv(b.LowerWick(last), b.Range(last), 0.0) >= 0.4) ? 1.0 : 0.8;
+      sig.cRetest = (b.low[last] <= level + 0.25 * (b.close[c] - level)) ? 1.0 : 0.8;
    else
       sig.cRetest = 0.3;
 
@@ -509,7 +587,7 @@ void DetectPullback(const CMarketContext &ctx, const CBarSeries &b, const CDirVi
    int pbBars = last - iH;
    best.cLiq = depthQ * ((pbBars >= 3 && pbBars <= 20) ? 1.0 : 0.85);
    best.cTrig = 0.5 + 0.5 * Ramp(impulse / atr, InpPBMinImpulseATR, 2.0 * InpPBMinImpulseATR);
-   best.cStruct = (b.BodyRatio(last) >= 0.6 && b.CloseLocation(last) >= 0.7) ? 1.0 : 0.6 + 0.4 * Ramp(b.BodyRatio(last), 0.3, 0.6);
+   best.cStruct = (jh >= 0) ? 1.0 : 0.7;   // reprise au-dessus d'un sommet fractal (structure) ou du repli
    best.cRetest = 0.5;
    best.detail = StringFormat("impulsion %.1f ATR, retracement %.2f, reprise au-dessus de %s", impulse / atr, retr, ViewPrice(lh));
   }
@@ -607,9 +685,9 @@ void DetectRangeBreak(const CMarketContext &ctx, const CBarSeries &b, const CDir
       best.retestEntry = true;
       int touches = MathMin(tTop, tBot);
       best.cLiq = ((touches >= 3) ? 1.0 : 0.75) * ((hgt >= 1.5 * atrB && hgt <= 3.0 * atrB) ? 1.0 : 0.85);
-      best.cTrig = 0.5 + 0.5 * Ramp(b.BodyRatio(bi), 0.5, 0.8);
+      best.cTrig = 0.5 + 0.5 * Ramp((b.close[bi] - top) / atrB, 0.1, 0.6);
       best.cStruct = 0.6 + 0.4 * Ramp((b.close[bi + 1] - top) / atrB, 0.0, 0.5);
-      best.cRetest = (SafeDiv(b.LowerWick(last), b.Range(last), 0.0) >= 0.4) ? 1.0 : 0.8;
+      best.cRetest = 1.0 - 0.4 * Ramp(MathAbs(b.low[last] - top) / atrB, 0.0, MathMax(InpRetestTolATR, 0.01));
       best.detail = StringFormat("range %.1f ATR (%d/%d contacts), cassure de %s, retest validé", hgt / atrB, tTop, tBot, ViewPrice(top));
       return;
      }
@@ -685,6 +763,253 @@ void DetectSqueeze(const CMarketContext &ctx, const CBarSeries &b, const CDirVie
    best.detail = StringFormat("boîte %.2f ATR100, ATR14/ATR100 %.2f, expansion %.1f ATR100 confirmée", hb / atrL, atrS / atrL, tr / atrL);
   }
 
+//+------------------------------------------------------------------+
+//| Outils communs aux familles F5 et F6                              |
+//+------------------------------------------------------------------+
+//--- "lo-hi" en prix réels quelle que soit la vue
+string ViewRange(const double lo, const double hi)
+  {
+   double a = MathAbs(lo);
+   double b = MathAbs(hi);
+   return DoubleToString(MathMin(a, b), g_sym.digits) + "-" + DoubleToString(MathMax(a, b), g_sym.digits);
+  }
+
+//--- Figure de réaction du sens de la vue, touchant la zone, CONFIRMÉE sur la dernière barre
+int ReactionPattern(const CCandleAnalysis &ca, const int fromBar, const double zoneTop, const double tol, const int last)
+  {
+   int best = -1;
+   for(int i = 0; i < ArraySize(ca.pats); i++)
+     {
+      int cat = ca.pats[i].category;
+      if(ca.pats[i].dir == 0 || (cat != GLS_CDLCAT_REVERSAL && cat != GLS_CDLCAT_REJECTION && cat != GLS_CDLCAT_COMPOSITE))
+         continue;
+      if(ca.pats[i].bar < fromBar || ca.pats[i].low > zoneTop + tol)
+         continue;
+      if(ca.pats[i].status != GLS_CDLST_CONFIRMED || ca.pats[i].confirmBar != last)
+         continue;
+      if(best < 0 || ca.pats[i].strength > ca.pats[best].strength)
+         best = i;
+     }
+   return best;
+  }
+
+//--- CHOCH M1 sur la dernière barre : 1re clôture au-dessus du dernier sommet fractal formé depuis fromBar
+bool MicroChochAtLast(const CBarSeries &b, const int fromBar)
+  {
+   int last = b.count - 1;
+   int jh = LastFractalHigh(b, fromBar, last - 1, InpMicroSwingStrength, last);
+   if(jh < 0 || b.close[last] <= b.high[jh])
+      return false;
+   for(int k = jh + 1; k < last; k++)
+      if(b.close[k] > b.high[jh])
+         return false;
+   return true;
+  }
+
+//+------------------------------------------------------------------+
+//| F5 - Réaction confirmée sur support (vente : résistance)         |
+//| Zone : support S/R valide (force >= InpSRMinStrength) connu      |
+//|   AVANT la fenêtre des InpSRReactBars dernières barres M1.       |
+//| Contact : 1re barre de la fenêtre dont le plus bas <= haut de    |
+//|   zone + 0,1 ATR, venant d'au-dessus de la zone.                 |
+//| Zone tenue : aucune clôture sous bas - InpZoneBreakBufferATR.    |
+//| Réaction : figure haussière (retournement, rejet ou composée)    |
+//|   touchant la zone, CONFIRMÉE sur la dernière barre clôturée,    |
+//|   clôture au-dessus de la zone. Une figure seule ne suffit pas : |
+//|   contexte, zone, confirmation et contrôles communs requis.      |
+//| Stop : min(plus bas de la réaction, bas de zone) - tampon ATR.   |
+//| Invalidation : bas de la zone.                                   |
+//+------------------------------------------------------------------+
+void DetectSRBounce(const CMarketContext &ctx, const CBarSeries &b, const CDirView &v, const CCandleAnalysis &ca, SSignal &best)
+  {
+   SignalReset(best);
+   int last = b.count - 1;
+   if(last < 40)
+      return;
+   double atr = ctx.atr[last];
+   if(atr <= 0.0)
+      return;
+   double tol = 0.1 * atr;
+   double brk = InpZoneBreakBufferATR * atr;
+   int from = MathMax(2, last - InpSRReactBars + 1);
+   for(int z = 0; z < ArraySize(v.supports); z++)
+     {
+      double lo = v.supports[z].lo;
+      double hi = v.supports[z].hi;
+      if(v.supports[z].quality < InpSRMinStrength || v.supports[z].known > b.time[from])
+         continue;
+      int t = -1;
+      for(int k = from; k <= last; k++)
+         if(b.low[k] <= hi + tol)
+           {
+            t = k;
+            break;
+           }
+      if(t < 0 || b.close[t - 1] < lo)
+         continue;
+      SSignal cand;
+      SignalReset(cand);
+      cand.dir = v.dir;
+      cand.stage = 1;
+      bool held = true;
+      for(int k = t; k <= last; k++)
+         if(b.close[k] < lo - brk)
+           {
+            held = false;
+            break;
+           }
+      if(!held)
+        {
+         cand.detail = "zone " + ViewRange(lo, hi) + " cassée par une clôture";
+         KeepBest(best, cand);
+         continue;
+        }
+      if(b.close[last] <= hi)
+        {
+         cand.refusal = GLS_REFUSE_INCOMPLETE;
+         cand.detail = "contact de la zone " + ViewRange(lo, hi) + ", réaction non confirmée";
+         KeepBest(best, cand);
+         continue;
+        }
+      int pi = ReactionPattern(ca, t - 1, hi, tol, last);
+      if(pi < 0)
+        {
+         cand.refusal = GLS_REFUSE_INCOMPLETE;
+         cand.detail = "zone " + ViewRange(lo, hi) + " : attente d'une figure de réaction confirmée";
+         KeepBest(best, cand);
+         continue;
+        }
+      double rLow = MathMin(ca.pats[pi].low, LowOf(b, t, last));
+      bool choch = MicroChochAtLast(b, MathMax(0, t - 5));
+      cand.valid = true;
+      cand.stage = 2;
+      cand.family = GLS_FAMILY_SR_BOUNCE;
+      cand.level = hi;
+      cand.extreme = rLow;
+      cand.stop = MathMin(rLow, lo) - InpSLBufferATR * atr;
+      cand.invalidation = lo;
+      cand.refEntry = b.close[last];
+      cand.anchorTime = b.time[t];
+      cand.triggerTime = b.time[last];
+      cand.levelKind = GLS_LVL_ZONE;
+      cand.retestEntry = true;
+      cand.cLiq = Clamp(v.supports[z].quality, 0.0, 1.0);
+      cand.cTrig = Clamp(1.0 - 0.1 * (last - t), 0.3, 1.0);
+      cand.cStruct = choch ? 1.0 : 0.7;
+      //--- retest : réaction tenue DANS la zone (mèche au-delà du bas de zone = moins propre) ;
+      //--- la force de la zone (réactions, M15) est déjà dans cLiq : pas de double comptage
+      cand.cRetest = (rLow >= lo) ? 1.0 : 0.7;
+      cand.detail = "zone " + ViewRange(lo, hi) + " (" + v.supports[z].label + "), réaction : "
+                    + CandleName(ca.pats[pi].id, ca.pats[pi].dir) + (choch ? ", CHOCH M1" : "");
+      KeepBest(best, cand);
+     }
+  }
+
+//+------------------------------------------------------------------+
+//| F6 - Retest de FVG avec réaction confirmée                       |
+//| FVG du sens du trade (InpFvgTF), fraîche ou partiellement        |
+//|   comblée, qualité >= InpFvgMinQuality, retours <= InpFvgMaxRet.,|
+//|   âge <= InpFvgMaxAgeBars barres de son unité, connue avant le   |
+//|   contact.                                                       |
+//| Contact : 1re entrée dans la zone dans les InpFvgReactBars       |
+//|   dernières barres M1, la barre précédente étant hors zone.      |
+//| Zone tenue : aucune clôture sous bas - InpFvgInvalidBufferATR.   |
+//| Pas d'entrée au premier contact : il faut une RÉACTION =         |
+//|   figure confirmée sur la dernière barre ET/OU CHOCH M1, avec    |
+//|   clôture au-dessus du milieu de la zone.                        |
+//| Stop : min(plus bas depuis le contact, bas de zone) - tampon.    |
+//| Invalidation : bas de la zone.                                   |
+//+------------------------------------------------------------------+
+void DetectFvgRetest(const CMarketContext &ctx, const CBarSeries &b, const CDirView &v, const CCandleAnalysis &ca, SSignal &best)
+  {
+   SignalReset(best);
+   int last = b.count - 1;
+   if(last < 40)
+      return;
+   double atr = ctx.atr[last];
+   if(atr <= 0.0)
+      return;
+   double tol = 0.05 * atr;
+   double buf = InpFvgInvalidBufferATR * atr;
+   int from = MathMax(2, last - InpFvgReactBars + 1);
+   datetime oldest = b.time[last] - InpFvgMaxAgeBars * (int)InpFvgTF * 60;
+   for(int z = 0; z < ArraySize(v.fvgZones); z++)
+     {
+      double lo = v.fvgZones[z].lo;
+      double hi = v.fvgZones[z].hi;
+      if(v.fvgZones[z].quality < InpFvgMinQuality || v.fvgZones[z].retests > InpFvgMaxRetests)
+         continue;
+      if(v.fvgZones[z].known > b.time[from] || v.fvgZones[z].known < oldest)
+         continue;
+      int t = -1;
+      for(int k = from; k <= last; k++)
+         if(b.low[k] <= hi)
+           {
+            t = k;
+            break;
+           }
+      if(t < 0 || b.low[t - 1] <= hi)
+         continue;
+      SSignal cand;
+      SignalReset(cand);
+      cand.dir = v.dir;
+      cand.stage = 1;
+      bool held = true;
+      for(int k = t; k <= last; k++)
+         if(b.close[k] < lo - buf)
+           {
+            held = false;
+            break;
+           }
+      if(!held)
+        {
+         cand.detail = "FVG " + ViewRange(lo, hi) + " invalidée";
+         KeepBest(best, cand);
+         continue;
+        }
+      if(b.close[last] <= 0.5 * (lo + hi))
+        {
+         cand.refusal = GLS_REFUSE_INCOMPLETE;
+         cand.detail = "retour dans la FVG " + ViewRange(lo, hi) + ", réaction non confirmée";
+         KeepBest(best, cand);
+         continue;
+        }
+      int pi = ReactionPattern(ca, t - 1, hi, tol, last);
+      bool choch = MicroChochAtLast(b, MathMax(0, t - 5));
+      if(pi < 0 && !choch)
+        {
+         cand.refusal = GLS_REFUSE_INCOMPLETE;
+         cand.detail = "FVG " + ViewRange(lo, hi) + " : attente d'une figure confirmée ou d'un CHOCH M1";
+         KeepBest(best, cand);
+         continue;
+        }
+      double rLow = LowOf(b, t, last);
+      if(pi >= 0)
+         rLow = MathMin(rLow, ca.pats[pi].low);
+      cand.valid = true;
+      cand.stage = 2;
+      cand.family = GLS_FAMILY_FVG;
+      cand.level = hi;
+      cand.extreme = rLow;
+      cand.stop = MathMin(rLow, lo) - InpSLBufferATR * atr;
+      cand.invalidation = lo;
+      cand.refEntry = b.close[last];
+      cand.anchorTime = b.time[t];
+      cand.triggerTime = b.time[last];
+      cand.levelKind = GLS_LVL_FVG;
+      cand.retestEntry = true;
+      cand.cLiq = Clamp(v.fvgZones[z].quality, 0.0, 1.0);
+      cand.cTrig = Clamp(1.0 - 0.1 * (last - t), 0.3, 1.0);
+      cand.cStruct = choch ? 1.0 : 0.7;
+      //--- retest : réaction tenue DANS la FVG ; le nombre de retours est déjà dans la qualité
+      //--- de la FVG (fraîcheur, cLiq) : il n'est pas compté une seconde fois
+      cand.cRetest = (rLow >= lo) ? 1.0 : 0.7;
+      cand.detail = (v.fvgZones[z].inverted ? "IFVG " : "FVG ") + ViewRange(lo, hi) + " [" + v.fvgZones[z].label + "], réaction : "
+                    + ((pi >= 0) ? CandleName(ca.pats[pi].id, ca.pats[pi].dir) : "aucune figure") + (choch ? ", CHOCH M1" : "");
+      KeepBest(best, cand);
+     }
+  }
+
 //--- Détection brute (espace de la vue) selon la famille active
 void DetectFamily(const int family, const CMarketContext &ctx, const CDirView &v, SSignal &sig)
   {
@@ -696,6 +1021,8 @@ void DetectFamily(const int family, const CMarketContext &ctx, const CDirView &v
          case GLS_FAMILY_PULLBACK:    DetectPullback(ctx, ctx.m1, v, sig); break;
          case GLS_FAMILY_RANGE_BREAK: DetectRangeBreak(ctx, ctx.m1, v, sig); break;
          case GLS_FAMILY_SQUEEZE:     DetectSqueeze(ctx, ctx.m1, v, sig); break;
+         case GLS_FAMILY_SR_BOUNCE:   DetectSRBounce(ctx, ctx.m1, v, ctx.cdlBuy, sig); break;
+         case GLS_FAMILY_FVG:         DetectFvgRetest(ctx, ctx.m1, v, ctx.cdlBuy, sig); break;
          default:                     SignalReset(sig); break;
         }
      }
@@ -707,6 +1034,8 @@ void DetectFamily(const int family, const CMarketContext &ctx, const CDirView &v
          case GLS_FAMILY_PULLBACK:    DetectPullback(ctx, ctx.m1Mirror, v, sig); break;
          case GLS_FAMILY_RANGE_BREAK: DetectRangeBreak(ctx, ctx.m1Mirror, v, sig); break;
          case GLS_FAMILY_SQUEEZE:     DetectSqueeze(ctx, ctx.m1Mirror, v, sig); break;
+         case GLS_FAMILY_SR_BOUNCE:   DetectSRBounce(ctx, ctx.m1Mirror, v, ctx.cdlSell, sig); break;
+         case GLS_FAMILY_FVG:         DetectFvgRetest(ctx, ctx.m1Mirror, v, ctx.cdlSell, sig); break;
          default:                     SignalReset(sig); break;
         }
      }
@@ -715,9 +1044,82 @@ void DetectFamily(const int family, const CMarketContext &ctx, const CDirView &v
   }
 
 //+------------------------------------------------------------------+
+//| Preuve apportée par les bougies (une seule fois, sans redondance) |
+//|  own : figures du sens du signal ; opp : figures du sens opposé ; |
+//|  neutral : figures d'indécision (analysées dans la vue achat).    |
+//| Composante : 0,3 sans preuve ; 0,4 + 0,6 x qualité de la         |
+//| meilleure figure CONFIRMÉE de la fenêtre de configuration         |
+//| (qualité réduite hors contexte, bruit de spread, obstacle) ;      |
+//| exclusions : F1 ignore l'échec de cassure (c'est son balayage),   |
+//| F3/F4 ignorent la bougie d'impulsion (c'est leur déclencheur).    |
+//+------------------------------------------------------------------+
+void CandleEvidence(const CCandleAnalysis &own, const CCandleAnalysis &opp, const CCandleAnalysis &neutral, const int family,
+                    const int fromBar, const int last, double &comp, int &bestId, string &bestName, bool &opposing,
+                    string &oppName, bool &indecision)
+  {
+   comp = 0.3;
+   bestId = GLS_CDL_NONE;
+   bestName = "";
+   opposing = false;
+   oppName = "";
+   double evidence = 0.0;
+   for(int i = 0; i < ArraySize(own.pats); i++)
+     {
+      if(own.pats[i].dir == 0 || own.pats[i].bar < fromBar || own.pats[i].bar > last)
+         continue;
+      if(own.pats[i].status != GLS_CDLST_CONFIRMED)
+         continue;
+      if(family == GLS_FAMILY_SWEEP && own.pats[i].id == GLS_CDL_FAILBREAK)
+         continue;
+      if((family == GLS_FAMILY_RANGE_BREAK || family == GLS_FAMILY_SQUEEZE) && own.pats[i].id == GLS_CDL_IMPULSE)
+         continue;
+      double f = own.pats[i].strength * (own.pats[i].contextOk ? 1.0 : 0.5) * (own.pats[i].noisy ? 0.5 : 1.0) * (own.pats[i].obstacle ? 0.5 : 1.0);
+      if(f > evidence)
+        {
+         evidence = f;
+         bestId = own.pats[i].id;
+         bestName = CandleName(own.pats[i].id, own.pats[i].dir);
+        }
+     }
+   if(evidence > 0.0)
+      comp = 0.4 + 0.6 * evidence;
+   for(int i = 0; i < ArraySize(opp.pats); i++)
+     {
+      int cat = opp.pats[i].category;
+      if(opp.pats[i].dir == 0 || (cat != GLS_CDLCAT_REVERSAL && cat != GLS_CDLCAT_REJECTION))
+         continue;
+      if(opp.pats[i].status != GLS_CDLST_CONFIRMED || !opp.pats[i].contextOk)
+         continue;
+      if(opp.pats[i].confirmBar >= last - InpCdlOpposingBars + 1)
+        {
+         opposing = true;
+         oppName = CandleName(opp.pats[i].id, opp.pats[i].dir);
+        }
+     }
+   indecision = neutral.IsIndecisionAt(last);
+   if(indecision)
+      comp = MathMin(comp, 0.1);
+   if(opposing)
+      comp = 0.0;
+  }
+
+//--- Enregistre un refus (le premier rencontré est retenu) et le critère échoué
+void Refuse(SSignal &s, const int code, const string why)
+  {
+   if(s.refusal == GLS_REFUSE_NONE)
+      s.refusal = code;
+   s.criteria += "-" + why + "|";
+  }
+
+void Pass(SSignal &s, const string what)
+  {
+   s.criteria += "+" + what + "|";
+  }
+
+//+------------------------------------------------------------------+
 //| Finalisation : prix réels, contrôles obligatoires, score          |
-//| bid/ask : cotation actuelle ; costPrice : coût estimé en prix     |
-//| (spread + commission + glissement prévu).                        |
+//| bid/ask : cotation actuelle ; extraCostPrice : coût estimé en     |
+//| prix (commission + glissement prévu ; le spread est ajouté ici).  |
 //+------------------------------------------------------------------+
 void FinalizeSignal(SSignal &sig, const CMarketContext &ctx, const CDirView &v, const double bid, const double ask,
                     const double extraCostPrice, const datetime serverNow)
@@ -730,7 +1132,7 @@ void FinalizeSignal(SSignal &sig, const CMarketContext &ctx, const CDirView &v, 
    int last = ctx.Last();
    double atr = ctx.atr[last];
 
-   //--- identifiant unique et stable du signal (même balayage = même identifiant)
+   //--- identifiant unique et stable du signal (même configuration = même identifiant)
    sig.id = GlsFamilyCode(sig.family) + "|" + (dir == GLS_BUY ? "B" : "S") + "|" + IntegerToString((long)sig.anchorTime) + "|" + ViewPrice(sig.level);
    sig.hash = HashHex(HashString(sig.id));
 
@@ -744,20 +1146,69 @@ void FinalizeSignal(SSignal &sig, const CMarketContext &ctx, const CDirView &v, 
 
    sig.entryPrice = (dir == GLS_BUY) ? ask : bid;
    sig.refusal = GLS_REFUSE_NONE;
+   sig.criteria = "";
+   sig.regime = ctx.regime;
+   sig.trend15 = ctx.t15.cls;
+   sig.trend5 = ctx.t5.cls;
 
-   //--- contrôles de contexte (non compensables)
+   //--- 1. contexte multi-unités de temps (non compensable par le score)
    if(InpUseEmaFilter && ctx.EmaSide() != dir)
-      sig.refusal = GLS_REFUSE_CONTEXT;
+      Refuse(sig, GLS_REFUSE_CONTEXT, "prix du mauvais côté de l'EMA200 M5");
+   //--- règle de base (v1.00) : jamais contre la structure M15, sauf autorisation explicite
    if(!InpAllowCounterM15 && ctx.st15.trend == -dir)
-      sig.refusal = GLS_REFUSE_CONTEXT;
+      Refuse(sig, GLS_REFUSE_CONTEXT, "structure M15 opposée");
+   //--- filtre de tendance (v1.10, désactivable pour les comparaisons A/B) : tendance M15 par votes
+   //--- et, pour les continuations, tendance M5 opposée
+   if(InpUseTrendFilter)
+     {
+      if(!InpAllowCounterM15 && ctx.t15.dir == -dir)
+         Refuse(sig, GLS_REFUSE_TREND, "M15 opposée (" + ctx.t15.reason + ")");
+      bool continuation = (sig.family == GLS_FAMILY_PULLBACK || sig.family == GLS_FAMILY_RANGE_BREAK
+                           || sig.family == GLS_FAMILY_SQUEEZE || sig.family == GLS_FAMILY_FVG);
+      if(continuation && ctx.t5.dir == -dir)
+         Refuse(sig, GLS_REFUSE_TREND, "M5 opposée à une continuation");
+     }
    if(sig.family == GLS_FAMILY_PULLBACK && ctx.st5.trend != dir)
-      sig.refusal = GLS_REFUSE_CONTEXT;
-   //--- marché sans direction exploitable : efficience M15 trop faible (va-et-vient)
+      Refuse(sig, GLS_REFUSE_CONTEXT, "pullback sans tendance M5");
    if(InpMinM15Efficiency > 0.0 && ctx.st15.ready && ctx.st15.er < InpMinM15Efficiency)
-      sig.refusal = GLS_REFUSE_CONTEXT;
+      Refuse(sig, GLS_REFUSE_CONTEXT, StringFormat("marché sans direction (ER M15 %.2f)", ctx.st15.er));
+   if(InpUseRegimeFilter && !RegimeAllowed(sig.family, ctx.regime))
+      Refuse(sig, GLS_REFUSE_REGIME, "régime " + RegimeCode(ctx.regime) + " non autorisé");
+   if(ctx.t15.dir == dir)
+      Pass(sig, "M15 " + TrendClassText(ctx.t15.cls));
+   if(ctx.t5.dir == dir)
+      Pass(sig, "M5 " + TrendClassText(ctx.t5.cls));
 
-   //--- distance du stop : élargie AVANT l'entrée au minimum technique si nécessaire
-   //--- (bruit ATR + niveau de stop du courtier) ; le volume est calculé ensuite.
+   //--- 2. bougies : preuve unique, figure contraire, indécision, extension
+   int fromBar = ctx.m1.IndexOfTime(sig.anchorTime);
+   fromBar = (fromBar >= 0) ? fromBar - 2 : last - InpSetupMaxBars;
+   bool opposing = false;
+   bool indecision = false;
+   string oppName = "";
+   if(dir == GLS_BUY)
+      CandleEvidence(ctx.cdlBuy, ctx.cdlSell, ctx.cdlBuy, sig.family, fromBar, last, sig.cCandle, sig.candleId, sig.candleName, opposing, oppName, indecision);
+   else
+      CandleEvidence(ctx.cdlSell, ctx.cdlBuy, ctx.cdlBuy, sig.family, fromBar, last, sig.cCandle, sig.candleId, sig.candleName, opposing, oppName, indecision);
+   if(sig.candleId != GLS_CDL_NONE)
+      Pass(sig, "bougies : " + sig.candleName);
+   if(InpCdlBlockOpposing && opposing)
+      Refuse(sig, GLS_REFUSE_CANDLE_OPPOSING, "figure contraire confirmée : " + oppName);
+   if(InpCdlBlockIndecision && indecision)
+      Refuse(sig, GLS_REFUSE_INDECISION, "bougie de déclenchement doji");
+   if(InpCdlRequirePattern && sig.candleId == GLS_CDL_NONE)
+      Refuse(sig, GLS_REFUSE_NO_PATTERN, "aucune figure confirmée");
+   if(InpCdlBlockExtended && last >= 4)
+     {
+      double trigRange = ctx.m1.high[last] - ctx.m1.low[last];
+      double run = sgn * (ctx.m1.close[last] - ctx.m1.open[last - 4]);
+      if(trigRange > InpCdlMaxTriggerATR * atr)
+         Refuse(sig, GLS_REFUSE_EXTENDED, StringFormat("bougie de déclenchement %.1f ATR", trigRange / atr));
+      if(run > InpCdlMaxExtensionATR * atr)
+         Refuse(sig, GLS_REFUSE_EXTENDED, StringFormat("mouvement de %.1f ATR en 5 barres", run / atr));
+     }
+
+   //--- 3. distance du stop : élargie AVANT l'entrée au minimum technique si nécessaire
+   //---    (bruit ATR + niveau de stop du courtier) ; le volume est calculé ensuite.
    double minDist = MathMax(InpMinSLATR * atr, g_sym.StopsDistance() + spread + 2.0 * g_sym.tickSize);
    double dist = sgn * (sig.entryPrice - sig.stop);
    if(dist < minDist)
@@ -767,16 +1218,16 @@ void FinalizeSignal(SSignal &sig, const CMarketContext &ctx, const CDirView &v, 
      }
    sig.stop = (dir == GLS_BUY) ? g_sym.FloorPrice(sig.stop) : g_sym.CeilPrice(sig.stop);
    sig.riskDist = sgn * (sig.entryPrice - sig.stop);
-   if(sig.riskDist > InpMaxSLATR * atr && sig.refusal == GLS_REFUSE_NONE)
-      sig.refusal = GLS_REFUSE_STOP_WIDE;
+   if(sig.riskDist > InpMaxSLATR * atr)
+      Refuse(sig, GLS_REFUSE_STOP_WIDE, StringFormat("stop %.1f ATR", sig.riskDist / atr));
 
-   //--- poursuite du prix depuis la clôture de déclenchement (mesurée sur le bid)
+   //--- 4. poursuite du prix depuis la clôture de déclenchement (mesurée sur le bid)
    double refRisk = MathMax(sgn * (sig.refEntry - sig.stop), g_sym.tickSize);
    double moved = sgn * (bid - sig.refEntry);
-   if(moved > InpMaxChaseFrac * refRisk && sig.refusal == GLS_REFUSE_NONE)
-      sig.refusal = GLS_REFUSE_CHASE;
+   if(moved > InpMaxChaseFrac * refRisk)
+      Refuse(sig, GLS_REFUSE_CHASE, "prix déjà avancé depuis le signal");
 
-   //--- espace jusqu'à la liquidité opposée intacte la plus proche
+   //--- 5. espace jusqu'à l'obstacle opposé le plus proche (liquidité, résistance/support, FVG contraire)
    double room = -1.0;
    for(int i = 0; i < ArraySize(v.opposing); i++)
      {
@@ -791,18 +1242,51 @@ void FinalizeSignal(SSignal &sig, const CMarketContext &ctx, const CDirView &v, 
       if(room < 0.0 || d < room)
          room = d;
      }
+   //--- zones opposées (vue : lo = bord proche) ; prix DANS une résistance (achat) / un support (vente) = espace nul ;
+   //--- prix dans un FVG contraire = espace jusqu'à son bord lointain
+   double viewPx = (dir == GLS_BUY) ? ask : -bid;
+   bool insideZone = false;
+   for(int i = 0; i < ArraySize(v.obstacles); i++)
+     {
+      if(v.obstacles[i].known > serverNow)
+         continue;
+      double edge = v.obstacles[i].lo;
+      if(viewPx >= v.obstacles[i].lo && viewPx <= v.obstacles[i].hi)
+        {
+         if(v.obstacles[i].kind == GLS_LVL_ZONE)
+           {
+            insideZone = true;
+            room = 0.0;
+            continue;
+           }
+         edge = v.obstacles[i].hi;
+        }
+      double lvl = sgn * edge;
+      double d = (dir == GLS_BUY) ? lvl - ask : bid - lvl - spread;
+      if(d <= 0.0)
+         continue;
+      if(room < 0.0 || d < room)
+         room = d;
+     }
    sig.roomR = (room < 0.0) ? 5.0 : SafeDiv(room, sig.riskDist, 0.0);
-   if(sig.roomR < InpMinRoomR && sig.refusal == GLS_REFUSE_NONE)
-      sig.refusal = GLS_REFUSE_RR;
+   if(insideZone)
+      Refuse(sig, GLS_REFUSE_RR, (dir == GLS_BUY) ? "prix dans une résistance" : "prix dans un support");
+   else
+      if(sig.roomR < InpMinRoomR)
+         Refuse(sig, GLS_REFUSE_RR, StringFormat("espace %.2fR jusqu'à la zone opposée", sig.roomR));
+      else
+         Pass(sig, StringFormat("espace %.1fR", sig.roomR));
 
-   //--- coût d'exécution relatif au risque
+   //--- 6. coût d'exécution relatif au risque
    sig.costFrac = SafeDiv(spread + extraCostPrice, sig.riskDist, 1.0);
-   if(sig.costFrac > InpMaxCostToRiskFrac && sig.refusal == GLS_REFUSE_NONE)
-      sig.refusal = GLS_REFUSE_COST;
+   if(sig.costFrac > InpMaxCostToRiskFrac)
+      Refuse(sig, GLS_REFUSE_COST, StringFormat("coût %.0f %% du risque", 100.0 * sig.costFrac));
+   else
+      Pass(sig, StringFormat("coût %.0f %% du risque", 100.0 * sig.costFrac));
 
-   //--- composantes communes
-   double a5 = (ctx.st5.trend == dir) ? 1.0 : ((ctx.st5.trend == GLS_TREND_NONE) ? 0.5 : 0.0);
-   double a15 = (ctx.st15.trend == dir) ? 1.0 : ((ctx.st15.trend == GLS_TREND_NONE) ? 0.5 : 0.0);
+   //--- 7. composantes communes et score
+   double a5 = (ctx.t5.dir == dir) ? 1.0 : ((ctx.t5.dir == 0) ? 0.5 : 0.0);
+   double a15 = (ctx.t15.dir == dir) ? 1.0 : ((ctx.t15.dir == 0) ? 0.5 : 0.0);
    sig.cAlign = 0.5 * a5 + 0.5 * a15;
    double ratio = SafeDiv(atr, ctx.AtrLong(), 1.0);
    if(ratio >= 0.8 && ratio <= 1.6)
@@ -812,12 +1296,12 @@ void FinalizeSignal(SSignal &sig, const CMarketContext &ctx, const CDirView &v, 
    sig.cCost = 1.0 - Ramp(sig.costFrac, 0.03, InpMaxCostToRiskFrac);
    sig.cRR = Ramp(sig.roomR, 1.0, 3.0);
 
-   double wsum = InpWLiquidity + InpWTrigger + InpWStructure + InpWAlignment + InpWRetest + InpWVolatility + InpWCost + InpWRR;
-   double total = InpWLiquidity * sig.cLiq + InpWTrigger * sig.cTrig + InpWStructure * sig.cStruct + InpWAlignment * sig.cAlign
-                  + InpWRetest * sig.cRetest + InpWVolatility * sig.cVol + InpWCost * sig.cCost + InpWRR * sig.cRR;
+   double wsum = InpWLiquidity + InpWTrigger + InpWStructure + InpWCandle + InpWAlignment + InpWRetest + InpWVolatility + InpWCost + InpWRR;
+   double total = InpWLiquidity * sig.cLiq + InpWTrigger * sig.cTrig + InpWStructure * sig.cStruct + InpWCandle * sig.cCandle
+                  + InpWAlignment * sig.cAlign + InpWRetest * sig.cRetest + InpWVolatility * sig.cVol + InpWCost * sig.cCost + InpWRR * sig.cRR;
    sig.score = Clamp(100.0 * SafeDiv(total, wsum, 0.0), 0.0, 100.0);
-   if(sig.score < InpMinScore && sig.refusal == GLS_REFUSE_NONE)
-      sig.refusal = GLS_REFUSE_SCORE;
+   if(sig.score < InpMinScore)
+      Refuse(sig, GLS_REFUSE_SCORE, StringFormat("score %.0f < %.0f", sig.score, InpMinScore));
   }
 
 string SignalShortText(const SSignal &s)

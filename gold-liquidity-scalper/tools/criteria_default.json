@@ -9,5 +9,7 @@
   "min_trades_per_period": 5,
   "max_adjusted_p_value": 0.05,
   "stress_extra_cost_price": 0.20,
-  "min_stressed_expectancy_r": 0.0
+  "min_stressed_expectancy_r": 0.0,
+  "mc_paths": 1000,
+  "max_mc_drawdown_r_p95": 20.0
 }

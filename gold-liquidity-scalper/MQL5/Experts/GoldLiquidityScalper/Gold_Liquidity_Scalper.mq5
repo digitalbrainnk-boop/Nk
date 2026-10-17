@@ -8,7 +8,7 @@
 //|  (ticks réels) puis en démo avant tout usage réel.               |
 //+------------------------------------------------------------------+
 #property copyright "Gold Liquidity Scalper"
-#property version   "1.00"
+#property version   "1.10"
 #property description "Scalping XAU/USD : liquidité M1 + contexte M5/M15, risque au stop, TP partiels, protections journalières."
 
 #include "GLS\Defines.mqh"
@@ -23,6 +23,9 @@ input string              InpSymbolOverride       = "";                 // Symbo
 input bool                InpAutoStartInTester    = true;               // Démarrage automatique en backtest
 input ENUM_GLS_LOG_LEVEL  InpLogLevel             = GLS_LOG_INFO;       // Niveau de journalisation
 input bool                InpWriteFiles           = true;               // Écrire journal/trades/signaux (dossier commun\Files\GLS)
+input string              InpRunLabel             = "";                 // Étiquette du passage (comparaisons A/B, colonne label)
+input ENUM_GLS_LOG_DETAIL InpLogCandles           = GLS_LOGD_MAIN;      // Journal des figures de bougies
+input ENUM_GLS_LOG_DETAIL InpLogFvg               = GLS_LOGD_MAIN;      // Journal des FVG
 
 input group "=== Risque et volume ==="
 input double              InpRiskPercent          = 0.5;    // Risque par trade (% de l'equity, max 2)
@@ -77,6 +80,7 @@ input double              InpMinATRRatio          = 0.5;    // ATR14/ATR100 M1 m
 input double              InpMaxATRRatio          = 3.0;    // ATR14/ATR100 M1 maximum (volatilité anormale)
 input double              InpMinATRToSpread       = 2.5;    // ATR M1 minimum en multiple du spread
 input int                 InpMaxTickAgeSec        = 60;     // Âge max de la dernière cotation (s)
+input int                 InpMaxBarGapMin         = 3;      // Trou max entre deux barres M1 récentes (min) sinon données dégradées
 
 input group "=== Structure (M1 / M5 / M15) ==="
 input int                 InpM1Lookback           = 20;     // Barres M1 analysées pour la liquidité
@@ -91,6 +95,72 @@ input double              InpTrendERMin           = 0.30;   // Efficiency ratio 
 input double              InpMinM15Efficiency     = 0.10;   // Efficiency ratio M15 minimal pour entrer (0 = off)
 input int                 InpTransitionBars       = 6;      // Barres M15 de "transition" après un CHOCH
 input bool                InpUseExternalLevels    = true;   // Balayages de niveaux M5/M15/veille/Asie
+input bool                InpUseTrendFilter       = true;   // Filtre de tendance M15/M5 (structure + sommets/creux + EMA, jamais l'EMA seule)
+input int                 InpEMAPeriodM15         = 200;    // Période de l'EMA de tendance M15
+input int                 InpTrendSlopeBars       = 10;     // Barres pour mesurer la pente de l'EMA
+
+input group "=== Régimes de marché ==="
+input bool                InpUseRegimeFilter      = true;   // N'autoriser chaque famille que dans ses régimes
+input double              InpRegimeVolatileRatio  = 1.8;    // Volatilité excessive : ATR14/ATR100 M5 >=
+input double              InpRegimeChopAlternation = 0.7;   // Désordre : alternance des couleurs M5 >= (avec ER M15 < 0,15)
+input string              InpRegimesF1            = "TENDANCE,RANGE,TRANSITION"; // Régimes autorisés F1 (TENDANCE,RANGE,TRANSITION,VOLATIL,DESORDRE)
+input string              InpRegimesF2            = "TENDANCE";                  // Régimes autorisés F2
+input string              InpRegimesF3            = "RANGE,TRANSITION";          // Régimes autorisés F3
+input string              InpRegimesF4            = "RANGE,TRANSITION";          // Régimes autorisés F4
+input string              InpRegimesF5            = "TENDANCE,RANGE";            // Régimes autorisés F5
+input string              InpRegimesF6            = "TENDANCE,TRANSITION";       // Régimes autorisés F6
+
+input group "=== Bougies japonaises ==="
+input int                 InpCdlLookback          = 12;     // Bougies M1 analysées
+input string              InpCdlDisabled          = "ABS";  // Figures désactivées (codes : HAM,IHAM,ENG,PIER,STAR,RCONF,DOJI,SPIN,HESIT,IMP,CONT,PIN,FBRK,ABS,SEQ)
+input double              InpCdlDojiBodyRatio     = 0.10;   // Doji : corps / amplitude <=
+input double              InpCdlSmallBodyRatio    = 0.30;   // Petit corps (toupie) : corps / amplitude <=
+input double              InpCdlMinRangeATR       = 0.30;   // Amplitude minimale d'une bougie significative (x ATR)
+input double              InpCdlWickRatio         = 0.60;   // Longue mèche : mèche / amplitude >=
+input double              InpCdlWickToBody        = 2.0;    // Longue mèche : mèche / corps >=
+input double              InpCdlOppWickMaxRatio   = 0.15;   // Marteau : mèche opposée / amplitude <=
+input double              InpCdlEngulfMinBodyATR  = 0.30;   // Avalement : corps minimal (x ATR)
+input double              InpCdlStrongBodyRatio   = 0.60;   // Bougie franche : corps / amplitude >=
+input double              InpCdlImpulseATR        = 1.5;    // Impulsion : amplitude >= x ATR
+input double              InpCdlPriorMoveATR      = 1.0;    // Retournement : mouvement préalable >= x ATR
+input int                 InpCdlConfirmBars       = 3;      // Délai de confirmation d'une figure (bougies)
+input double              InpCdlAbsorbVolMult     = 2.0;    // Absorption apparente : volume de ticks >= x moyenne
+input double              InpCdlZoneProxATR       = 0.5;    // Proximité d'une zone pour interpréter une figure (x ATR)
+input bool                InpCdlBlockOpposing     = true;   // Refuser si une figure contraire est confirmée récemment
+input int                 InpCdlOpposingBars      = 3;      // Fenêtre de la figure contraire (bougies)
+input bool                InpCdlBlockIndecision   = true;   // Refuser si la bougie de déclenchement est un doji
+input bool                InpCdlBlockExtended     = true;   // Refuser les entrées après une impulsion déjà étendue
+input double              InpCdlMaxTriggerATR     = 2.5;    // Bougie de déclenchement maximale (x ATR)
+input double              InpCdlMaxExtensionATR   = 3.0;    // Mouvement maximal sur 5 bougies avant l'entrée (x ATR)
+input bool                InpCdlRequirePattern    = false;  // Exiger une figure confirmée (F1-F4 ; toujours exigée par F5)
+
+input group "=== Supports / résistances ==="
+input double              InpZoneMergeATR         = 0.5;    // Regroupement des pivots en zone (x ATR M5)
+input double              InpZonePadATR           = 0.15;   // Marge de part et d'autre de la zone (x ATR M5)
+input int                 InpZoneMinTouches       = 2;      // Réactions indépendantes minimales (sauf niveau M15)
+input int                 InpZoneMinSeparationBars = 5;     // Écart minimal entre deux réactions (barres M5)
+input int                 InpZoneBreakCloses      = 2;      // Clôtures M5 au-delà pour confirmer une cassure
+input double              InpZoneBreakBufferATR   = 0.10;   // Tampon de cassure (x ATR)
+input bool                InpUseSRObstacles       = true;   // Compter zones opposées et FVG contraires dans l'espace disponible
+input int                 InpSRReactBars          = 8;      // F5 : fenêtre de réaction après contact (barres M1)
+input double              InpSRMinStrength        = 0.5;    // F5 : force minimale de la zone (0-1)
+
+input group "=== FVG / imbalances ==="
+input ENUM_GLS_FVG_TF     InpFvgTF                = GLS_FVGTF_M5; // Unité des FVG utilisées par F6
+input double              InpFvgMinSizeATR        = 0.10;   // Taille minimale (x ATR de l'unité)
+input double              InpFvgMinDispATR        = 1.0;    // Déplacement minimal de la 2e bougie (x ATR)
+input double              InpFvgInvalidBufferATR  = 0.10;   // Invalidation : clôture au-delà de la zone + x ATR
+input double              InpFvgMinQuality        = 0.55;   // F6 : qualité minimale de la FVG (0-1)
+input int                 InpFvgMaxRetests        = 1;      // F6 : nombre maximal de retours dans la zone
+input int                 InpFvgMaxAgeBars        = 48;     // F6 : âge maximal (barres de l'unité de la FVG)
+input int                 InpFvgReactBars         = 8;      // F6 : fenêtre de réaction après contact (barres M1)
+input bool                InpUseIFVG              = false;  // Règle distincte : FVG invalidée utilisée en sens inverse (IFVG)
+input double              InpFvgWDisp             = 25.0;   // Qualité FVG : poids du déplacement
+input double              InpFvgWSize             = 10.0;   // Qualité FVG : poids de la taille
+input double              InpFvgWStructure        = 20.0;   // Qualité FVG : poids du BOS/CHOCH
+input double              InpFvgWSweep            = 15.0;   // Qualité FVG : poids du balayage préalable
+input double              InpFvgWFresh            = 20.0;   // Qualité FVG : poids de la fraîcheur
+input double              InpFvgWContext          = 10.0;   // Qualité FVG : poids de la proximité S/R ou OB
 
 input group "=== F1 Balayage de liquidité ==="
 input int                 InpSetupMaxBars         = 20;     // Âge max d'une configuration (barres M1)
@@ -130,11 +200,12 @@ input double              InpSLBufferATR          = 0.20;   // Tampon du stop au
 input double              InpMinSLATR             = 0.6;    // Distance de stop minimale (x ATR, élargie avant l'entrée)
 input double              InpMaxSLATR             = 3.0;    // Distance de stop maximale (x ATR) sinon refus
 input double              InpMaxChaseFrac         = 0.30;   // Avance max du prix depuis le signal (fraction du risque)
-input double              InpMinRoomR             = 1.0;    // Espace min jusqu'à la liquidité opposée (en R)
+input double              InpMinRoomR             = 1.0;    // Espace min jusqu'à la liquidité ou zone opposée (en R)
 input double              InpMinScore             = 80.0;   // Score minimal (0-100) — à calibrer
-input double              InpWLiquidity           = 20.0;   // Poids : qualité de la liquidité / configuration
-input double              InpWTrigger             = 15.0;   // Poids : réintégration / déclencheur
-input double              InpWStructure           = 20.0;   // Poids : confirmation structurelle
+input double              InpWLiquidity           = 20.0;   // Poids : qualité de la configuration (liquidité, zone, FVG)
+input double              InpWTrigger             = 10.0;   // Poids : réintégration / déclencheur
+input double              InpWStructure           = 15.0;   // Poids : confirmation structurelle
+input double              InpWCandle              = 10.0;   // Poids : preuve apportée par les bougies
 input double              InpWAlignment           = 15.0;   // Poids : alignement M5/M15
 input double              InpWRetest              = 10.0;   // Poids : qualité du retest
 input double              InpWVolatility          = 5.0;    // Poids : volatilité
@@ -176,6 +247,16 @@ input int                 InpDashY                = 25;     // Position Y
 input int                 InpDashFontSize         = 8;      // Taille de police
 input int                 InpStatsHistoryDays     = 365;    // Historique relu pour les statistiques (jours, 0 = tout)
 input int                 InpMinTradesForStats    = 20;     // Trades min pour afficher PF / espérance
+
+input group "=== Alertes ==="
+input bool                InpAlertPopup           = true;   // Fenêtre d'alerte du terminal
+input bool                InpAlertPush            = false;  // Notification mobile (identifiant MetaQuotes requis)
+input bool                InpAlertMail            = false;  // E-mail (configuré dans le terminal)
+input int                 InpAlertThrottleSec     = 300;    // Délai minimal entre deux alertes identiques (s)
+input bool                InpAlertErrors          = true;   // Alerter : erreurs critiques
+input bool                InpAlertRisk            = true;   // Alerter : limites de risque atteintes
+input bool                InpAlertStop            = true;   // Alerter : arrêt du robot
+input bool                InpAlertConnection      = true;   // Alerter : perte / retour de connexion
 
 //+------------------------------------------------------------------+
 //| Modules                                                           |

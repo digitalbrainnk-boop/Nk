@@ -1,8 +1,10 @@
-# Définitions exactes de la stratégie (v1.00)
+# Définitions exactes de la stratégie (v1.10)
 
 Ce document décrit **les règles réellement codées** dans l'EA. Les noms entre
 crochets sont les paramètres (`Inp...`) du fichier `Gold_Liquidity_Scalper.mq5` ;
-les valeurs indiquées sont les valeurs par défaut.
+les valeurs indiquées sont les valeurs par défaut. Les valeurs par défaut des
+modules ajoutés en v1.10 sont des **points de départ de recherche**, pas des
+réglages validés : elles doivent passer le protocole (`docs/PROTOCOLE_VALIDATION.md`).
 
 Conventions communes :
 
@@ -15,9 +17,12 @@ Conventions communes :
 - Toute la logique de détection est écrite pour un **achat**. Pour une **vente**,
   la même logique est appliquée à une série « miroir » (prix multipliés par −1,
   plus hauts et plus bas inversés), puis les prix sont reconvertis. Il n'existe
-  donc qu'une seule implémentation, sans asymétrie involontaire.
+  donc qu'une seule implémentation, sans asymétrie involontaire (y compris pour les
+  figures de bougies, les zones et les FVG).
 - Les prix des barres sont des prix **bid**. Un stop de vente se déclenchant sur
   l'ask, le spread courant est ajouté au stop des ventes.
+- Un niveau, une zone, une FVG ou une figure n'est utilisé qu'à partir de l'instant
+  où il est **connu** (confirmation du pivot, clôture de la 3e bougie…).
 
 ## 1. Structure de marché
 
@@ -36,7 +41,7 @@ Creux structurel : définition symétrique sur les plus bas.
 **Cassure** : un niveau est cassé à la première **clôture** au-delà. Une mèche
 seule ne casse pas un niveau (c'est un balayage).
 
-**BOS / CHOCH** (M5 et M15) : en parcourant les barres dans l'ordre, à chaque
+**BOS / CHOCH** (M1, M5 et M15) : en parcourant les barres dans l'ordre, à chaque
 barre on compare la clôture au **dernier** sommet (ou creux) confirmé non encore cassé :
 
 - clôture > dernier sommet : **CHOCH haussier** si la tendance était baissière,
@@ -44,24 +49,212 @@ barre on compare la clôture au **dernier** sommet (ou creux) confirmé non enco
 - clôture < dernier creux : **CHOCH baissier** si la tendance était haussière,
   sinon **BOS baissier** ; la tendance devient baissière.
 
-**Régime** (M5 et M15) : efficiency ratio de Kaufman
+Les événements sont datés et conservés (utilisés par les FVG : « le déplacement
+a-t-il produit un BOS/CHOCH ? »).
+
+**Efficience** (M5 et M15) : efficiency ratio de Kaufman
 `ER = |close[n] − close[n−N]| / Σ|close[i] − close[i−1]|` (N = 16 en M15, 20 en M5).
-Tendance si `ER >= InpTrendERMin` (0,30), sinon range ; **transition** si le
-dernier événement est un CHOCH datant d'au plus `InpTransitionBars` barres (6 en M15).
 
 ## 2. Contexte multi-unités de temps
 
 | Unité | Rôle | Règle |
 |---|---|---|
-| M15 | structure dominante | tendance BOS/CHOCH, régime ; **refus** si la tendance M15 est opposée au signal (`InpAllowCounterM15 = false`) ; **refus** si `ER M15 < InpMinM15Efficiency` (0,10 : marché sans direction exploitable) |
-| M5 | filtre opérationnel | **EMA 200** (`InpEMAPeriodM5`) : achat seulement si la dernière clôture M5 > EMA, vente si < EMA (`InpUseEmaFilter`) ; structure M5 utilisée dans le score (et obligatoire pour F2) |
-| M1 | déclenchement | règles des familles ci-dessous |
+| M15 | structure dominante | **refus** si la structure BOS/CHOCH M15 est opposée au signal (`InpAllowCounterM15 = false`) ; **refus** si `ER M15 < InpMinM15Efficiency` (0,10 : marché sans direction exploitable) ; tendance par votes (§ 2.1), régime (§ 2.2), zones majeures (§ 2.3) |
+| M5 | filtre opérationnel | **EMA 200** (`InpEMAPeriodM5`) : achat seulement si la dernière clôture M5 > EMA, vente si < EMA (`InpUseEmaFilter`) ; tendance par votes, zones opérationnelles, FVG (§ 2.4) ; structure M5 obligatoire pour F2 |
+| M1 | déclenchement | règles des familles ; figures de bougies (§ 2.5) sur barres M1 clôturées |
 
 **Carte de liquidité** (niveaux « externes ») : 12 derniers sommets et creux M5 et
 M15 confirmés, plus haut / plus bas de la **veille** (jour serveur), plus haut /
 plus bas de la **plage asiatique** du jour UTC (`InpAsiaStartUTC`–`InpAsiaEndUTC`,
 00:00–07:00, valide seulement après sa clôture). Chaque niveau mémorise l'instant
 où il devient connu et celui où une clôture M5 l'a cassé.
+
+**Intégrité des données** : en plus des contrôles de fraîcheur et de cohérence des
+cotations, un **trou** de plus de `InpMaxBarGapMin` (3) minutes entre deux barres
+M1 parmi les 30 dernières bloque les entrées (« données de marché incohérentes ou
+obsolètes », affiché dans le tableau de bord).
+
+### 2.1 Tendance par votes (M15 et M5) — `Trend.mqh`
+
+Quatre votes mesurables, chacun +1 / 0 / −1 :
+
+| Vote | Règle |
+|---|---|
+| structure | tendance BOS/CHOCH de l'unité (§ 1) |
+| sommets / creux | +1 si le dernier sommet ET le dernier creux confirmés sont plus hauts que les précédents (HH + HL), −1 s'ils sont plus bas (LH + LL), sinon 0 |
+| côté de l'EMA 200 | dernière clôture au-dessus / en dessous de l'EMA 200 de l'unité (`InpEMAPeriodM15`, `InpEMAPeriodM5`) |
+| pente de l'EMA 200 | EMA − EMA `InpTrendSlopeBars` (10) barres plus tôt, au-delà de ±0,1 ATR de l'unité |
+
+- **Haussière** seulement si : structure = +1, aucun vote négatif, somme ≥ 2, et
+  aucun CHOCH depuis `InpTransitionBars` barres (M15 ; × 3 en M5). Baissière :
+  symétrique. **L'EMA 200 seule ne suffit jamais** (structure obligatoire).
+- **Transition** : CHOCH récent, ou votes contradictoires avec `ER >= InpTrendERMin` (0,30).
+- **Latérale** : sinon.
+
+Filtre de tendance (`InpUseTrendFilter`, désactivable pour les comparaisons) :
+refus si la tendance M15 par votes est opposée (sauf `InpAllowCounterM15`), et
+pour les **continuations** (F2, F3, F4, F6) si la tendance M5 est opposée.
+La composante d'alignement du score utilise ces tendances (§ 9).
+
+### 2.2 Régimes de marché
+
+Calculé à chaque barre M1 à partir de la tendance M15 et de la volatilité M5 :
+
+| Régime | Condition (évaluée dans cet ordre) |
+|---|---|
+| VOLATIL | ATR14 M5 / ATR100 M5 ≥ `InpRegimeVolatileRatio` (1,8) |
+| DESORDRE | alternance de couleur des 12 dernières bougies M5 ≥ `InpRegimeChopAlternation` (70 %) **et** ER M15 < 0,15 |
+| TENDANCE | tendance M15 haussière ou baissière |
+| TRANSITION | tendance M15 en transition |
+| RANGE | sinon |
+| INCONNU | données insuffisantes : **jamais autorisé** |
+
+Régimes autorisés par famille (`InpUseRegimeFilter`, listes `InpRegimesF1` …
+`InpRegimesF6`) — valeurs initiales à **vérifier** avec le rapport « par régime »
+de l'outil d'analyse : F1 TENDANCE, RANGE, TRANSITION ; F2 TENDANCE ; F3 et F4
+RANGE, TRANSITION ; F5 TENDANCE, RANGE ; F6 TENDANCE, TRANSITION. VOLATIL et
+DESORDRE ne sont autorisés pour aucune famille par défaut. Le régime à l'entrée
+est enregistré pour chaque signal et chaque position.
+
+### 2.3 Supports / résistances dynamiques — `Zones.mqh`
+
+- **Pivots** : sommets/creux structurels M5 (40 derniers de chaque type) et M15
+  (30 derniers), pris seulement s'ils sont **confirmés** à l'instant de l'analyse.
+- **Regroupement** : pivots dont l'écart ≤ `InpZoneMergeATR` (0,5) × ATR M5 ;
+  bornes = pivots extrêmes ± `InpZonePadATR` (0,15) × ATR M5 (largeur adaptée à la
+  volatilité).
+- **Réactions indépendantes** : pivots séparés d'au moins `InpZoneMinSeparationBars`
+  (5) barres M5. **Validité** : ≥ `InpZoneMinTouches` (2) réactions, ou pivot M15
+  (zone **majeure**). Rôle d'origine : majorité de sommets → résistance, de creux → support.
+- **Sommets / creux égaux** : 2 pivots du même type à ≤ 0,1 ATR et ≥ 5 barres
+  d'écart (concentration probable d'ordres stop au-delà).
+- **Force** (0–1) = 0,3 + 0,15 × min(réactions − 1, 3) + 0,2 (M15) + 0,1 (égaux)
+  + 0,1 (rôle inversé confirmé).
+- **Cassure confirmée** : `InpZoneBreakCloses` (2) clôtures M5 consécutives au-delà
+  de la zone + `InpZoneBreakBufferATR` (0,1) ATR → rôle « en attente ».
+- **Inversion de rôle** (résistance → support) seulement après la cassure confirmée
+  PUIS un retour dans la zone suivi d'une clôture au-delà. **Cassure ratée** :
+  après la cassure, clôture de retour de l'autre côté → rôle d'origine conservé.
+
+**Obstacles** (`InpUseSRObstacles`) : pour un achat, les résistances de force ≥
+`InpSRMinStrength` (0,5) et les FVG baissières actives de l'unité `InpFvgTF` de
+qualité ≥ `InpFvgMinQuality` (0,55) réduisent l'**espace** disponible (§ 9) :
+espace jusqu'au bord le plus proche ; **prix à l'intérieur d'une résistance →
+refus** (« prix dans une résistance ») ; prix à l'intérieur d'une FVG contraire →
+espace jusqu'à son bord lointain. Vente : symétrique. Ces obstacles s'ajoutent à
+la liquidité opposée de la v1.00, sans double comptage (seul l'obstacle le plus
+proche compte).
+
+### 2.4 FVG, IFVG et Order Blocks — `Fvg.mqh`
+
+Indices chronologiques de barres clôturées, figure de 3 bougies i−2, i−1, i
+(i = la plus récente) :
+
+- **FVG haussière** : `low[i] > high[i−2]`, zone `[high[i−2] ; low[i]]` ;
+  **baissière** : `high[i] < low[i−2]`, zone `[high[i] ; low[i−2]]`.
+- La bougie i−1 (déplacement) doit aller dans le sens du déséquilibre ; un écart
+  < 0,5 × `InpFvgMinSizeATR` × ATR est ignoré (bruit). Unité de trading : M5 par
+  défaut (`InpFvgTF`, M1 possible) ; les FVG M1 sont aussi suivies (contexte, journal).
+- Enregistré : sens, bornes, unité, heure de création (clôture de i), taille en
+  points et en ATR, amplitude et corps du déplacement, BOS/CHOCH produit par le
+  déplacement (barres i−1 à i+2), balayage préalable (creux confirmé percé puis
+  repris entre i−5 et i−1), distance à une zone S/R favorable ou à un OB, retours,
+  comblement, statut, heure du statut, qualité, raison.
+- **Comblement** (haussière) = (haut − plus bas atteint depuis la création) /
+  largeur, borné [0 ; 1] ; baissière : symétrique. **Retour** = chaque nouvelle
+  entrée du prix dans la zone après en être sorti.
+- **Statuts** : fraîche (0 %), partiellement comblée, comblée (100 %), **invalidée**
+  (clôture sous le bas − `InpFvgInvalidBufferATR` (0,1) × ATR ; baissière : clôture
+  au-dessus du haut + tampon). L'historique complet est conservé dans `_fvg.csv`.
+- **IFVG** (`InpUseIFVG`, désactivé par défaut) : règle distincte ; une FVG
+  invalidée devient une zone de sens opposé, connue à l'instant de l'invalidation,
+  suivie avec les mêmes règles.
+- **Order Block** (définition objective retenue) : dernière bougie de couleur
+  opposée parmi les 3 bougies précédant le déplacement, **seulement si** le
+  déplacement a produit un BOS/CHOCH.
+- **Qualité** (0–1, critères **intrinsèques** seulement ; la tendance, les coûts et
+  l'espace sont évalués une seule fois, au niveau du signal) :
+
+| Critère | Poids | Mesure |
+|---|---|---|
+| déplacement `InpFvgWDisp` | 25 | rampe(amplitude/ATR ; `InpFvgMinDispATR` 1,0 → 2,5) × (0,5 + 0,5 × rampe(corps ; 50 % → 85 %)) |
+| taille `InpFvgWSize` | 10 | rampe(taille/ATR ; 0,10 → 0,40) |
+| structure `InpFvgWStructure` | 20 | 1 si BOS/CHOCH, sinon 0,3 |
+| balayage `InpFvgWSweep` | 15 | 1 si balayage préalable, sinon 0,4 |
+| fraîcheur `InpFvgWFresh` | 20 | 0 retour 1 ; 1 → 0,7 ; 2 → 0,4 ; plus 0,1 ; comblée/invalidée 0 |
+| contexte `InpFvgWContext` | 10 | 1 si zone S/R favorable ou OB à ≤ 1 ATR, sinon 0,5 |
+
+Une FVG **ne déclenche jamais seule** une entrée (famille F6, § 8).
+
+### 2.5 Bougies japonaises — `Candles.mqh`
+
+**Mesures** (par bougie clôturée) : corps, mèches, amplitude, corps/amplitude,
+mèches/amplitude, mèches/corps (corps plancher 2 % de l'amplitude), position de la
+clôture dans l'amplitude, amplitude en ATR, taille relative aux 10 précédentes,
+dépassement / clôture au-delà du plus haut ou plus bas précédent.
+**Amplitude nulle, mèche négative ou ATR nul : bougie non mesurable** (aucune
+figure, aucune division). Doji : corps ≤ `InpCdlDojiBodyRatio` (10 %) de l'amplitude.
+
+Figures (écrites pour le sens haussier ; la version baissière est la même règle
+appliquée à la série miroir) :
+
+| Code | Haussière / baissière | Condition principale |
+|---|---|---|
+| HAM | marteau / étoile filante | mèche basse ≥ 60 % (`InpCdlWickRatio`) et ≥ 2 × corps (`InpCdlWickToBody`), mèche opposée ≤ 15 % (`InpCdlOppWickMaxRatio`), amplitude ≥ 0,3 ATR (`InpCdlMinRangeATR`) |
+| IHAM | marteau inversé / pendu | même règle sur la mèche haute ; figure faible, confirmation indispensable |
+| ENG | avalement haussier / baissier | corps englobant strictement le corps opposé précédent, corps ≥ max(0,3 ATR, corps précédent), clôture dans les 40 % hauts |
+| PIER | ligne pénétrante / couverture en nuage noir | bougie opposée de corps ≥ 50 % et ≥ 0,4 ATR, puis clôture au-delà de son milieu sans l'englober |
+| STAR | étoile du matin / du soir | bougie forte (corps ≥ 60 % et ≥ 0,5 ATR), petit corps (≤ 30 % du premier) sans retour, bougie inverse clôturant au-delà du milieu de la première |
+| RCONF | rejet + confirmation | mèche de rejet ≥ 50 % sur un nouvel extrême local, puis clôture au-delà de l'extrême opposé de la bougie de rejet |
+| PIN | pin bar | mèche ≥ 66 %, corps dans le tiers opposé, extrême au-delà des 3 bougies précédentes |
+| FBRK | échec de cassure | extrême des 10 précédentes dépassé puis clôture de retour (même bougie ou suivante) |
+| DOJI, SPIN, HESIT | indécision (neutres) | doji ; petit corps (≤ 30 %) à deux mèches ; 4 bougies alternées qui se chevauchent sans progression |
+| IMP | impulsion | corps ≥ 70 %, clôture dans les 20 % hauts, amplitude ≥ 1,5 ATR (`InpCdlImpulseATR`), clôture au-delà du plus haut précédent |
+| CONT | consolidation puis reprise | impulsion, bougies internes réduites dans sa moitié haute, clôture au-delà de l'impulsion |
+| SEQ | séquence composée | impulsion → ralentissement (≥ 2 bougies d'amplitude décroissante) → rejet → reprise |
+| ABS | absorption **apparente** | volume de **ticks** ≥ `InpCdlAbsorbVolMult` (2) × moyenne avec petit corps ; désactivée par défaut (`InpCdlDisabled = "ABS"`) ; aucune absorption institutionnelle n'est affirmée |
+
+Toute figure peut être désactivée par son code (`InpCdlDisabled`, ex. `ABS,IHAM`).
+Les retournements exigent un **mouvement préalable** cohérent (≥
+`InpCdlPriorMoveATR` (1,0) ATR sur les 6 bougies précédentes) ; les continuations,
+une hausse préalable.
+
+**Statuts** : détectée → **confirmée** (clôture au-delà de l'extrême de la figure
+dans son sens dans les `InpCdlConfirmBars` (3) bougies suivantes), **invalidée**
+(clôture au-delà de l'extrême opposé avant), **expirée** (aucune des deux). RCONF,
+CONT et SEQ sont confirmées par leur propre dernière bougie ; les figures neutres
+sont informatives.
+
+**Interprétation contextuelle** : proximité d'une zone favorable (support, FVG du
+même sens active, niveau de liquidité à ≤ `InpCdlZoneProxATR` (0,5) ATR de
+l'extrême de la figure), zone opposée à moins d'1 ATR, bruit (spread > 35 % de
+l'amplitude), alignement avec la tendance M15 (à défaut M5). Une figure orientée
+est « interprétable » si sa forme, son mouvement préalable, l'absence de bruit et
+d'obstacle immédiat et l'alignement sont cohérents, et qu'elle est près d'une
+zone (ou est une continuation alignée). Ces informations sont journalisées.
+
+**Rôles des unités** : les figures sont lues sur M1 (déclenchement) ; M15 et M5
+fournissent le contexte (tendance, régime, zones, FVG) et ne produisent pas de
+figures dans cette version.
+
+**Utilisation dans la décision** (sans redondance) :
+
+- **une seule preuve de bougie** par signal, dans la composante « bougies » du
+  score (§ 9) : la meilleure figure **confirmée** du sens du trade entre la barre
+  d'ancrage du signal − 2 et la dernière barre ; force × (1 ou 0,5 si mouvement
+  préalable absent) × (0,5 si bruit) × (0,5 si obstacle). Exclusions pour ne pas
+  compter deux fois la même chose : F1 ignore FBRK (le balayage EST un échec de
+  cassure), F3/F4 ignorent IMP (l'expansion est déjà notée). Sans preuve : 0,3 ;
+  avec : 0,4 + 0,6 × preuve. La forme des mèches n'est plus notée ailleurs ;
+- **figure contraire confirmée** (retournement ou rejet, contexte cohérent) dans
+  les `InpCdlOpposingBars` (3) dernières barres : composante 0 et **refus** si
+  `InpCdlBlockOpposing` ;
+- **bougie de déclenchement doji** : composante ≤ 0,1 et **refus** si
+  `InpCdlBlockIndecision` ;
+- **entrée tardive** : bougie de déclenchement > `InpCdlMaxTriggerATR` (2,5) ATR ou
+  mouvement > `InpCdlMaxExtensionATR` (3,0) ATR sur 5 barres → **refus** si
+  `InpCdlBlockExtended` ;
+- `InpCdlRequirePattern` (désactivé) : exiger une figure confirmée pour toute famille.
 
 ## 3. Famille F1 — balayage de liquidité + réintégration + CHOCH M1
 
@@ -128,7 +321,43 @@ Recherche d'une configuration dont la première barre de balayage `s0` est dans 
   de `e`, bougie non baissière.
 - Stop : milieu de la boîte − 0,2 ATR. Invalidation : le haut de la boîte.
 
-## 7. Contrôles communs et score
+## 7. Famille F5 — réaction confirmée sur support / résistance (v1.10)
+
+Achat sur support confirmé (vente : résistance, par la série miroir) :
+
+1. **Zone** : support valide (§ 2.3) de force ≥ `InpSRMinStrength` (0,5), connu
+   **avant** la fenêtre des `InpSRReactBars` (8) dernières barres M1.
+2. **Contact** : première barre de la fenêtre dont le plus bas ≤ haut de zone +
+   0,1 ATR, la barre précédente ayant clôturé au-dessus du bas de zone (arrivée par le haut).
+3. **Zone tenue** : aucune clôture sous `bas − InpZoneBreakBufferATR × ATR` depuis
+   le contact ; sinon refus (zone cassée).
+4. **Réaction** : figure haussière de retournement, de rejet ou composée (§ 2.5)
+   touchant la zone, **confirmée sur la dernière barre clôturée**, et clôture
+   au-dessus de la zone. **Une figure seule ne suffit pas** : zone, confirmation,
+   contexte et tous les contrôles communs restent obligatoires ; sans confirmation,
+   le signal reste « en attente ».
+5. Achat **interdit sous une résistance** proche ou dans une résistance (obstacles, § 2.3).
+6. **Stop** : min(plus bas de la réaction, bas de zone) − `InpSLBufferATR` × ATR.
+   **Invalidation** : bas de la zone. Entrée de type retest.
+
+## 8. Famille F6 — retest de FVG avec réaction confirmée (v1.10)
+
+1. **FVG** du sens du trade (§ 2.4), unité `InpFvgTF` (M5), fraîche ou partiellement
+   comblée, qualité ≥ `InpFvgMinQuality` (0,55), retours ≤ `InpFvgMaxRetests` (1),
+   âge ≤ `InpFvgMaxAgeBars` (48) barres de son unité, connue avant le contact.
+   IFVG utilisées seulement si `InpUseIFVG`.
+2. **Contact** : première entrée dans la zone parmi les `InpFvgReactBars` (8)
+   dernières barres M1, la barre précédente étant hors zone.
+3. **Zone tenue** : aucune clôture sous `bas − InpFvgInvalidBufferATR × ATR`.
+4. **Pas d'entrée au premier contact** : il faut une **réaction** = figure
+   confirmée sur la dernière barre et/ou CHOCH M1, avec clôture au-dessus du milieu
+   de la zone.
+5. Refus si les unités de temps se contredisent (filtres de tendance et de régime),
+   si la zone est invalidée, ou si l'espace / le rendement-risque est insuffisant.
+6. **Stop** : min(plus bas depuis le contact, bas de zone) − `InpSLBufferATR` × ATR.
+   **Invalidation** : bas de la zone.
+
+## 9. Contrôles communs et score
 
 **Distance de stop** : si la distance logique est inférieure à
 `max(InpMinSLATR (0,6) × ATR, niveau de stop du courtier + spread)`, le stop est
@@ -137,45 +366,61 @@ cette distance). Après l'entrée, le stop n'est **jamais** élargi.
 
 **Refus non compensables** (dans l'ordre de contrôle) : symbole non or ; état de
 reprise en cours ; connexion absente ou délai après reconnexion ; trading non
-autorisé ; données incohérentes ou obsolètes ; séance du courtier fermée ou fin de
-séance proche ; hors fenêtre de session ; vendredi après l'heure limite ; annonce
-économique ; protections (drawdown, perte journalière, pertes consécutives, nombre
-de trades, suspension après erreurs, refroidissement) ; positions maximales ;
-exposition existante ; spread (absolu, relatif à l'ATR, pic par rapport à la
-médiane) ; volatilité (ATR14/ATR100 hors [0,5 ; 3], ATR < 2,5 × spread) ; contexte
-M5/M15 ; stop trop large (> `InpMaxSLATR` 3 × ATR) ; prix ayant trop avancé
-(> `InpMaxChaseFrac` 30 % du risque depuis la clôture de signal) ; espace jusqu'à la
-liquidité opposée < `InpMinRoomR` (1 R) ; coût > `InpMaxCostToRiskFrac` (15 %) du
-risque ; score < `InpMinScore` ; signal antérieur au démarrage ; signal déjà exécuté ;
-position opposée ouverte ; volume minimal > budget de risque ; marge insuffisante ;
-risque agrégé atteint ; signaux achat ET vente simultanés.
+autorisé ; données incohérentes, obsolètes ou **trouées** ; séance du courtier
+fermée ou fin de séance proche ; hors fenêtre de session ; vendredi après l'heure
+limite ; annonce économique ; protections (drawdown, perte journalière, pertes
+consécutives, nombre de trades, suspension après erreurs, refroidissement) ;
+positions maximales ; exposition existante ; spread (absolu, relatif à l'ATR, pic
+par rapport à la médiane) ; volatilité (ATR14/ATR100 hors [0,5 ; 3], ATR < 2,5 ×
+spread) ; contexte M5/M15 (EMA, structure M15, efficience M15, pullback sans
+tendance M5) ; **tendance contradictoire** (§ 2.1) ; **régime non autorisé**
+(§ 2.2) ; **figure contraire confirmée**, **déclenchement doji**, **entrée
+tardive**, figure requise absente (§ 2.5) ; stop trop large (> `InpMaxSLATR` 3 ×
+ATR) ; prix ayant trop avancé (> `InpMaxChaseFrac` 30 % du risque depuis la clôture
+de signal) ; espace jusqu'à la liquidité opposée ou à l'obstacle le plus proche <
+`InpMinRoomR` (1 R), ou prix dans une zone opposée ; coût > `InpMaxCostToRiskFrac`
+(15 %) du risque ; score < `InpMinScore` ; signal antérieur au démarrage ; signal
+déjà exécuté ; position opposée ouverte ; volume minimal > budget de risque ; marge
+insuffisante ; risque agrégé atteint ; signaux achat ET vente simultanés.
 
-**Score (0–100)** = `100 × Σ(poids × composante) / Σ poids`, chaque composante dans [0 ; 1] :
+Chaque signal complet enregistre la liste des critères **satisfaits (+)** et
+**échoués (−)** (colonne `criteria` de `_signals.csv`) ; la raison du refus est le
+premier critère échoué.
 
-| Composante | Poids | Calcul (F1 ; autres familles entre parenthèses) |
+**Score (0–100)** = `100 × Σ(poids × composante) / Σ poids`, chaque composante dans
+[0 ; 1]. Chaque élément de preuve est compté **une seule fois** :
+
+| Composante | Poids | Calcul |
 |---|---|---|
-| Liquidité / configuration | 20 | base 0,6 (swing M1), 0,85 (niveaux égaux M1), 0,8 (M5), 1,0 (M15, veille, Asie) × 0,8 si profondeur hors [0,1 ; 0,8] ATR (F2 : profondeur du pullback ; F3 : contacts et hauteur du range ; F4 : étroitesse de la boîte) |
-| Réintégration / déclencheur | 15 | 1 − 0,15 × barres de réintégration − 0,15 × clôtures sous le niveau (+0,1 si mèche de rejet ≥ 50 %) (F2 : force de l'impulsion ; F3 : corps de la cassure ; F4 : amplitude de l'expansion) |
-| Confirmation structurelle | 20 | 0,7 (0,6 sans sommet fractal) + 0,3 × qualité du déplacement de la barre de CHOCH |
-| Alignement M5/M15 | 15 | 0,5 × (M5 aligné 1 / neutre 0,5 / opposé 0) + 0,5 × (idem M15) |
-| Retest | 10 | 1,0 retest avec mèche ≥ 40 %, 0,8 retest, 0,3 entrée à la confirmation (0,5 pour F2/F4) |
-| Volatilité | 5 | 1 si ATR14/ATR100 ∈ [0,8 ; 1,6], décroissant au-delà |
-| Coût d'exécution | 5 | 1 − rampe(coût/risque ; 3 % → 15 %) |
-| Espace (R:R) | 10 | rampe(espace en R ; 1 → 3) |
+| Liquidité / zone | `InpWLiquidity` 20 | F1 : base 0,6 (swing M1), 0,85 (niveaux égaux M1), 0,8 (M5), 1,0 (M15, veille, Asie) × 0,8 si profondeur hors [0,1 ; 0,8] ATR ; F2 : profondeur du pullback ; F3 : contacts et hauteur du range ; F4 : étroitesse de la boîte ; F5 : force de la zone ; F6 : qualité de la FVG |
+| Déclencheur | `InpWTrigger` 10 | F1 : 1 − 0,15 × barres de réintégration − 0,15 × clôtures sous le niveau ; F2 : force de l'impulsion ; F3 : clôture de cassure ; F4 : amplitude de l'expansion ; F5/F6 : 1 − 0,1 × barres depuis le contact (≥ 0,3) |
+| Confirmation structurelle | `InpWStructure` 15 | F1 : 0,7 (0,6 sans sommet fractal) + 0,3 × qualité du déplacement de la barre de CHOCH ; F5/F6 : 1 avec CHOCH M1, sinon 0,7 |
+| Bougies | `InpWCandle` 10 | § 2.5 (preuve unique ; 0 si figure contraire) |
+| Alignement M5/M15 | `InpWAlignment` 15 | 0,5 × (tendance M5 par votes alignée 1 / neutre 0,5 / opposée 0) + 0,5 × (idem M15) |
+| Retest | `InpWRetest` 10 | F1 : 1,0 retest profond, 0,8 retest, 0,3 entrée à la confirmation ; F2/F4 : 0,5 ; F3 : proximité du retest ; F5/F6 : 1 si la réaction tient dans la zone, 0,7 si mèche au-delà (le nombre de retours d'une FVG est déjà dans sa qualité) |
+| Volatilité | `InpWVolatility` 5 | 1 si ATR14/ATR100 ∈ [0,8 ; 1,6], décroissant au-delà |
+| Coût d'exécution | `InpWCost` 5 | 1 − rampe(coût/risque ; 3 % → 15 %) |
+| Espace (R:R) | `InpWRR` 10 | rampe(espace en R ; 1 → 3) |
 
-Le seuil initial de 80 est un **point de départ de recherche**. Le score **n'est pas
-une probabilité de réussite** ; sa relation avec les résultats doit être vérifiée
-(tableau « par tranche de score » du rapport, en abaissant `InpMinScore` en
-recherche pour observer aussi les scores bas).
+Le seuil initial de 80 (`InpMinScore`) est inchangé : il n'a pas été abaissé pour
+augmenter le nombre de transactions. C'est un **point de départ de recherche** ;
+le score **n'est pas une probabilité de réussite** ; sa relation avec les
+résultats doit être vérifiée (tableau « par tranche de score » du rapport, en
+abaissant `InpMinScore` en recherche pour observer aussi les scores bas).
 
-## 8. Volume
+**Coûts** : coût estimé = spread + commission aller-retour + glissement prévu ;
+le glissement prévu est le plus grand de `InpSlippageAllowancePrice` et du
+glissement **défavorable moyen observé** sur les 20 dernières exécutions.
+
+## 10. Volume
 
 Voir le README (section « Risque »). Résumé : volume = budget / perte au stop pour
 1 lot (valorisée par `OrderCalcProfit` ET par la valeur du tick, la plus prudente
-retenue, stop décalé de `InpSlippageAllowancePrice`, commission aller-retour
-incluse), arrondi **vers le bas** ; refus si le volume minimal dépasse le budget.
+retenue, stop décalé du glissement prévu, commission aller-retour incluse), arrondi
+**vers le bas** ; refus si le volume minimal dépasse le budget. Aucun module
+d'analyse ne peut augmenter le risque par trade ni contourner une limite.
 
-## 9. Sorties
+## 11. Sorties
 
 | Règle | Défaut | Détail |
 |---|---|---|

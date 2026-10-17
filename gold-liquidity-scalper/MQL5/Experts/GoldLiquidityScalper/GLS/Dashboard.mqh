@@ -8,7 +8,7 @@
 
 #include "Utils.mqh"
 
-#define GLS_DASH_ROWS       20
+#define GLS_DASH_ROWS       30
 #define GLS_DASH_CHECKS     18
 #define GLS_BTN_CHECK       "btn_check"
 #define GLS_BTN_START       "btn_start"

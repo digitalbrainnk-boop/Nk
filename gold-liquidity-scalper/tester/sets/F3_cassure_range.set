@@ -1,6 +1,6 @@
-; Gold Liquidity Scalper v1.00 - protocole de comparaison
+; Gold Liquidity Scalper v1.10 - protocole de comparaison
 ; Famille F3 : Cassure de range + confirmation + retest
-; Tous les autres paramètres restent aux valeurs par défaut (identiques pour les 4 familles).
+; Tous les autres paramètres restent aux valeurs par défaut (identiques pour les 6 familles).
 ; A copier dans <dossier de données MT5>\MQL5\Profiles\Tester\
 InpFamily=3
 InpAutoStartInTester=true

@@ -22,6 +22,7 @@ public:
    double            high[];
    double            low[];
    double            close[];
+   double            volume[];    // volume de ticks (information, jamais une preuve d'absorption)
    int               count;
    int               periodSec;
 
@@ -34,6 +35,7 @@ public:
       ArrayResize(high, n);
       ArrayResize(low, n);
       ArrayResize(close, n);
+      ArrayResize(volume, n);
       count = n;
      }
 
@@ -103,6 +105,7 @@ public:
          high[i] = src.high[i];
          low[i] = src.low[i];
          close[i] = src.close[i];
+         volume[i] = src.volume[i];
         }
      }
 
@@ -120,6 +123,7 @@ public:
          high[i] = -src.low[i];
          low[i] = -src.high[i];
          close[i] = -src.close[i];
+         volume[i] = src.volume[i];
         }
      }
 
@@ -243,6 +247,7 @@ bool LoadClosedBars(const string sym, const ENUM_TIMEFRAMES tf, const int wanted
       s.high[i] = rates[i].high;
       s.low[i] = rates[i].low;
       s.close[i] = rates[i].close;
+      s.volume[i] = (double)rates[i].tick_volume;
      }
    if(!s.Validate(err))
      {

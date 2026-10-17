@@ -29,6 +29,15 @@ struct SSwing
    datetime          brokenTime;    // clôture qui a cassé le niveau (0 = intact)
   };
 
+//--- Événement de structure daté (historique conservé pour l'analyse des FVG)
+struct SStructEvent
+  {
+   int               type;      // GLS_EVT_*
+   int               index;     // barre de la clôture de cassure
+   double            level;
+   datetime          time;      // clôture de la barre
+  };
+
 bool IsSwingHigh(const CBarSeries &s, const int i, const int k)
   {
    if(k < 1 || i - k < 0 || i + k > s.count - 1)
@@ -63,6 +72,7 @@ class CStructure
 public:
    SSwing            highs[];
    SSwing            lows[];
+   SStructEvent      events[];
    int               trend;           // GLS_TREND_*
    int               lastEvent;       // GLS_EVT_*
    int               lastEventIndex;
@@ -79,6 +89,7 @@ public:
      {
       ArrayResize(highs, 0);
       ArrayResize(lows, 0);
+      ArrayResize(events, 0);
       trend = GLS_TREND_NONE;
       lastEvent = GLS_EVT_NONE;
       lastEventIndex = -1;
@@ -134,6 +145,7 @@ public:
             lastEventIndex = j;
             lastEventLevel = highs[lastHigh].price;
             lastEventTime = s.CloseTime(j);
+            AddEvent(lastEvent, j, lastEventLevel, lastEventTime);
            }
          if(lastLow >= 0 && lows[lastLow].brokenTime == 0 && s.close[j] < lows[lastLow].price)
            {
@@ -142,6 +154,7 @@ public:
             lastEventIndex = j;
             lastEventLevel = lows[lastLow].price;
             lastEventTime = s.CloseTime(j);
+            AddEvent(lastEvent, j, lastEventLevel, lastEventTime);
            }
          //--- 3) statut "cassé" de tous les niveaux (liquidité encore présente ou non)
          datetime ct = s.CloseTime(j);
@@ -175,6 +188,37 @@ public:
       if((lastEvent == GLS_EVT_CHOCH_UP || lastEvent == GLS_EVT_CHOCH_DOWN) && (s.count - 1 - lastEventIndex) <= transitionBars)
          regime = GLS_REGIME_TRANSITION;
       ready = true;
+     }
+
+   void              AddEvent(const int type, const int index, const double level, const datetime t)
+     {
+      int n = ArraySize(events);
+      ArrayResize(events, n + 1);
+      events[n].type = type;
+      events[n].index = index;
+      events[n].level = level;
+      events[n].time = t;
+     }
+
+   //--- Cassure haussière (dir > 0) ou baissière entre les barres from et to (incluses) ?
+   //--- isChoch = true si la cassure trouvée est un CHOCH
+   bool              BreakBetween(const int dir, const int from, const int to, bool &isChoch) const
+     {
+      isChoch = false;
+      for(int i = ArraySize(events) - 1; i >= 0; i--)
+        {
+         if(events[i].index < from)
+            break;
+         if(events[i].index > to)
+            continue;
+         bool up = (events[i].type == GLS_EVT_BOS_UP || events[i].type == GLS_EVT_CHOCH_UP);
+         if((dir > 0) == up)
+           {
+            isChoch = (events[i].type == GLS_EVT_CHOCH_UP || events[i].type == GLS_EVT_CHOCH_DOWN);
+            return true;
+           }
+        }
+      return false;
      }
 
    string            EventText(void) const
@@ -297,6 +341,8 @@ string LevelKindText(const int kind)
       case GLS_LVL_M15_SWING: return "swing M15";
       case GLS_LVL_PREV_DAY:  return "veille";
       case GLS_LVL_ASIA:      return "Asie";
+      case GLS_LVL_ZONE:      return "zone S/R";
+      case GLS_LVL_FVG:       return "FVG";
      }
    return "?";
   }

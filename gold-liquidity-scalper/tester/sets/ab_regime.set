@@ -1,0 +1,21 @@
+; Gold Liquidity Scalper v1.10 - comparaison A/B des filtres (famille F1 par défaut : changer InpFamily au besoin)
+; Référence + filtre de régime seul
+; Même période, mêmes données, mêmes coûts pour toutes les variantes ; analyse :
+;   python3 analyze_trades.py *_trades.csv --group-by label --baseline "F1|ab_reference" --variants 6 ...
+; Les CSV du dossier commun GLS\ s'ajoutent d'un passage à l'autre : la colonne label sépare les variantes ;
+; effacer les fichiers avant de relancer une MÊME variante (sinon ses trades seraient comptés deux fois).
+InpFamily=1
+InpRunLabel=ab_regime
+InpAutoStartInTester=true
+InpWriteFiles=true
+InpNewsMode=1
+InpServerOffsetMode=1
+InpServerUTCOffsetHours=0
+InpServerDST=0
+InpCommissionPerLotSide=0.0
+InpUseRegimeFilter=true
+InpUseTrendFilter=false
+InpCdlBlockOpposing=false
+InpCdlBlockIndecision=false
+InpCdlBlockExtended=false
+InpUseSRObstacles=false

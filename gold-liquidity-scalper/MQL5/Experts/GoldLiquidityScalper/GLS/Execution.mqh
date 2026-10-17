@@ -89,6 +89,95 @@ void OpenResultReset(SOpenResult &r)
    r.message = "";
   }
 
+//+------------------------------------------------------------------+
+//| Qualité d'exécution mesurée (session en cours)                    |
+//+------------------------------------------------------------------+
+class CExecStats
+  {
+public:
+   int               sends;          // envois d'ouverture
+   int               fills;
+   int               checkRejects;   // refusés par OrderCheck (non envoyés)
+   int               rejects;        // refusés par le serveur
+   int               requotes;       // requote / prix changé / pas de cotation
+   int               uncertain;      // délai dépassé ou réponse vide
+   int               modifySends;
+   int               modifyFails;
+   int               closeSends;
+   int               closeFails;
+   double            latencySumMs;
+   double            latencyMaxMs;
+   int               latencyN;
+   double            slipSumPts;     // glissement défavorable (+) ou favorable (-), en points
+   double            slipMaxPts;
+   int               slipN;
+   double            spreadSumPts;
+   double            recentSlip[];   // 20 derniers glissements défavorables (prix)
+   int               recentPos;
+
+                     CExecStats(void) : sends(0), fills(0), checkRejects(0), rejects(0), requotes(0), uncertain(0), modifySends(0),
+                     modifyFails(0), closeSends(0), closeFails(0), latencySumMs(0.0), latencyMaxMs(0.0), latencyN(0), slipSumPts(0.0),
+                     slipMaxPts(0.0), slipN(0), spreadSumPts(0.0), recentPos(0) {}
+
+   void              RecordSend(const uint retcode, const double latencyMs)
+     {
+      sends++;
+      latencySumMs += latencyMs;
+      latencyN++;
+      latencyMaxMs = MathMax(latencyMaxMs, latencyMs);
+      if(retcode == TRADE_RETCODE_DONE || retcode == TRADE_RETCODE_DONE_PARTIAL)
+         fills++;
+      else
+         if(retcode == TRADE_RETCODE_REQUOTE || retcode == TRADE_RETCODE_PRICE_CHANGED || retcode == TRADE_RETCODE_PRICE_OFF)
+            requotes++;
+         else
+            if(retcode == TRADE_RETCODE_TIMEOUT || retcode == 0)
+               uncertain++;
+            else
+               rejects++;
+     }
+
+   //--- glissement : prix obtenu - prix demandé, signé (positif = défavorable)
+   void              RecordFill(const double adversePrice, const double point, const double spreadPrice)
+     {
+      if(point <= 0.0)
+         return;
+      double pts = adversePrice / point;
+      slipSumPts += pts;
+      slipMaxPts = MathMax(slipMaxPts, pts);
+      slipN++;
+      spreadSumPts += spreadPrice / point;
+      if(ArraySize(recentSlip) != 20)
+        {
+         ArrayResize(recentSlip, 20);
+         ArrayInitialize(recentSlip, 0.0);
+        }
+      recentSlip[recentPos % 20] = MathMax(adversePrice, 0.0);
+      recentPos++;
+     }
+
+   //--- glissement défavorable moyen récent (prix)
+   double            ExpectedAdverseSlippage(void) const
+     {
+      int n = MathMin(recentPos, 20);
+      if(n <= 0)
+         return 0.0;
+      double s = 0.0;
+      for(int i = 0; i < n; i++)
+         s += recentSlip[i];
+      return s / n;
+     }
+
+   string            Summary(void) const
+     {
+      return StringFormat("%d envoi(s), %d exécuté(s), %d rejet(s), %d requote(s), %d incertain(s) | glissement moy. %.1f pts (max %.1f) | latence %.0f ms",
+                          sends, fills, rejects + checkRejects, requotes, uncertain, (slipN > 0) ? slipSumPts / slipN : 0.0, slipMaxPts,
+                          (latencyN > 0) ? latencySumMs / latencyN : 0.0);
+     }
+  };
+
+CExecStats g_exec;
+
 class CGlsTrader
   {
 private:
@@ -217,6 +306,7 @@ public:
          if(!OrderCheck(req, check))
            {
             res.retcode = check.retcode;
+            g_exec.checkRejects++;
             res.message = "OrderCheck refusé : " + RetcodeText(check.retcode) + " " + check.comment;
             if(check.retcode == TRADE_RETCODE_INVALID_FILL)
               {
@@ -232,7 +322,9 @@ public:
            }
 
          ResetLastError();
+         ulong t0 = GetMicrosecondCount();
          bool sent = OrderSend(req, result);
+         g_exec.RecordSend(result.retcode, (double)(GetMicrosecondCount() - t0) / 1000.0);
          res.retcode = result.retcode;
          lastRetcode = result.retcode;
          if(result.retcode == TRADE_RETCODE_DONE || result.retcode == TRADE_RETCODE_DONE_PARTIAL)
@@ -302,15 +394,18 @@ public:
       req.tp = tp;
       req.magic = m_magic;
       ResetLastError();
+      g_exec.modifySends++;
       bool sent = OrderSend(req, result);
       lastRetcode = result.retcode;
       if(!sent && result.retcode != TRADE_RETCODE_NO_CHANGES)
         {
+         g_exec.modifyFails++;
          msg = RetcodeText(result.retcode) + " " + result.comment + " (erreur " + IntegerToString(GetLastError()) + ")";
          return false;
         }
       if(result.retcode != TRADE_RETCODE_DONE && result.retcode != TRADE_RETCODE_NO_CHANGES)
         {
+         g_exec.modifyFails++;
          msg = RetcodeText(result.retcode) + " " + result.comment;
          return false;
         }
@@ -369,8 +464,11 @@ public:
          req.type_filling = filling;
          req.type_time = ORDER_TIME_GTC;
          ResetLastError();
+         g_exec.closeSends++;
          bool sent = OrderSend(req, result);
          lastRetcode = result.retcode;
+         if(result.retcode != TRADE_RETCODE_DONE && result.retcode != TRADE_RETCODE_DONE_PARTIAL)
+            g_exec.closeFails++;
          if(result.retcode == TRADE_RETCODE_DONE || result.retcode == TRADE_RETCODE_DONE_PARTIAL)
            {
             //--- vérification de l'état réel

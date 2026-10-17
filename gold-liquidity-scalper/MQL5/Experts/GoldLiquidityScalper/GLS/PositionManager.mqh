@@ -52,6 +52,8 @@ struct SPlan
    int               finalizeAttempts;
    bool              recovered;
    int               stopFailures;
+   int               regime;         // régime de marché à l'entrée (statistiques)
+   int               candleId;       // figure de bougie retenue comme preuve à l'entrée
   };
 
 void PlanReset(SPlan &p)
@@ -89,6 +91,8 @@ void PlanReset(SPlan &p)
    p.finalizeAttempts = 0;
    p.recovered = false;
    p.stopFailures = 0;
+   p.regime = 0;
+   p.candleId = 0;
   }
 
 string PlanHash(const SPlan &p)
@@ -126,6 +130,8 @@ void PlanSave(const SPlan &p)
    g_store.PosSet(t, "sls", p.slStage);
    g_store.PosSet(t, "exr", p.exitReason);
    g_store.PosSet(t, "rec", p.recovered ? 1.0 : 0.0);
+   g_store.PosSet(t, "rg", p.regime);
+   g_store.PosSet(t, "cdl", p.candleId);
    g_store.PosSet(t, "dir", p.dir);   // écrit en dernier : marque un plan complet
   }
 
@@ -163,6 +169,8 @@ bool PlanLoad(const ulong ticket, SPlan &p)
    p.slStage = (int)g_store.PosGet(ticket, "sls", 0.0);
    p.exitReason = (int)g_store.PosGet(ticket, "exr", 0.0);
    p.recovered = (g_store.PosGet(ticket, "rec", 0.0) > 0.5);
+   p.regime = (int)g_store.PosGet(ticket, "rg", 0.0);
+   p.candleId = (int)g_store.PosGet(ticket, "cdl", 0.0);
    return (p.dir == GLS_BUY || p.dir == GLS_SELL);
   }
 
@@ -645,6 +653,8 @@ public:
          rec.rMultiple = (plans[i].riskMoney > 0.0) ? rec.net / plans[i].riskMoney : 0.0;
          rec.exitPlan = plans[i].exitPlan;
          rec.session = plans[i].session;
+         rec.regime = plans[i].regime;
+         rec.candleId = plans[i].candleId;
          rec.mfeR = plans[i].mfeR;
          rec.maeR = plans[i].maeR;
          rec.spreadPts = (g_sym.point > 0.0) ? plans[i].spreadAtEntry / g_sym.point : 0.0;

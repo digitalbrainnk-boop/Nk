@@ -14,9 +14,9 @@ HEADER = ("env;account;symbol;position_id;family;dir;hash;score;retest;session;o
           "risk_money;risk_points;net;gross;commission;swap;fee;r_multiple;exit_reason;exit_plan;slippage_pts;spread_pts;est_cost;mfe_r;mae_r;point")
 
 
-def make_csv(path, family, mean_r, n, seed, start=dt.datetime(2021, 1, 4), env="BACKTEST"):
+def make_csv(path, family, mean_r, n, seed, start=dt.datetime(2021, 1, 4), env="BACKTEST", label=None):
     rng = random.Random(seed)
-    lines = [HEADER]
+    lines = [HEADER + (";regime;label;candle" if label else "")]
     t = start
     for i in range(n):
         r = rng.gauss(mean_r, 1.0)
@@ -25,11 +25,14 @@ def make_csv(path, family, mean_r, n, seed, start=dt.datetime(2021, 1, 4), env="
         net = r * risk
         o = t
         c = t + dt.timedelta(minutes=20)
-        lines.append(";".join([
+        cols = [
             env, "1", "XAUUSDm", str(1000 + i), family, "BUY", "ABC", str(70 + i % 30), "0", "Londres",
             o.strftime("%Y.%m.%d %H:%M:%S"), c.strftime("%Y.%m.%d %H:%M:%S"), "1200", "2000.00", "2001.00", "0.03",
             "%.2f" % risk, "200.0", "%.2f" % net, "%.2f" % net, "0.00", "0.00", "0.00", "%.3f" % r,
-            "SL" if r < 0 else "TP", "3", "1.0", "20.0", "0.60", "1.00", "0.50", "0.01"]))
+            "SL" if r < 0 else "TP", "3", "1.0", "20.0", "0.60", "1.00", "0.50", "0.01"]
+        if label:
+            cols += ["TENDANCE" if i % 2 else "RANGE", label, "marteau" if i % 3 == 0 else ""]
+        lines.append(";".join(cols))
         t += dt.timedelta(hours=9)
     with open(path, "w", encoding="utf-8") as fh:
         fh.write("\n".join(lines) + "\n")
@@ -75,6 +78,43 @@ class TestStats(unittest.TestCase):
         self.assertAlmostEqual(m3["stressed_expectancy_r"], 0.15)
 
 
+class TestRobustness(unittest.TestCase):
+    def test_monte_carlo_bounds(self):
+        mc = at.monte_carlo([1.0] * 50, 200)
+        self.assertEqual(mc["dd_p95"], 0.0)
+        self.assertEqual(mc["p_loss"], 0.0)
+        self.assertAlmostEqual(mc["total_p50"], 50.0)
+        mc2 = at.monte_carlo([1.0, -1.0] * 50, 500)
+        self.assertGreater(mc2["dd_p95"], mc2["dd_p50"] - 1e-12)
+        self.assertGreater(mc2["dd_p95"], 2.0)
+        self.assertGreater(mc2["p_loss"], 0.3)
+        self.assertEqual(at.monte_carlo([1.0, -1.0] * 50, 500), mc2)  # reproductible (graine fixe)
+        self.assertIsNone(at.monte_carlo([1.0], 100))
+
+    def test_bootstrap_diff(self):
+        rng = random.Random(5)
+        a = [rng.gauss(0.5, 1.0) for _ in range(400)]
+        b = [rng.gauss(0.0, 1.0) for _ in range(400)]
+        lo, hi = at.bootstrap_diff_ci(a, b)
+        self.assertLess(lo, hi)
+        self.assertGreater(lo, 0.2)
+        self.assertLess(hi, 0.8)
+
+    def test_top_trade_dependency(self):
+        crit = dict(at.DEFAULT_CRITERIA)
+        crit["mc_paths"] = 50
+        base = dt.datetime(2022, 1, 1)
+        trades = []
+        rs = [-1.0] * 19 + [30.0]
+        for i, r in enumerate(rs):
+            trades.append({"net": r * 5, "r_multiple": r, "risk_money": 5.0, "risk_points": 200.0, "point": 0.01,
+                           "duration_s": 600.0, "commission": 0.0, "swap": 0.0, "fee": 0.0, "est_cost": 0.0,
+                           "slippage_pts": 0.0, "close_dt": base + dt.timedelta(days=i)})
+        m = at.metrics(trades, crit, 1)
+        self.assertGreater(m["expectancy_r"], 0.0)
+        self.assertAlmostEqual(m["expectancy_r_wo_top5"], -1.0)
+
+
 class TestProtocol(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
@@ -115,6 +155,31 @@ class TestProtocol(unittest.TestCase):
     def test_overlap_rejected(self):
         args = [self.good, "--dev", "2021-01-01:2021-12-31", "--val", "2021-06-01:2022-06-30", "--out", self.out]
         self.assertEqual(at.main(args), 2)
+
+    def test_monte_carlo_in_report(self):
+        rc, rep = self.run_tool([])
+        self.assertEqual(rc, 0)
+        self.assertIn("Monte-Carlo", rep)
+        self.assertIn("drawdown Monte-Carlo p95 R", rep)
+
+    def test_ab_comparison(self):
+        ref = os.path.join(self.tmp, "ref_trades.csv")
+        var = os.path.join(self.tmp, "var_trades.csv")
+        make_csv(ref, "F1", 0.0, 1400, 7, label="reference")
+        make_csv(var, "F1", 0.4, 1400, 8, label="bougies")
+        args = [ref, var, "--group-by", "label", "--baseline", "F1|reference", "--dev", "2021-01-01:2021-12-31",
+                "--val", "2022-01-01:2022-06-30", "--variants", "2", "--out", self.out]
+        self.assertEqual(at.main(args), 0)
+        with open(self.out, encoding="utf-8") as fh:
+            rep = fh.read()
+        self.assertIn("Comparaison avec la référence **F1|reference**", rep)
+        self.assertIn("| F1|bougies |", rep)
+        self.assertIn("Régime à l'entrée", rep)
+        self.assertIn("| TENDANCE |", rep)
+        self.assertIn("Figure de bougie retenue", rep)
+        bad = [ref, "--group-by", "label", "--baseline", "F1|absente", "--dev", "2021-01-01:2021-12-31",
+               "--val", "2022-01-01:2022-06-30", "--out", self.out]
+        self.assertEqual(at.main(bad), 3)
 
     def test_mixed_env_warning(self):
         demo = os.path.join(self.tmp, "demo_trades.csv")

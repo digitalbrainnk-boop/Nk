@@ -4,7 +4,14 @@ Robot de trading **MetaTrader 5** pour l'or (XAU/USD) : analyse M1 / M5 / M15,
 entrées sur balayage de liquidité, calcul du volume par le risque au stop, prises
 de bénéfices partielles, protections journalières, reprise après redémarrage,
 tableau de bord avec boutons, statistiques et journal détaillés, et protocole de
-comparaison de quatre familles de stratégies.
+comparaison de six familles de stratégies.
+
+Version **1.10** (voir [CHANGELOG.md](CHANGELOG.md)) : analyse des bougies
+japonaises, tendance par votes et régimes de marché, supports / résistances
+dynamiques, FVG / IFVG / Order Blocks, familles F5 (réaction sur support /
+résistance) et F6 (retest de FVG), mesure de la qualité d'exécution, alertes,
+contrôle d'intégrité des données, comparaisons A/B et Monte-Carlo. État
+vérifié exigence par exigence : [docs/AUDIT.md](docs/AUDIT.md).
 
 > **Avertissements**
 > - **Aucune rentabilité n'est garantie ni revendiquée.** Aucun backtest sur données
@@ -13,6 +20,8 @@ comparaison de quatre familles de stratégies.
 > - **Compilation MetaEditor non vérifiée ici** : l'environnement de développement
 >   n'avait pas accès aux serveurs MetaQuotes. Le code a été vérifié autrement (voir
 >   « Vérifications réalisées »), mais la première étape chez vous est de le compiler.
+> - **Non prêt pour un compte réel** : ni testeur MT5, ni données réelles, ni démo
+>   n'ont été exécutés (conditions : [docs/AUDIT.md § 6](docs/AUDIT.md)).
 > - Le trading de l'or à effet de levier peut faire perdre tout le capital investi.
 
 ## Sommaire
@@ -46,18 +55,24 @@ gold-liquidity-scalper/
 │       ├── MarketData.mqh           barres clôturées, ATR, EMA, validation des données
 │       ├── Structure.mqh            swings, BOS, CHOCH, régime, carte de liquidité
 │       ├── Sessions.mqh             heure serveur/UTC, sessions, annonces économiques
-│       ├── Context.mqh              contexte M1/M5/M15, veille, plage asiatique
-│       ├── Signals.mqh              4 familles de signaux, score, refus
+│       ├── Context.mqh              contexte M1/M5/M15, veille, plage asiatique, intégrité
+│       ├── Candles.mqh              bougies japonaises : mesures, figures, statuts
+│       ├── Trend.mqh                tendance par votes, régimes de marché
+│       ├── Zones.mqh                supports / résistances dynamiques
+│       ├── Fvg.mqh                  FVG, IFVG, Order Blocks
+│       ├── Signals.mqh              6 familles de signaux, score, refus
 │       ├── Risk.mqh                 calcul du volume, découpage des sorties
-│       ├── Execution.mqh            envoi et vérification des ordres
+│       ├── Execution.mqh            envoi et vérification des ordres, qualité d'exécution
 │       ├── PositionManager.mqh      TP partiels, break-even, suiveur, sorties
 │       ├── Protection.mqh           limites journalières, drawdown, refroidissement
 │       ├── Stats.mqh                statistiques reconstruites depuis l'historique
 │       ├── Dashboard.mqh            objets graphiques du tableau de bord
 │       └── Engine.mqh               orchestration, reprise, boutons
 ├── docs/STRATEGIE.md                définitions numériques exactes des règles
-├── docs/PROTOCOLE_VALIDATION.md     protocole de comparaison des 4 familles
-├── tester/sets/*.set                paramètres du testeur (une famille par fichier)
+├── docs/PROTOCOLE_VALIDATION.md     protocole de comparaison des familles et des filtres
+├── docs/AUDIT.md                    liste de contrôle : implémenté / compilé / testé / validé
+├── CHANGELOG.md                     historique des versions
+├── tester/sets/*.set                paramètres du testeur (une famille par fichier, comparaisons A/B)
 ├── tester/ini/*.ini                 modèle de lancement du testeur en ligne de commande
 ├── tools/analyze_trades.py          analyse statistique et décision (Python 3, sans dépendance)
 ├── tools/criteria_default.json      critères pré-enregistrés
@@ -117,8 +132,15 @@ Affiché en haut à gauche du graphique :
 | Spread | actuel et maximum autorisé |
 | Session | session de marché, fenêtre d'entrée, heure UTC |
 | Annonces | état réel du filtre (calendrier MT5, fichier, ou **NON filtrées**) |
-| Contexte | tendance/régime M15, dernier BOS/CHOCH M5, position par rapport à l'EMA200 |
+| Tendance | tendance M15 et M5 par votes, régime de marché, détail des votes M15 |
+| Structure M5 | dernier BOS/CHOCH M5, position par rapport à l'EMA200, trou de données éventuel |
+| Support / Résistance | zone la plus proche de chaque côté (bornes, réactions, M15, état) |
+| FVG actives | nombre de FVG haussières / baissières actives en M5 et M1 |
+| Jour | figures détectées / confirmées, signaux complets refusés / exécutés |
+| Dernière figure | dernière figure de bougie interprétable et son statut |
 | Dernier signal / refus / exécution | avec la raison du refus |
+| Exécution | envois, exécutions, rejets, requotes, réponses incertaines, glissement, latence |
+| Alertes | alertes envoyées, échecs d'envoi, dernière alerte |
 | Protection | ACTIVE ou la protection déclenchée |
 | Risque | risque par trade, risque ouvert, drawdown / limite |
 
@@ -158,10 +180,44 @@ Famille par défaut **F1 — balayage de liquidité** :
   insuffisant jusqu'à la liquidité opposée, coûts, sessions, annonces,
   protections…) ne sont jamais compensés par le score.
 
-Trois autres familles sont codées pour le protocole de comparaison : **F2**
+Cinq autres familles sont codées pour le protocole de comparaison : **F2**
 tendance + pullback + reprise, **F3** cassure de range + confirmation + retest,
-**F4** compression de volatilité + expansion confirmée. Elles partagent
-exactement le même calcul de risque, les mêmes sorties et les mêmes filtres.
+**F4** compression de volatilité + expansion confirmée, **F5** réaction confirmée
+sur support / résistance, **F6** retest de FVG avec réaction confirmée. Elles
+partagent exactement le même calcul de risque, les mêmes sorties et les mêmes filtres.
+
+Modules d'analyse ajoutés en v1.10 (tous paramétrables et désactivables pour les
+comparaisons A/B) :
+
+- **bougies japonaises** : mesures de chaque bougie M1 clôturée, 15 figures
+  (marteau, étoile filante, avalements, ligne pénétrante, nuage noir, étoiles du
+  matin / du soir, pendu, rejet + confirmation, doji, impulsion, consolidation +
+  reprise…) avec confirmation obligatoire ; une seule preuve de bougie par signal
+  dans le score ; refus en cas de figure contraire confirmée, de déclenchement
+  doji ou d'entrée tardive ;
+- **tendance** M15 / M5 par votes (structure, sommets/creux, EMA 200, pente : l'EMA
+  seule ne suffit jamais) et **régime** (tendance, range, transition, volatil,
+  désordre) avec la liste des régimes autorisés par famille ;
+- **supports / résistances** dynamiques (pivots confirmés, largeur adaptée à
+  l'ATR, réactions indépendantes, zones M15 majeures, inversion de rôle seulement
+  après confirmation) : pas d'achat dans ou juste sous une résistance ;
+- **FVG / IFVG / Order Blocks** : définitions exactes sur 3 bougies, qualité,
+  suivi des retours et du comblement ; une FVG ne déclenche jamais seule.
+
+Paramètres ajoutés en v1.10 (onglet « Paramètres » de l'EA, valeurs par défaut et
+règles exactes dans [docs/STRATEGIE.md](docs/STRATEGIE.md)) :
+
+| Groupe | Paramètres principaux |
+|---|---|
+| Général | `InpRunLabel` (libellé des comparaisons A/B), `InpLogCandles`, `InpLogFvg` (aucun / principal / tout) |
+| Filtres de marché | `InpMaxBarGapMin` (trou de données toléré) |
+| Structure | `InpUseTrendFilter`, `InpEMAPeriodM15`, `InpTrendSlopeBars` |
+| Régimes de marché | `InpUseRegimeFilter`, `InpRegimeVolatileRatio`, `InpRegimeChopAlternation`, `InpRegimesF1` … `InpRegimesF6` |
+| Bougies japonaises | `InpCdlDisabled`, seuils de forme (`InpCdlDojiBodyRatio`, `InpCdlWickRatio`…), `InpCdlConfirmBars`, `InpCdlBlockOpposing`, `InpCdlBlockIndecision`, `InpCdlBlockExtended`, `InpCdlRequirePattern` |
+| Supports / résistances | `InpZoneMergeATR`, `InpZonePadATR`, `InpZoneMinTouches`, `InpZoneMinSeparationBars`, `InpZoneBreakCloses`, `InpUseSRObstacles`, `InpSRMinStrength`, `InpSRReactBars` |
+| FVG / imbalances | `InpFvgTF`, `InpFvgMinSizeATR`, `InpFvgMinDispATR`, `InpFvgMinQuality`, `InpFvgMaxRetests`, `InpFvgMaxAgeBars`, `InpUseIFVG`, poids `InpFvgW*` |
+| Score | `InpWCandle` (nouveau), `InpWTrigger`, `InpWStructure` ; `InpMinScore` reste à 80 |
+| Alertes | `InpAlertPopup`, `InpAlertPush`, `InpAlertMail`, `InpAlertThrottleSec`, catégories `InpAlert*` |
 
 Toutes les règles et valeurs numériques : [docs/STRATEGIE.md](docs/STRATEGIE.md).
 
@@ -276,8 +332,10 @@ avec l'environnement dans le nom (`BACKTEST`, `DEMO`, `REEL`) :
 | Fichier | Contenu |
 |---|---|
 | `GLS_<env>_<compte>_<symbole>_journal.csv` | tous les événements (ordres, refus, gestion, protections, erreurs) |
-| `..._signals.csv` | chaque configuration complète : composantes du score, décision, raison |
-| `..._trades.csv` | une ligne par **position** clôturée (partiels agrégés) |
+| `..._signals.csv` | chaque configuration complète : composantes du score, décision, raison, critères satisfaits / échoués, figure, régime, tendances, libellé |
+| `..._trades.csv` | une ligne par **position** clôturée (partiels agrégés), avec régime, libellé et figure à l'entrée |
+| `..._bougies.csv` | figures de bougies interprétables, à leur statut final (confirmée / invalidée / expirée) avec leurs mesures et leur contexte (`InpLogCandles` : aucun / principal / tout) |
+| `..._fvg.csv` | FVG M5 : création puis comblement ou invalidation, avec tous leurs attributs (`InpLogFvg`) |
 | `..._rapport.txt` | synthèse : trades, réussite, PF, espérance (devise et R), drawdown, série de pertes, coûts observés et estimés, glissement, durée, et répartitions par session / famille / sortie / tranche de score |
 
 Taux de réussite = positions gagnantes / positions clôturées × 100. Le résultat
@@ -287,10 +345,13 @@ d'une position inclut toutes ses clôtures partielles, commissions, swaps et fra
 
 Voir [docs/PROTOCOLE_VALIDATION.md](docs/PROTOCOLE_VALIDATION.md) : critères fixés
 à l'avance, périodes développement / validation / test final séparées, mêmes coûts
-et mêmes contraintes de risque pour les quatre familles, correction pour le nombre
-de variantes, stress des coûts, test final verrouillé, puis démo. L'outil
-`tools/analyze_trades.py` produit le rapport et applique la règle de décision ; si
-aucune famille ne satisfait les critères, **aucune n'est retenue**.
+et mêmes contraintes de risque pour les six familles, correction pour le nombre
+de variantes, stress des coûts, Monte-Carlo, sensibilité des paramètres,
+comparaisons A/B des filtres (référence, chaque filtre seul, tous), répartition par
+régime, test final verrouillé, puis démo. L'outil `tools/analyze_trades.py`
+produit le rapport et applique la règle de décision ; si aucune famille ne
+satisfait les critères, **aucune n'est retenue**. Aucun paramètre n'est jamais
+modifié automatiquement.
 
 ## 12. Vérifications réalisées
 
@@ -304,15 +365,26 @@ MetaTrader (`tests/`, lancer `tests/run_checks.sh`) :
 2. **Compilation C++ stricte** du code de l'EA (g++ et clang++, avertissements
    traités comme erreurs : conversions implicites, masquage de variables,
    comparaisons signées…) avec une couche reproduisant les signatures MQL5 utilisées.
-3. **23 tests** (577 vérifications) exécutant réellement le code de l'EA contre un
-   courtier simulé : heures d'été, indicateurs, BOS/CHOCH, détection des 4 familles
-   (dont le cas « cassure qui continue » refusé), volume et refus au volume minimal,
-   statistiques agrégées par position, protections, intégration complète sur
-   données synthétiques (aucun stop élargi, stop présent à chaque ouverture, pas de
-   TP partiel dupliqué, limite de positions et de trades, risque par trade borné),
+3. **41 tests** (1923 vérifications) exécutant réellement le code de l'EA contre un
+   courtier simulé : heures d'été, indicateurs, BOS/CHOCH, détection des 6 familles
+   (dont le cas « cassure qui continue » refusé), mesures et figures de bougies
+   (haussières et miroirs baissiers, amplitude nulle, confirmation / invalidation /
+   expiration, désactivation), tendance par votes et régimes, supports /
+   résistances (regroupement, réactions indépendantes, inversion de rôle, cassure
+   ratée), FVG / IFVG / OB (bornes, comblement, retours, invalidation), obstacles
+   (prix dans une résistance), volume et refus au volume minimal, statistiques
+   agrégées par position, protections, intégration complète sur données
+   synthétiques (aucun stop élargi, stop présent à chaque ouverture, pas de TP
+   partiel dupliqué, limite de positions et de trades, risque par trade borné),
    redémarrage après TP1 avec et sans variables globales, position sans stop,
-   boutons, compte réel, petit compte, coupure de connexion. Les accès hors limites
-   de tableau et les divisions par zéro font échouer les tests.
+   boutons et lignes du tableau de bord, compte réel, petit compte, coupure de
+   connexion, pannes d'exécution injectées (requotes, erreurs non récupérables →
+   suspension, délai dépassé), alertes, trou de données, comparaison A/B des
+   filtres, volume des journaux. Les accès hors limites de tableau et les
+   divisions par zéro font échouer les tests ; `tests/build/gls_tests "motif"`
+   lance un sous-ensemble.
+4. **Outil d'analyse** : 12 tests Python (statistiques, Monte-Carlo, comparaison
+   A/B, verrouillage du test final, rapports).
 
 Ce banc **ne remplace pas** la compilation MetaEditor ni le testeur MT5 : le
 courtier simulé est simplifié et les données sont synthétiques (sans valeur de
@@ -328,3 +400,9 @@ performance).
   les modifie, la reprise s'appuie sur les variables globales et l'historique.
 - Statistiques affichées sur l'historique des `InpStatsHistoryDays` (365) derniers jours.
 - Avec un très petit capital, la plupart des entrées seront refusées (§ 6).
+- Les filtres v1.10 réduisent fortement le nombre d'entrées sur les données
+  synthétiques (obstacles S/R : aucune entrée F1) ; leur intérêt n'est pas
+  démontré et doit être mesuré par les comparaisons A/B sur données réelles.
+- Valeurs par défaut des nouveaux modules non calibrées ; figures de bougies sur
+  M1 uniquement ; absorption « apparente » fondée sur le volume de ticks.
+- Liste complète des défauts résiduels : [docs/AUDIT.md § 5](docs/AUDIT.md).

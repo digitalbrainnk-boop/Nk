@@ -11,6 +11,9 @@
 
 #include "Structure.mqh"
 #include "Sessions.mqh"
+#include "Candles.mqh"
+#include "Trend.mqh"
+#include "Fvg.mqh"
 
 //--- Heure de clôture de la première barre clôturant au-delà d'un niveau après fromTime (0 = aucune)
 datetime FirstCloseBeyond(const CBarSeries &s, const datetime fromTime, const double level, const bool above)
@@ -38,8 +41,24 @@ public:
    double            atrLong[];    // ATR(100) M1
    double            atr5[];       // ATR(14) M5
    double            ema5[];       // EMA(200) M5
+   double            atr5Long[];   // ATR(100) M5
+   double            ema15[];      // EMA(200) M15
+   double            atr15[];      // ATR(14) M15
+   CStructure        st1;
    CStructure        st5;
    CStructure        st15;
+   CTrendModel       t5;
+   CTrendModel       t15;
+   int               regime;
+   string            regimeWhy;
+   CZoneMap          zones;
+   CFvgMap           fvg5;
+   CFvgMap           fvg1;
+   CCandleAnalysis   cdlBuy;       // figures haussières (série réelle) + figures neutres
+   CCandleAnalysis   cdlSell;      // figures baissières (série miroir)
+   bool              dataGap;
+   string            dataGapText;
+   double            spreadNow;
    CLiquidityMap     liq;
    double            pdh;
    double            pdl;
@@ -54,8 +73,9 @@ public:
    datetime          m15Last;
    int               dataErrors;
 
-                     CMarketContext(void) : pdh(0.0), pdl(0.0), pdValid(false), asiaHigh(0.0), asiaLow(0.0), asiaValid(false),
-                     asiaEndServer(0), ready(false), error(""), m5Last(0), m15Last(0), dataErrors(0) {}
+                     CMarketContext(void) : regime(GLS_RG_UNKNOWN), regimeWhy(""), dataGap(false), dataGapText(""), spreadNow(0.0), pdh(0.0), pdl(0.0),
+                     pdValid(false), asiaHigh(0.0), asiaLow(0.0), asiaValid(false), asiaEndServer(0), ready(false), error(""), m5Last(0), m15Last(0),
+                     dataErrors(0) {}
 
    int               Last(void) const { return m1.count - 1; }
    double            Atr(void) const { return (m1.count > 0) ? atr[m1.count - 1] : 0.0; }
@@ -79,10 +99,14 @@ public:
 
    //--- Mise à jour à chaque nouvelle barre M1
    bool              Update(const string sym, const datetime serverNow, const CGlsClock &clock,
-                            const int emaPeriod, const int k5, const int k15, const double erTrendMin, const int transitionBars)
+                            const int emaPeriod, const int k5, const int k15, const double erTrendMin, const int transitionBars,
+                            const double spread)
      {
       ready = false;
+      spreadNow = spread;
       string err = "";
+      bool m5Changed = false;
+      bool m15Changed = false;
       if(!LoadClosedBars(sym, PERIOD_M1, 400, 150, m1, err))
         {
          error = "M1 " + err;
@@ -93,8 +117,8 @@ public:
       CalcATR(m1, 100, atrLong);
       m1Mirror.MirrorFrom(m1);
 
-      datetime t5 = iTime(sym, PERIOD_M5, 1);
-      if(t5 == 0 || t5 != m5Last || m5.count == 0)
+      datetime bar5 = iTime(sym, PERIOD_M5, 1);
+      if(bar5 == 0 || bar5 != m5Last || m5.count == 0)
         {
          if(!LoadClosedBars(sym, PERIOD_M5, 1000, emaPeriod * 2, m5, err))
            {
@@ -104,21 +128,26 @@ public:
            }
          CalcEMA(m5.close, m5.count, emaPeriod, ema5);
          CalcATR(m5, 14, atr5);
+         CalcATR(m5, 100, atr5Long);
          st5.Analyze(m5, k5, 20, erTrendMin, transitionBars * 3);
          m5Last = m5.time[m5.count - 1];
+         m5Changed = true;
         }
 
-      datetime t15 = iTime(sym, PERIOD_M15, 1);
-      if(t15 == 0 || t15 != m15Last || m15.count == 0)
+      datetime bar15 = iTime(sym, PERIOD_M15, 1);
+      if(bar15 == 0 || bar15 != m15Last || m15.count == 0)
         {
-         if(!LoadClosedBars(sym, PERIOD_M15, 400, 100, m15, err))
+         if(!LoadClosedBars(sym, PERIOD_M15, 800, 100, m15, err))
            {
             error = "M15 " + err;
             dataErrors++;
             return false;
            }
+         CalcEMA(m15.close, m15.count, InpEMAPeriodM15, ema15);
+         CalcATR(m15, 14, atr15);
          st15.Analyze(m15, k15, 16, erTrendMin, transitionBars);
          m15Last = m15.time[m15.count - 1];
+         m15Changed = true;
         }
 
       //--- cohérence temporelle entre unités de temps (aucune barre "du futur")
@@ -131,9 +160,110 @@ public:
         }
 
       BuildLevels(sym, serverNow, clock);
+
+      //--- tendance M15 / M5 et régime
+      if(m15Changed || !t15.ready)
+         t15.Evaluate(m15, st15, ema15, atr15[m15.count - 1], InpTrendSlopeBars, erTrendMin, transitionBars);
+      if(m5Changed || !t5.ready)
+         t5.Evaluate(m5, st5, ema5, atr5[m5.count - 1], InpTrendSlopeBars, erTrendMin, transitionBars * 3);
+      regime = ClassifyRegime(t15, m5, atr5[m5.count - 1], atr5Long[m5.count - 1], regimeWhy);
+
+      //--- supports / résistances et FVG M5 (à chaque nouvelle barre M5 ou M15)
+      double pt = SymbolInfoDouble(sym, SYMBOL_POINT);
+      if(m5Changed || m15Changed)
+        {
+         zones.Build(st5, st15, m5, atr5[m5.count - 1], serverNow);
+         fvg5.Build(m5, atr5, st5, zones, 5, 300, pt);
+        }
+      //--- structure, FVG et bougies M1
+      st1.Analyze(m1, InpM1SwingStrength, 20, erTrendMin, transitionBars * 15);
+      fvg1.Build(m1, atr, st1, zones, 1, 120, pt);
+      cdlBuy.Analyze(m1, atr, GLS_BUY, InpCdlLookback);
+      cdlSell.Analyze(m1Mirror, atr, GLS_SELL, InpCdlLookback);
+      EvaluateCandleContext(cdlBuy);
+      EvaluateCandleContext(cdlSell);
+
+      //--- intégrité : trous dans les barres M1 récentes
+      dataGap = false;
+      dataGapText = "";
+      for(int i = MathMax(1, m1.count - 30); i < m1.count; i++)
+         if(m1.time[i] - m1.time[i - 1] > InpMaxBarGapMin * 60)
+           {
+            dataGap = true;
+            dataGapText = "trou de données M1 avant " + TimeToString(m1.time[i], TIME_MINUTES);
+           }
       error = "";
       ready = true;
       return true;
+     }
+
+   //--- Interprétation contextuelle des figures de bougies (journal et preuves)
+   void              EvaluateCandleContext(CCandleAnalysis &ca)
+     {
+      int last = m1.count - 1;
+      double a = (last >= 0) ? atr[last] : 0.0;
+      if(a <= 0.0)
+         return;
+      double prox = InpCdlZoneProxATR * a;
+      for(int i = 0; i < ArraySize(ca.pats); i++)
+        {
+         int d = (ca.pats[i].dir != 0) ? ca.pats[i].dir : ca.viewDir;
+         double vs = (ca.viewDir == GLS_BUY) ? 1.0 : -1.0;
+         double realLow = (vs > 0.0) ? ca.pats[i].low : -ca.pats[i].high;
+         double realHigh = (vs > 0.0) ? ca.pats[i].high : -ca.pats[i].low;
+         double extreme = (d > 0) ? realLow : realHigh;
+         //--- proximité d'une zone favorable : S/R de bon rôle, liquidité, FVG du même sens
+         bool near = false;
+         int favRole = (d > 0) ? GLS_ZONE_SUPPORT : GLS_ZONE_RESIST;
+         for(int z = 0; z < ArraySize(zones.zones) && !near; z++)
+            if(zones.zones[z].valid && zones.zones[z].role == favRole && extreme >= zones.zones[z].lo - prox && extreme <= zones.zones[z].hi + prox)
+               near = true;
+         for(int f = 0; f < ArraySize(fvg5.fvgs) && !near; f++)
+            if(fvg5.fvgs[f].dir == d && fvg5.fvgs[f].status <= GLS_FVG_PARTIAL && extreme >= fvg5.fvgs[f].lo - prox && extreme <= fvg5.fvgs[f].hi + prox)
+               near = true;
+         if(d > 0)
+           {
+            for(int l = 0; l < ArraySize(liq.lows) && !near; l++)
+               if(MathAbs(liq.lows[l].price - extreme) <= prox)
+                  near = true;
+           }
+         else
+           {
+            for(int l = 0; l < ArraySize(liq.highs) && !near; l++)
+               if(MathAbs(liq.highs[l].price - extreme) <= prox)
+                  near = true;
+           }
+         //--- obstacle opposé immédiat (moins d'1 ATR)
+         bool obst = false;
+         int oppRole = (d > 0) ? GLS_ZONE_RESIST : GLS_ZONE_SUPPORT;
+         for(int z = 0; z < ArraySize(zones.zones) && !obst; z++)
+           {
+            if(!zones.zones[z].valid || zones.zones[z].role != oppRole)
+               continue;
+            double dist = (d > 0) ? zones.zones[z].lo - realHigh : realLow - zones.zones[z].hi;
+            if(dist >= 0.0 && dist <= a)
+               obst = true;
+           }
+         int b = ca.pats[i].bar;
+         double rng = (b >= 0 && b <= last) ? m1.high[b] - m1.low[b] : 0.0;
+         ca.pats[i].nearZone = near;
+         ca.pats[i].obstacle = obst;
+         ca.pats[i].noisy = (rng <= 0.0 || spreadNow > 0.35 * rng);
+         int al = 0;
+         if(t15.dir != 0)
+            al = (t15.dir == d) ? 1 : -1;
+         else
+            if(t5.dir != 0)
+               al = (t5.dir == d) ? 1 : -1;
+         ca.pats[i].trendAlign = al;
+         if(ca.pats[i].dir == 0)
+            ca.pats[i].interpretable = !ca.pats[i].noisy;
+         else
+           {
+            bool cont = (ca.pats[i].category == GLS_CDLCAT_CONTINUATION || ca.pats[i].category == GLS_CDLCAT_COMPOSITE);
+            ca.pats[i].interpretable = ca.pats[i].contextOk && !ca.pats[i].noisy && al >= 0 && !obst && (near || (cont && al > 0));
+           }
+        }
      }
 
    //--- Niveaux de liquidité externes
