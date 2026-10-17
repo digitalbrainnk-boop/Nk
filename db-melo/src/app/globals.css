@@ -1,0 +1,187 @@
+@import "tailwindcss";
+
+/* ─────────────── Design system DB.Mélo : studio sombre, accents or métallique ─────────────── */
+@theme {
+  --color-ink: #0b0b0f;
+  --color-studio: #161622;
+  --color-studio-2: #1e1e2e;
+  --color-line: #2a2a3c;
+  --color-gold: #e5a93c;
+  --color-gold-soft: #f3c969;
+  --color-gold-deep: #9a6b1c;
+  --color-amber-neon: #ffb547;
+  --color-violet-studio: #7c5cff;
+  --color-cream: #f5f3ee;
+  --color-muted: #a09eb0;
+  --color-danger: #ff6b6b;
+  --color-success: #4ade80;
+
+  --font-display: var(--font-sora), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-manrope), ui-sans-serif, system-ui, sans-serif;
+
+  --animate-eq: eq 0.9s ease-in-out infinite;
+  --animate-spin-slow: spin 8s linear infinite;
+  --animate-shimmer: shimmer 2.4s linear infinite;
+  --animate-float: float 6s ease-in-out infinite;
+
+  @keyframes eq {
+    0%,
+    100% {
+      transform: scaleY(0.25);
+    }
+    50% {
+      transform: scaleY(1);
+    }
+  }
+  @keyframes shimmer {
+    from {
+      background-position: -200% 0;
+    }
+    to {
+      background-position: 200% 0;
+    }
+  }
+  @keyframes float {
+    0%,
+    100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-8px);
+    }
+  }
+}
+
+html {
+  background: var(--color-ink);
+  color-scheme: dark;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background: var(--color-ink);
+  color: var(--color-cream);
+  font-family: var(--font-sans);
+  -webkit-tap-highlight-color: transparent;
+  overflow-x: hidden;
+}
+
+::selection {
+  background: rgb(229 169 60 / 0.35);
+}
+
+/* Lueur studio en arrière-plan */
+.studio-glow {
+  background:
+    radial-gradient(60rem 30rem at 15% -10%, rgb(124 92 255 / 0.18), transparent 60%),
+    radial-gradient(50rem 30rem at 100% 0%, rgb(229 169 60 / 0.12), transparent 60%);
+}
+
+@layer components {
+  .card {
+    @apply rounded-3xl border border-line bg-studio/85 backdrop-blur-sm;
+  }
+  .btn {
+    @apply inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl px-5 py-3 text-[15px] font-semibold transition select-none active:scale-[0.98] disabled:pointer-events-none disabled:opacity-45;
+  }
+  .btn-gold {
+    @apply bg-linear-to-b from-gold-soft to-gold text-ink shadow-[0_10px_30px_-10px_rgb(229_169_60/0.7)] hover:brightness-110;
+  }
+  .btn-ghost {
+    @apply border border-line bg-studio-2/70 text-cream hover:border-gold/50 hover:text-gold-soft;
+  }
+  .btn-quiet {
+    @apply text-muted hover:text-cream;
+  }
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-full border border-line bg-studio-2/80 px-3 py-1.5 text-sm text-cream transition;
+  }
+  .chip-on {
+    @apply border-gold bg-gold/15 text-gold-soft shadow-[0_0_0_1px_rgb(229_169_60/0.35)];
+  }
+  .field {
+    @apply w-full rounded-2xl border border-line bg-ink/60 px-4 py-3 text-[16px] text-cream placeholder:text-muted/60 outline-none transition focus:border-gold/70 focus:ring-2 focus:ring-gold/20;
+  }
+  .label {
+    @apply mb-1.5 block text-sm font-semibold text-cream/90;
+  }
+  .error-text {
+    @apply mt-1.5 text-sm text-danger;
+  }
+  .gold-text {
+    @apply bg-linear-to-r from-gold-soft via-amber-neon to-gold bg-clip-text text-transparent;
+  }
+  .eyebrow {
+    @apply text-xs font-bold tracking-[0.25em] text-gold uppercase;
+  }
+}
+
+/* Éditeur de paroles : le textarea transparent est superposé à un calque coloré identique. */
+.lyrics-layer {
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.75;
+  letter-spacing: 0;
+  font-variant-ligatures: none;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: normal;
+  tab-size: 4;
+  padding: 16px 84px 16px 18px;
+  margin: 0;
+  border: 0;
+}
+
+textarea.lyrics-layer {
+  -webkit-appearance: none;
+  appearance: none;
+  resize: none;
+  overflow: hidden;
+  background: transparent;
+  outline: none;
+}
+
+.safe-bottom {
+  padding-bottom: max(1rem, env(safe-area-inset-bottom));
+}
+
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+input[type="range"].emotion-range {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+}
+input[type="range"].emotion-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 9999px;
+  background: radial-gradient(circle at 35% 35%, #fff6dd, #e5a93c 60%, #9a6b1c);
+  border: 3px solid #0b0b0f;
+  box-shadow: 0 0 0 2px #e5a93c, 0 6px 20px rgb(229 169 60 / 0.5);
+  cursor: grab;
+}
+input[type="range"].emotion-range::-moz-range-thumb {
+  width: 26px;
+  height: 26px;
+  border-radius: 9999px;
+  background: radial-gradient(circle at 35% 35%, #fff6dd, #e5a93c 60%, #9a6b1c);
+  border: 3px solid #0b0b0f;
+  box-shadow: 0 0 0 2px #e5a93c;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

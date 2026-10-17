@@ -1,5 +1,7 @@
 # 🎵 Mon agent IA — répond à tes clients comme toi
 
+> 🆕 **DB.Mélo**, l'application SaaS de chansons personnalisées (Next.js, Suno via Kie.ai, Mobile Money et cartes, installable sur téléphone), se trouve dans le dossier [`db-melo/`](db-melo/README.md).
+
 Un site (tableau de bord) avec un agent IA qui répond à tes clients sur **WhatsApp**, **Telegram**, **Messenger**, **Instagram** et aux **commentaires Facebook** — avec ta façon d'écrire, une mémoire de chaque client et la compréhension des **messages vocaux**.
 
 ## Ce que fait l'agent
