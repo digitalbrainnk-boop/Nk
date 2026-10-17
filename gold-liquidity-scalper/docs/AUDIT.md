@@ -13,8 +13,8 @@ vérifié. Il ne déclare **pas** le robot prêt pour un compte réel.
 | Validée en démo | testée sur un compte démo réel : **NON pour toutes les lignes** |
 | Validée statistiquement | protocole sur données réelles : **NON pour toutes les lignes** |
 
-Preuves : `tests/test_main.cpp` (49 tests, 2793 vérifications, 0 échec avec g++ ;
-passe clang++ consignée ligne 51), `tools/test_analyze_trades.py` (13 tests),
+Preuves : `tests/test_main.cpp` (49 tests, 2793 vérifications, 0 échec avec g++
+et clang++, sans avertissement), `tools/test_analyze_trades.py` (13 tests),
 exécution de la suite sous AddressSanitizer / UndefinedBehaviorSanitizer (ligne 51). Les données de test sont
 **synthétiques** : aucun chiffre de ce dépôt n'a de valeur de performance.
 
@@ -107,7 +107,7 @@ exécution de la suite sous AddressSanitizer / UndefinedBehaviorSanitizer (ligne
 | 48 | Surveillance et alertes configurables, jamais présentées comme preuve de succès | oui | oui | `alertes` (anti-répétition, catégories, échec d'envoi compté, testeur) |
 | 49 | Gestion des versions, aucun déploiement automatique sur le réel | oui | oui (v1.00) | `CHANGELOG.md` ; aucun paramètre modifié par le programme ; confirmation explicite sur compte réel |
 | 50 | Petit capital | oui | oui | `petit compte (10)` : aucune position, refus « volume minimal » journalisé |
-| 51 | Analyse mémoire et comportements indéfinis ; second compilateur | — | v1.10 : oui ; v1.11 : en cours | v1.10 : 41 tests sous AddressSanitizer + UndefinedBehaviorSanitizer et clang++ sans signalement. v1.11 : passes clang++ et sanitizers en cours au moment de ce commit |
+| 51 | Analyse mémoire et comportements indéfinis ; second compilateur | — | oui | v1.11 : les 49 tests (2793 vérifications) sous AddressSanitizer + UndefinedBehaviorSanitizer (g++ -O1, 5 groupes) : aucune erreur mémoire, aucune fuite, aucun comportement indéfini ; clang++ strict : 0 échec, aucun avertissement |
 
 ## 5. Défauts et risques résiduels connus
 

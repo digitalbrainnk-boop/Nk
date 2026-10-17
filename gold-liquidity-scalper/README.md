@@ -372,8 +372,7 @@ MetaTrader (`tests/`, lancer `tests/run_checks.sh`) :
 2. **Compilation C++ stricte** du code de l'EA (g++ et clang++, avertissements
    traités comme erreurs : conversions implicites, masquage de variables,
    comparaisons signées…) avec une couche reproduisant les signatures MQL5 utilisées.
-3. **49 tests** (2793 vérifications, g++ ; passes clang++ et sanitizers v1.11 :
-   voir `docs/AUDIT.md` ligne 51) exécutant réellement le code de l'EA contre un
+3. **49 tests** (2793 vérifications, g++ et clang++) exécutant réellement le code de l'EA contre un
    courtier simulé : heures d'été, indicateurs, BOS/CHOCH, détection des 6 familles
    (dont le cas « cassure qui continue » refusé), mesures et figures de bougies
    (haussières et miroirs baissiers, amplitude nulle, confirmation / invalidation /
@@ -393,7 +392,7 @@ MetaTrader (`tests/`, lancer `tests/run_checks.sh`) :
    journal de F6, variantes de l'étude FVG, cohérence des CSV. Les accès hors limites de tableau et les
    divisions par zéro font échouer les tests ; `tests/build/gls_tests "motif"`
    lance un sous-ensemble.
-4. **Analyse mémoire** : les 41 tests de la v1.10 ont aussi été exécutés sous
+4. **Analyse mémoire** : les 49 tests ont aussi été exécutés sous
    AddressSanitizer et UndefinedBehaviorSanitizer : aucune erreur mémoire, aucune
    fuite, aucun comportement indéfini signalé.
 5. **Outil d'analyse** : 13 tests Python (statistiques, Monte-Carlo, comparaison
