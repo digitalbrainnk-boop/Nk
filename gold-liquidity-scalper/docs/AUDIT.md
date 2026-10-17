@@ -15,7 +15,7 @@ vérifié. Il ne déclare **pas** le robot prêt pour un compte réel.
 
 Preuves : `tests/test_main.cpp` (41 tests, 1923 vérifications, 0 échec avec g++
 et clang++), `tools/test_analyze_trades.py` (12 tests), exécution de la suite sous
-AddressSanitizer / UndefinedBehaviorSanitizer (voir § 4). Les données de test sont
+AddressSanitizer / UndefinedBehaviorSanitizer (ligne 51 : aucun signalement). Les données de test sont
 **synthétiques** : aucun chiffre de ce dépôt n'a de valeur de performance.
 
 ## 1. Module bougies japonaises
@@ -87,7 +87,7 @@ AddressSanitizer / UndefinedBehaviorSanitizer (voir § 4). Les données de test 
 | 48 | Surveillance et alertes configurables, jamais présentées comme preuve de succès | oui | oui | `alertes` (anti-répétition, catégories, échec d'envoi compté, testeur) |
 | 49 | Gestion des versions, aucun déploiement automatique sur le réel | oui | oui (v1.00) | `CHANGELOG.md` ; aucun paramètre modifié par le programme ; confirmation explicite sur compte réel |
 | 50 | Petit capital | oui | oui | `petit compte (10)` : aucune position, refus « volume minimal » journalisé |
-| 51 | Analyse sous AddressSanitizer / UBSan | — | voir ci-dessous | résultat consigné dans la section « Vérifications » du README |
+| 51 | Analyse mémoire et comportements indéfinis | — | oui | les 41 tests exécutés sous AddressSanitizer + UndefinedBehaviorSanitizer (g++ -O1, 4 groupes) : aucune erreur, aucune fuite, aucun comportement indéfini signalé |
 
 ## 5. Défauts et risques résiduels connus
 

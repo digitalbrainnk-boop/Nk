@@ -383,7 +383,10 @@ MetaTrader (`tests/`, lancer `tests/run_checks.sh`) :
    filtres, volume des journaux. Les accès hors limites de tableau et les
    divisions par zéro font échouer les tests ; `tests/build/gls_tests "motif"`
    lance un sous-ensemble.
-4. **Outil d'analyse** : 12 tests Python (statistiques, Monte-Carlo, comparaison
+4. **Analyse mémoire** : les 41 tests ont aussi été exécutés sous
+   AddressSanitizer et UndefinedBehaviorSanitizer : aucune erreur mémoire, aucune
+   fuite, aucun comportement indéfini signalé.
+5. **Outil d'analyse** : 12 tests Python (statistiques, Monte-Carlo, comparaison
    A/B, verrouillage du test final, rapports).
 
 Ce banc **ne remplace pas** la compilation MetaEditor ni le testeur MT5 : le
