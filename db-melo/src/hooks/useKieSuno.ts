@@ -21,7 +21,10 @@ export type GenerationPhase =
 export interface UseKieSunoOptions {
   /** Intervalle de polling nominal (ms). */
   intervalMs?: number;
-  /** Lance la création automatiquement si elle ne l'est pas encore (et si le parcours le permet). */
+  /**
+   * Lance la création si elle ne l'est pas encore. En parcours « paiement d'abord », elle démarre
+   * d'elle-même dès que la chanson est payée (le serveur la lance aussi à la confirmation).
+   */
   autoStart?: boolean;
 }
 
@@ -127,8 +130,9 @@ export function useKieSuno(songId: string, opts: UseKieSunoOptions = {}): UseKie
 
   // Démarrage automatique (une seule fois), si le parcours le permet.
   useEffect(() => {
-    if (!opts.autoStart || !song || autoStarted.current || song.generation.status !== "idle") return;
-    if (song.flowMode === "pay_first" && song.payment.status !== "paid") return;
+    if (!song || autoStarted.current || song.generation.status !== "idle") return;
+    const allowed = song.flowMode === "pay_first" ? song.payment.status === "paid" : opts.autoStart;
+    if (!allowed) return;
     autoStarted.current = true;
     void startGeneration();
   }, [opts.autoStart, song, startGeneration]);

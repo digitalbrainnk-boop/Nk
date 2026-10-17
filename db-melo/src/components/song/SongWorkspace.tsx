@@ -1,6 +1,6 @@
 "use client";
 
-// Page d'une commande : création (useKieSuno) → pré-écoute protégée → paiement → lecteur HD,
+// Page d'une commande : paiement → composition (useKieSuno) → lecteur HD,
 // téléchargement mobile, pochette et page cadeau.
 import { AnimatePresence, motion } from "framer-motion";
 import { AlertTriangle, CheckCircle2, Loader, Music, RefreshCw, XCircle } from "lucide-react";
@@ -17,6 +17,7 @@ import { CoverPicker } from "./CoverPicker";
 import { DownloadPanel } from "./DownloadPanel";
 import { GenerationProgress } from "./GenerationProgress";
 import { GiftShare } from "./GiftShare";
+import { LyricsCard } from "./LyricsCard";
 
 type PayState = "checking" | "pending" | "paid" | "failed" | "cancelled" | null;
 
@@ -154,7 +155,10 @@ export function SongWorkspace({ id, autoStart, paymentRef }: { id: string; autoS
         )}
         {payState === "paid" && (
           <motion.div initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} className="flex items-center gap-3 rounded-2xl border border-success/40 bg-success/10 p-4 text-sm">
-            <CheckCircle2 className="size-5 text-success" /> Merci ! Paiement confirmé : votre chanson est débloquée en qualité HD, sans watermark.
+            <CheckCircle2 className="size-5 text-success" />
+            {song.generation.status === "ready"
+              ? "Merci ! Paiement confirmé : votre chanson est débloquée en qualité HD, sans watermark."
+              : "Merci ! Paiement confirmé : la composition de votre chanson démarre."}
           </motion.div>
         )}
       </AnimatePresence>
@@ -162,14 +166,18 @@ export function SongWorkspace({ id, autoStart, paymentRef }: { id: string; autoS
       {song.generation.status === "idle" && !generating && (
         song.flowMode === "pay_first" && !paid ? (
           <>
-            <p className="card p-5 text-sm text-muted">Vos paroles sont validées. La musique sera composée juste après le paiement (1 à 5 minutes).</p>
-            <PaymentSelector song={song} title="Validez votre commande" />
+            <p className="rounded-2xl border border-gold/30 bg-gold/5 p-4 text-sm text-cream/90">
+              Dernière étape : réglez votre chanson. La musique est composée juste après le paiement (1 à 5 minutes), puis vous la téléchargez.
+            </p>
+            <LyricsCard song={song} editable onSaved={k.setSong} />
+            <PaymentSelector song={song} />
           </>
         ) : (
           <div className="card flex flex-col items-center gap-4 p-8 text-center">
-            <p className="text-muted">Tout est prêt pour composer votre chanson.</p>
-            <button type="button" onClick={k.startGeneration} className="btn btn-gold">
-              Lancer la création
+            {paid && !k.error && <Loader className="size-6 animate-spin text-gold" />}
+            <p className="text-muted">{paid ? "Démarrage de la composition…" : "Tout est prêt pour composer votre chanson."}</p>
+            <button type="button" onClick={k.startGeneration} className={paid ? "btn btn-ghost" : "btn btn-gold"}>
+              Lancer la composition
             </button>
             {k.error && <p className="text-sm text-danger">{k.error}</p>}
           </div>
@@ -179,13 +187,27 @@ export function SongWorkspace({ id, autoStart, paymentRef }: { id: string; autoS
       {generating && <GenerationProgress song={song} phase={k.phase} progress={k.progress} variantProgress={k.variantProgress} elapsed={k.elapsed} />}
 
       {song.generation.status === "failed" && (
-        <div className="card space-y-4 p-6 text-center">
-          <AlertTriangle className="mx-auto size-8 text-danger" />
-          <p>{song.generation.error ?? "La création a échoué."}</p>
-          <button type="button" onClick={k.startGeneration} className="btn btn-gold">
-            <RefreshCw className="size-4" /> Relancer la création
-          </button>
-        </div>
+        <>
+          <div className="card space-y-4 p-6 text-center">
+            <AlertTriangle className="mx-auto size-8 text-danger" />
+            <p>{song.generation.error ?? "La composition a échoué."}</p>
+            {song.generation.attemptsLeft > 0 ? (
+              <>
+                <p className="text-sm text-muted">
+                  {paid ? "Votre paiement est conservé. " : ""}Corrigez les paroles si besoin, puis relancez ({song.generation.attemptsLeft} essai
+                  {song.generation.attemptsLeft > 1 ? "s" : ""} restant{song.generation.attemptsLeft > 1 ? "s" : ""}).
+                </p>
+                <button type="button" onClick={k.startGeneration} className="btn btn-gold">
+                  <RefreshCw className="size-4" /> Relancer la composition
+                </button>
+              </>
+            ) : (
+              <p className="text-sm text-muted">Contactez-nous avec le lien de cette page : nous relancerons votre chanson.</p>
+            )}
+            {k.error && k.error !== song.generation.error && <p className="text-sm text-danger">{k.error}</p>}
+          </div>
+          {song.generation.attemptsLeft > 0 && <LyricsCard song={song} editable onSaved={k.setSong} />}
+        </>
       )}
 
       {song.generation.status === "ready" && !paid && (

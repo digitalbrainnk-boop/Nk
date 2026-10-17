@@ -77,9 +77,13 @@ export async function startGeneration(id: string, base: string): Promise<SongRec
       return;
     }
     if (config.flowMode() === "pay_first" && s.payment.status !== "paid") {
-      throw new HttpError(402, "Le paiement doit être validé avant la création musicale.");
+      throw new HttpError(402, "Le paiement doit être validé avant la composition de la chanson.");
     }
-    s.generation = { status: "generating", startedAt: Date.now() };
+    const attempts = s.generation.attempts ?? 0;
+    if (attempts >= config.maxAttempts()) {
+      throw new HttpError(429, "Nombre maximal de compositions atteint pour cette chanson : contactez-nous, nous la relancerons pour vous.");
+    }
+    s.generation = { status: "generating", startedAt: Date.now(), attempts: attempts + 1 };
     s.variants = { A: emptyVariant("A"), B: emptyVariant("B") };
     s.updatedAt = Date.now();
   });
@@ -243,8 +247,12 @@ export async function refreshSong(id: string, opts: { force?: boolean; base?: st
 
 /* ───────────── Paiement ───────────── */
 
-/** Applique la vérification du prestataire. Le montant et la devise doivent correspondre. */
-export async function applyPaymentResult(payment: PaymentRecord, v: PaymentVerification): Promise<PaymentRecord> {
+/**
+ * Applique la vérification du prestataire (le montant et la devise doivent correspondre).
+ * En parcours « paiement d'abord », la composition démarre dès la confirmation, même si le
+ * client a fermé la page (confirmation Mobile Money reçue par webhook, par exemple).
+ */
+export async function applyPaymentResult(payment: PaymentRecord, v: PaymentVerification, base?: string): Promise<PaymentRecord> {
   let status = v.status;
   if (status === "paid") {
     const wrongCurrency = v.currency && v.currency.toUpperCase() !== payment.currency;
@@ -275,6 +283,12 @@ export async function applyPaymentResult(payment: PaymentRecord, v: PaymentVerif
       };
       s.updatedAt = Date.now();
     });
+    if (base && config.flowMode() === "pay_first") {
+      const song = await songs.get(updated.songId);
+      if (song?.generation.status === "idle") {
+        await startGeneration(song.id, base).catch((e) => console.error(`[DB.Mélo] Composition après paiement ${song.id} :`, (e as Error).message));
+      }
+    }
   } else if (updated?.status === "pending") {
     await songs.update(updated.songId, (s) => {
       if (s.payment.status === "unpaid") s.payment = { ...s.payment, status: "pending", reference: updated.reference };
@@ -292,7 +306,13 @@ export function toPublicSong(s: SongRecord): PublicSong {
     giftSlug: paid ? s.giftSlug : undefined,
     createdAt: s.createdAt,
     config: s.config,
-    generation: { status: s.generation.status, startedAt: s.generation.startedAt, finishedAt: s.generation.finishedAt, error: s.generation.error },
+    generation: {
+      status: s.generation.status,
+      startedAt: s.generation.startedAt,
+      finishedAt: s.generation.finishedAt,
+      error: s.generation.error,
+      attemptsLeft: Math.max(0, config.maxAttempts() - (s.generation.attempts ?? 0)),
+    },
     variants: Object.fromEntries(
       VARIANTS.map((v) => {
         const x = s.variants[v];

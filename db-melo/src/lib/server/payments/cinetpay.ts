@@ -1,5 +1,5 @@
 // CinetPay : agrégateur Mobile Money d'Afrique de l'Ouest et centrale
-// (Orange Money, Wave, MTN MoMo, Moov Money…) en XOF / XAF.
+// (Orange Money, Wave, MTN MoMo, Moov Money, Airtel, M-Pesa…) en XOF, XAF, GNF et CDF.
 //   POST https://api-checkout.cinetpay.com/v2/payment        → data.payment_url
 //   POST https://api-checkout.cinetpay.com/v2/payment/check  → data.status (ACCEPTED, REFUSED…)
 //   Notification : POST x-www-form-urlencoded + en-tête x-token (HMAC-SHA256 avec la clé secrète)
@@ -39,8 +39,8 @@ export const cinetpay: PaymentProvider = {
   id: "cinetpay",
   label: "CinetPay",
   methods: ["mobile_money", "card"],
-  currencies: ["XOF", "XAF"],
-  operators: ["orange_money", "wave", "mtn_momo", "moov_money"],
+  currencies: ["XOF", "XAF", "GNF", "CDF"],
+  momoCountries: ["CI", "SN", "BF", "ML", "TG", "BJ", "NE", "CM", "GN", "CD"],
 
   isConfigured() {
     const c = config.cinetpay();

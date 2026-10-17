@@ -2,18 +2,19 @@ import { Check, Gift, Headphones, PenLine, Smartphone, Sparkles, Wand2 } from "l
 import Link from "next/link";
 import { HeroVisual } from "@/components/landing/HeroVisual";
 import { Reveal } from "@/components/landing/Reveal";
-import { OPERATORS, PLANS, STYLES, VOICES } from "@/lib/constants";
+import { ACTIVE_PLANS, OPERATORS, STYLES, VOICES } from "@/lib/constants";
 import { formatPrice } from "@/lib/pricing";
 
 const STEPS = [
   { icon: PenLine, title: "Racontez", text: "Écrivez vos paroles ou confiez vos souvenirs au parolier IA : prénoms, anecdotes, l'émotion voulue." },
-  { icon: Headphones, title: "Écoutez", text: "Le studio compose deux versions — une rythmée, une acoustique — avec la voix de votre choix." },
+  { icon: Headphones, title: "Composez", text: "Après le paiement, le studio compose deux versions — une rythmée, une acoustique — avec la voix de votre choix." },
   { icon: Gift, title: "Offrez", text: "Téléchargez en HD sur votre téléphone, envoyez sur WhatsApp ou partagez la page cadeau et son QR code." },
 ];
 
 const FAQ = [
-  { q: "Combien de temps faut-il ?", a: "Quelques minutes pour remplir le formulaire, puis 1 à 5 minutes de composition. Vous écoutez une pré-écoute avant de payer." },
-  { q: "Comment payer ?", a: "Par Mobile Money (Orange Money, Wave, MTN MoMo, Moov Money) en FCFA, ou par carte bancaire, Apple Pay et Google Pay en euros, dollars ou FCFA." },
+  { q: "Combien ça coûte ?", a: "1 000 FCFA la chanson, avec ses deux versions (rythmée et acoustique). Vous relisez et retouchez vos paroles gratuitement, puis vous payez : le studio compose alors votre chanson." },
+  { q: "Combien de temps faut-il ?", a: "Quelques minutes pour remplir le formulaire, puis 1 à 5 minutes de composition après le paiement." },
+  { q: "Comment payer depuis mon pays ?", a: "Par Mobile Money dans votre monnaie (Orange Money, Wave, MTN MoMo, Moov, Airtel Money, M-Pesa… selon le pays), ou par carte Visa / Mastercard, Apple Pay et Google Pay depuis n'importe quel pays d'Afrique." },
   { q: "Comment garder la chanson sur mon téléphone ?", a: "Un bouton « Télécharger & Sauvegarder » ouvre l'enregistrement natif : app Fichiers sur iPhone et iPad, Téléchargements et lecteurs de musique sur Android. Le MP3 contient le titre, l'artiste et la pochette." },
   { q: "Puis-je installer l'application ?", a: "Oui : sur Android et ordinateur, touchez « Installer l'app ». Sur iPhone et iPad, Safari → Partager → « Sur l'écran d'accueil »." },
   { q: "À qui appartient la chanson ?", a: "Vous pouvez l'offrir, la partager et la diffuser dans un cadre personnel (fête, cérémonie, réseaux sociaux). Pour un usage commercial, contactez-nous." },
@@ -40,7 +41,7 @@ export default function Home() {
             </a>
           </div>
           <ul className="mt-8 flex flex-wrap gap-x-6 gap-y-2 text-sm text-muted">
-            {["Pré-écoute avant paiement", "2 versions offertes", "Mobile Money & carte"].map((t) => (
+            {["Paroles relues avant de payer", "2 versions pour 1 000 FCFA", "Mobile Money & carte, partout en Afrique"].map((t) => (
               <li key={t} className="flex items-center gap-1.5">
                 <Check className="size-4 text-gold" /> {t}
               </li>
@@ -115,28 +116,25 @@ export default function Home() {
 
       <section id="tarifs" className="mx-auto max-w-6xl scroll-mt-20 px-4 pb-20">
         <Reveal>
-          <p className="eyebrow">Tarifs</p>
-          <h2 className="mt-3 font-display text-3xl font-bold sm:text-4xl">Payez après avoir écouté</h2>
+          <p className="eyebrow">Tarif</p>
+          <h2 className="mt-3 font-display text-3xl font-bold sm:text-4xl">Une chanson, un prix</h2>
         </Reveal>
-        <div className="mt-8 grid gap-4 md:grid-cols-2">
-          {Object.values(PLANS).map((p, i) => (
-            <Reveal key={p.id} delay={i * 0.1} className={`card relative p-7 ${p.highlight ? "border-gold/60" : ""}`}>
-              {p.highlight && <span className="absolute -top-3 right-6 rounded-full bg-gold px-3 py-1 text-xs font-bold text-ink">Recommandé</span>}
+        <div className="mx-auto mt-8 max-w-xl">
+          {ACTIVE_PLANS.map((p) => (
+            <Reveal key={p.id} className="card relative border-gold/60 p-7 text-center">
               <h3 className="font-display text-2xl font-bold">{p.name}</h3>
               <p className="text-sm text-muted">{p.tagline}</p>
-              <p className="mt-4 font-display text-4xl font-extrabold text-gold-soft">{formatPrice(p.prices.XOF, "XOF")}</p>
-              <p className="text-sm text-muted">
-                ou {formatPrice(p.prices.EUR, "EUR")} · {formatPrice(p.prices.USD, "USD")}
-              </p>
-              <ul className="mt-5 space-y-2">
+              <p className="mt-4 font-display text-5xl font-extrabold text-gold-soft">{formatPrice(p.prices.XOF, "XOF")}</p>
+              <p className="mt-1 text-sm text-muted">ou l&apos;équivalent dans votre monnaie</p>
+              <ul className="mx-auto mt-5 max-w-sm space-y-2 text-left">
                 {p.features.map((f) => (
                   <li key={f} className="flex gap-2">
                     <Check className="mt-0.5 size-5 shrink-0 text-gold" /> {f}
                   </li>
                 ))}
               </ul>
-              <Link href="/studio" className={`btn mt-6 w-full ${p.highlight ? "btn-gold" : "btn-ghost"}`}>
-                Commencer
+              <Link href="/studio" className="btn btn-gold mt-6 w-full">
+                Créer ma chanson
               </Link>
             </Reveal>
           ))}

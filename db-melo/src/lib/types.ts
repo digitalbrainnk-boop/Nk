@@ -221,7 +221,15 @@ export interface SongRecord {
   createdAt: number;
   updatedAt: number;
   config: SongConfig;
-  generation: { status: GenerationStatus; startedAt?: number; finishedAt?: number; error?: string; lastPolledAt?: number };
+  generation: {
+    status: GenerationStatus;
+    startedAt?: number;
+    finishedAt?: number;
+    error?: string;
+    lastPolledAt?: number;
+    /** Nombre de lancements Suno (limité après paiement pour protéger le crédit Kie). */
+    attempts?: number;
+  };
   variants: Record<VariantId, SongVariant>;
   payment: { status: PaymentStatus; plan?: PlanId; reference?: string; provider?: PaymentProviderId; paidAt?: number; amount?: number; currency?: Currency };
   aiCover?: { status: "pending" | "ready" | "failed"; taskId?: string; url?: string; error?: string } | null;
@@ -247,7 +255,7 @@ export interface PublicSong {
   giftSlug?: string;
   createdAt: number;
   config: SongConfig;
-  generation: { status: GenerationStatus; startedAt?: number; finishedAt?: number; error?: string };
+  generation: { status: GenerationStatus; startedAt?: number; finishedAt?: number; error?: string; attemptsLeft: number };
   variants: Record<VariantId, PublicVariant>;
   payment: { status: PaymentStatus; plan?: PlanId; paidAt?: number };
   aiCoverStatus?: "pending" | "ready" | "failed" | null;
@@ -262,16 +270,31 @@ export type FlowMode = "preview_first" | "pay_first";
 
 /* ───────────────────────────── Paiement ───────────────────────────── */
 
-export type Currency = "XOF" | "XAF" | "EUR" | "USD";
+export type Currency = "XOF" | "XAF" | "GNF" | "CDF" | "GHS" | "KES" | "UGX" | "TZS" | "RWF" | "ZMW" | "EUR" | "USD";
 
-export type PaymentProviderId = "cinetpay" | "paystack" | "stripe" | "demo";
+export type PaymentProviderId = "cinetpay" | "flutterwave" | "paystack" | "stripe" | "demo";
 
 /** Moyen de paiement tel que le choisit l'utilisateur. */
 export type PaymentMethod = "mobile_money" | "card";
 
-export type MobileOperator = "orange_money" | "wave" | "mtn_momo" | "moov_money";
+export type MobileOperator =
+  | "orange_money"
+  | "wave"
+  | "mtn_momo"
+  | "moov_money"
+  | "airtel_money"
+  | "mpesa"
+  | "free_money"
+  | "tmoney"
+  | "telecel_cash"
+  | "airteltigo_money"
+  | "africell_money"
+  | "mixx"
+  | "halopesa"
+  | "zamtel_money";
 
-export type CountryCode = "CI" | "SN" | "BF" | "ML" | "CM" | "TG" | "BJ" | "NE" | "GA" | "CG";
+/** Code pays ISO 3166-1 alpha-2 (les 54 pays d'Afrique sont listés dans constants.ts). */
+export type CountryCode = string;
 
 export interface CheckoutInput {
   reference: string;
@@ -321,8 +344,8 @@ export interface PaymentProvider {
   label: string;
   methods: PaymentMethod[];
   currencies: Currency[];
-  /** Opérateurs Mobile Money gérés (vide pour les cartes). */
-  operators: MobileOperator[];
+  /** Pays où la passerelle encaisse le Mobile Money (vide pour les cartes seules). */
+  momoCountries: CountryCode[];
   isConfigured(): boolean;
   createCheckout(input: CheckoutInput): Promise<CheckoutSession>;
   /** Interroge le prestataire : seule source de vérité pour débloquer le téléchargement. */
@@ -349,7 +372,8 @@ export interface PaymentRecord {
 
 /** Ce que le navigateur sait des passerelles disponibles. */
 export interface PaymentOptions {
-  mobileMoney: { provider: PaymentProviderId; currencies: Currency[]; operators: MobileOperator[] } | null;
+  /** Pays où le Mobile Money est disponible, avec la passerelle utilisée. */
+  mobileMoney: Record<CountryCode, PaymentProviderId>;
   card: { provider: PaymentProviderId; currencies: Currency[] } | null;
   demo: boolean;
 }

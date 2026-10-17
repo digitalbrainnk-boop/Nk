@@ -16,7 +16,7 @@ export const stripeProvider: PaymentProvider = {
   label: "Stripe",
   methods: ["card"],
   currencies: ["EUR", "USD", "XOF", "XAF"],
-  operators: [],
+  momoCountries: [],
 
   isConfigured: () => !!config.stripeSecret(),
 

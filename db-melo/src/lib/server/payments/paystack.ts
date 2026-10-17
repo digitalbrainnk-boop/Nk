@@ -1,4 +1,4 @@
-// Paystack : cartes (dont Apple Pay) et Mobile Money (Ghana, Kenya, Côte d'Ivoire…).
+// Paystack : cartes (dont Apple Pay) et Mobile Money (Ghana, Kenya, Côte d'Ivoire).
 //   POST https://api.paystack.co/transaction/initialize → data.authorization_url
 //   GET  https://api.paystack.co/transaction/verify/:reference → data.status === "success"
 //   Webhook : en-tête x-paystack-signature = HMAC-SHA512(clé secrète, corps brut)
@@ -30,17 +30,18 @@ export const paystack: PaymentProvider = {
   id: "paystack",
   label: "Paystack",
   methods: ["card", "mobile_money"],
-  currencies: ["XOF", "USD"],
-  operators: ["mtn_momo", "orange_money", "moov_money", "wave"],
+  currencies: ["XOF", "GHS", "KES", "USD"],
+  momoCountries: ["GH", "KE", "CI"],
 
   isConfigured: () => !!config.paystackSecret(),
 
   async createCheckout(input) {
-    if (!input.email) throw new HttpError(400, "Une adresse e-mail est nécessaire pour payer avec Paystack.");
+    const email = input.email || config.merchantEmail();
+    if (!email) throw new HttpError(400, "Une adresse e-mail est nécessaire pour payer avec Paystack.");
     const data = await paystackApi<{ authorization_url: string; reference: string }>("/transaction/initialize", {
       method: "POST",
       body: {
-        email: input.email,
+        email,
         // Paystack attend la sous-unité de la devise (montant × 100), y compris pour le XOF.
         amount: String(Math.round(input.amount * 100)),
         currency: input.currency,

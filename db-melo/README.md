@@ -2,7 +2,9 @@
 
 Application SaaS **Next.js 16 (App Router) · TypeScript · Tailwind CSS 4 · Framer Motion**, installable sur **Android, iPhone, iPad et ordinateur** (PWA).
 
-L'utilisateur écrit ses paroles (ou les fait écrire par l'IA), choisit la voix et le style. Suno, via Kie.ai, compose **deux versions** (A rythmée, B acoustique) ; l'utilisateur écoute une **pré-écoute protégée** puis paie par **Mobile Money** (Orange Money, Wave, MTN MoMo, Moov Money) ou **carte** (Visa, Mastercard, Apple Pay, Google Pay). Le **MP3 HD sans watermark** se débloque alors : on peut l'enregistrer sur le téléphone, l'envoyer sur WhatsApp ou partager une **page cadeau avec QR code**.
+L'utilisateur écrit ses paroles (ou les fait écrire par l'IA), choisit la voix et le style, puis **paie 1 000 FCFA** par **Mobile Money** (Orange Money, Wave, MTN MoMo, Moov, Airtel Money, M-Pesa…) ou **carte** (Visa, Mastercard, Apple Pay, Google Pay), depuis **n'importe quel pays d'Afrique**. Le paiement confirmé, Suno (via Kie.ai) compose **deux versions** (A rythmée, B acoustique) ; le **MP3 HD** s'enregistre sur le téléphone, s'envoie sur WhatsApp ou se partage via une **page cadeau avec QR code**.
+
+> **Aucun son n'existe avant le paiement** : il n'y a rien à enregistrer à l'écran pour obtenir la chanson sans payer. (Bloquer l'enregistrement d'écran est impossible sur un site web ou une application installée depuis le navigateur ; aucun navigateur ne le permet, et le son peut de toute façon être capté par un autre téléphone.)
 
 > Sans aucune clé, l'application tourne en **mode démo** : maquette musicale synthétisée, paiement simulé. Le parcours complet est testable tout de suite.
 
@@ -27,11 +29,11 @@ Contrôles : `npm test` (tests unitaires), `npm run typecheck`.
    - **Mode 2 « Parolier & Compositeur IA »** : prénom, surnoms, occasion, anecdotes, curseur d'émotion → paroles proposées, modifiables librement avant la musique.
    - **Voix** : masculine, féminine, duo, enfant, avec échantillon de 5 s.
    - **Style** : grille de styles (Afro-pop, Coupé-décalé, Zouk, R&B, Amapiano, Gospel…), inspiration libre, **Style Match** (tempo et énergie d'un MP3/WAV de référence mesurés dans le navigateur ; option « base » via Suno upload-cover si l'on détient les droits), instruments prioritaires.
-2. **Commande** (`/chanson/:id`) : progression en direct → pré-écoute de 45 s des deux versions (filigrane sonore) → paiement → lecteur HD (forme d'onde, karaoké synchronisé), téléchargement mobile, choix de pochette, page cadeau.
+2. **Commande** (`/chanson/:id`) : récapitulatif des paroles (encore modifiables) → **paiement** → composition en direct (1 à 5 min) → lecteur HD (forme d'onde, karaoké synchronisé), téléchargement mobile, choix de pochette, page cadeau. Si Suno échoue (mot refusé…), le client corrige ses paroles et relance sans repayer (3 compositions maximum par chanson, `MAX_GENERATION_ATTEMPTS`).
 3. **Page cadeau** (`/cadeau/:slug`) : pochette, mot doux, lecteur karaoké, « Garder cette chanson sur mon téléphone », QR code.
 4. **Mes chansons** (`/mes-chansons`) : les commandes créées sur cet appareil.
 
-Variante `FLOW_MODE=pay_first` : les paroles sont validées, le paiement a lieu **avant** la composition.
+Parcours par défaut `FLOW_MODE=pay_first` : rien n'est composé ni audible avant le paiement (le serveur refuse la composition et la pré-écoute d'une chanson non payée). La composition démarre **côté serveur** dès la confirmation du paiement, même si le client a fermé la page (confirmation Mobile Money reçue par webhook). L'ancien parcours `FLOW_MODE=preview_first` (pré-écoute de 45 s avant paiement) reste disponible mais est déconseillé.
 
 ## Livrables demandés : où les trouver
 
@@ -81,22 +83,31 @@ public/sw.js              service worker (hors ligne, installation)
 
 Ordre : **Claude** (`ANTHROPIC_API_KEY`, modèle `LYRICS_MODEL`, sortie JSON structurée), sinon **DeepSeek via Kie** (`KIE_CHAT_MODEL`), sinon un parolier intégré à partir de modèles rimés (proposition à retoucher).
 
-### Paiements
+### Paiements : 1 000 FCFA, partout en Afrique
 
-| Moyen | Passerelle | Devises |
+Le prix est défini dans `src/lib/constants.ts` (`SONG_PRICES`) : **1 000 FCFA** (XOF et XAF). Pour le Mobile Money hors zone FCFA, le client paie l'équivalent dans sa monnaie (GNF, CDF, GHS, KES, UGX, TZS, RWF, ZMW) ; ces équivalents sont **approximatifs, à ajuster** selon les taux du moment. Par carte, le client paie 1 000 FCFA, 1,50 € ou 1,75 $ ; sa banque convertit.
+
+Le client choisit son **pays** (présélectionné d'après son fuseau horaire, les **54 pays d'Afrique** sont listés) :
+
+| Pays | Mobile Money | Passerelle |
 |---|---|---|
-| Mobile Money : Orange Money, Wave, MTN MoMo, Moov Money | **CinetPay** (prioritaire), sinon Paystack | XOF, XAF |
-| Carte : Visa, Mastercard, Apple Pay, Google Pay | **Stripe** (prioritaire), sinon Paystack, sinon CinetPay | EUR, USD, XOF, XAF |
+| Côte d'Ivoire, Sénégal, Burkina Faso, Mali, Togo, Bénin, Niger, Cameroun, Guinée, RD Congo | Orange Money, Wave, MTN, Moov, Free Money, T-Money, Airtel, M-Pesa, Afrimoney (selon le pays) | **CinetPay** (sinon Flutterwave / Paystack quand ils couvrent le pays) |
+| Ghana, Kenya, Ouganda, Rwanda, Zambie, Tanzanie | MTN, Telecel Cash, AirtelTigo, M-Pesa, Airtel, Mixx by Yas, HaloPesa, Zamtel | **Flutterwave** (Paystack pour le Ghana et le Kenya) |
+| Tous les autres pays (Nigeria, Maroc, Afrique du Sud, Gabon, Congo…) | — | **Carte bancaire** : Stripe, sinon Flutterwave, Paystack ou CinetPay |
 
-Flux sécurisé : le **montant vient toujours du serveur** (`src/lib/constants.ts` → `PLANS`), la passerelle renvoie sur `/api/payments/return`, puis le statut est **revérifié auprès du prestataire** (montant et devise contrôlés) avant de débloquer le téléchargement. Les webhooks sont authentifiés (HMAC CinetPay `x-token`, HMAC-SHA512 Paystack, signature Stripe) puis revérifiés de la même façon.
+Sécurité : le **montant vient toujours du serveur**, la passerelle renvoie sur `/api/payments/return`, puis le statut est **revérifié auprès du prestataire** (montant et devise contrôlés) avant de lancer la composition. Les webhooks sont authentifiés (HMAC CinetPay `x-token`, HMAC-SHA512 Paystack, `verif-hash` Flutterwave, signature Stripe) puis revérifiés.
 
-Configuration chez les prestataires :
+Configuration chez les prestataires (au moins un pour le Mobile Money et un pour la carte) :
 
 - **CinetPay** : `CINETPAY_API_KEY`, `CINETPAY_SITE_ID`, `CINETPAY_SECRET_KEY`. L'adresse de notification `https://ton-domaine/api/payments/webhooks/cinetpay` est transmise à chaque paiement.
-- **Stripe** : `STRIPE_SECRET_KEY` ; webhook `https://ton-domaine/api/payments/webhooks/stripe` avec les événements `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed`, `checkout.session.expired`, puis `STRIPE_WEBHOOK_SECRET`. Activez Apple Pay / Google Pay dans le tableau de bord Stripe (domaine vérifié pour Apple Pay).
+- **Flutterwave** : `FLUTTERWAVE_SECRET_KEY` ; webhook `https://ton-domaine/api/payments/webhooks/flutterwave` avec un « Secret hash » recopié dans `FLUTTERWAVE_WEBHOOK_HASH`.
+- **Stripe** : `STRIPE_SECRET_KEY` ; webhook `https://ton-domaine/api/payments/webhooks/stripe` avec les événements `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed`, `checkout.session.expired`, puis `STRIPE_WEBHOOK_SECRET`. Activez Apple Pay / Google Pay dans le tableau de bord Stripe.
 - **Paystack** : `PAYSTACK_SECRET_KEY` ; webhook `https://ton-domaine/api/payments/webhooks/paystack`.
+- `MERCHANT_EMAIL` : ton e-mail, utilisé quand Flutterwave ou Paystack exigent un e-mail et que le client n'en a pas donné.
 
 Le paiement simulé n'est proposé que pour les chansons de démo, ou si `ALLOW_DEMO_PAYMENTS=true` (tests uniquement).
+
+L'offre Prestige (WAV, 4 prises, pochette IA) est désactivée ; pour la proposer, passer `enabled: true` dans `PLANS` et fixer ses prix.
 
 ### Téléchargement sur le téléphone
 
@@ -122,10 +133,10 @@ Voir `.env.example`. Les plus importantes :
 | `KIE_API_KEY` | Clé Kie.ai (sans elle : mode démo) |
 | `KIE_SUNO_MODEL` | `V5` par défaut |
 | `ANTHROPIC_API_KEY` | Parolier Claude (facultatif) |
-| `FLOW_MODE` | `preview_first` (défaut) ou `pay_first` |
-| `PREVIEW_SECONDS` | Durée de la pré-écoute (45 s) |
-| `GENERATIONS_PER_HOUR` | Créations autorisées par adresse IP et par heure (protège le crédit Kie) |
-| `CINETPAY_*`, `PAYSTACK_SECRET_KEY`, `STRIPE_*` | Passerelles de paiement |
+| `FLOW_MODE` | `pay_first` (défaut : paiement avant composition) ou `preview_first` |
+| `MAX_GENERATION_ATTEMPTS` | Compositions autorisées par chanson, relances comprises (3) |
+| `PREVIEW_SECONDS`, `GENERATIONS_PER_HOUR` | Pré-écoute et limite par adresse IP, en `preview_first` uniquement |
+| `CINETPAY_*`, `FLUTTERWAVE_*`, `PAYSTACK_SECRET_KEY`, `STRIPE_*`, `MERCHANT_EMAIL` | Passerelles de paiement |
 | `DATA_DIR` | Dossier de stockage persistant (défaut `.data`) |
 | `UPSTASH_REDIS_REST_URL` / `_TOKEN` | Stockage pour l'hébergement serverless |
 
@@ -142,7 +153,10 @@ Voir `.env.example`. Les plus importantes :
 
 - **Accès** : pas de compte utilisateur. Une commande est accessible par son lien privé (identifiant aléatoire de 128 bits) ; la page cadeau a un identifiant distinct et ne donne accès qu'à l'écoute. Pour un historique multi-appareils, ajouter une authentification (Auth.js, Clerk…).
 - **Limiteur de débit** en mémoire : suffisant sur une instance ; derrière plusieurs instances, utiliser un limiteur partagé.
-- **Pré-écoute** : protégée côté serveur (extrait tronqué, URL d'origine jamais exposée) ; le filigrane sonore est ajouté par le lecteur.
+- **Enregistrement d'écran** : impossible à bloquer sur le web. La protection repose sur le paiement avant composition ; une fois payée, la chanson appartient au client.
+- **Coût par commande** : chaque chanson lance 2 compositions Suno (versions A et B) et jusqu'à 3 relances en cas d'échec. Vérifie que 1 000 FCFA couvre le coût Kie et les frais des passerelles ; sinon, augmente le prix ou ne garde qu'une version.
+- **Langue** : l'interface est en français ; une version anglaise faciliterait l'usage au Nigeria, au Ghana, au Kenya…
 - **API Kie** : les routes `get-timestamped-lyrics`, `wav`, `jobs` (images) et l'envoi de fichiers suivent la documentation Kie ; les noms de modèles d'image sont réglables (`KIE_IMAGE_MODEL`, `KIE_IMAGE_EDIT_MODEL`). Faites un premier essai réel avec une petite recharge.
 - **Paystack en XOF** : le montant est envoyé en « sous-unité » (× 100), comme pour les autres devises ; à confirmer sur votre compte.
+- **Flutterwave** : les options Mobile Money par pays (`mobilemoneyghana`, `mpesa`, `mobilemoneyfranco`…) suivent sa documentation ; faites un paiement test par pays visé.
 - **Textes** : la FAQ et les conditions (droits d'usage des chansons) sont des propositions à faire relire.

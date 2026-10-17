@@ -1,6 +1,7 @@
 // POST /api/payments/verify { reference } : interroge la passerelle (paiement Mobile Money validé sur le téléphone…).
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { baseUrl } from "@/lib/server/env";
 import { apiError, HttpError, readJson } from "@/lib/server/http";
 import { PROVIDERS } from "@/lib/server/payments";
 import { applyPaymentResult } from "@/lib/server/songs";
@@ -12,7 +13,7 @@ export async function POST(req: Request) {
     let payment = await payments.get(reference);
     if (!payment) throw new HttpError(404, "Paiement introuvable.");
     if (payment.status === "pending") {
-      payment = await applyPaymentResult(payment, await PROVIDERS[payment.provider].verify(payment));
+      payment = await applyPaymentResult(payment, await PROVIDERS[payment.provider].verify(payment), baseUrl(req));
     }
     return NextResponse.json({ status: payment.status, songId: payment.songId, plan: payment.plan });
   } catch (e) {

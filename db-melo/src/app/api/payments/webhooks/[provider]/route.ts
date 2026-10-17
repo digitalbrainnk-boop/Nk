@@ -1,5 +1,6 @@
 // Webhooks des passerelles : signature vérifiée, puis statut relu auprès du prestataire avant tout déblocage.
 import { NextResponse } from "next/server";
+import { baseUrl } from "@/lib/server/env";
 import { apiError, HttpError } from "@/lib/server/http";
 import { PROVIDERS } from "@/lib/server/payments";
 import { applyPaymentResult } from "@/lib/server/songs";
@@ -18,7 +19,7 @@ export async function POST(req: Request, { params }: Ctx) {
     if (event) {
       const payment = await payments.get(event.reference);
       if (payment && payment.provider === provider.id && payment.status !== "paid") {
-        await applyPaymentResult(payment, await provider.verify(payment));
+        await applyPaymentResult(payment, await provider.verify(payment), baseUrl(req));
       }
     }
     return NextResponse.json({ received: true });

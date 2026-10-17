@@ -8,9 +8,10 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/client/api";
 import { rememberSong } from "@/lib/client/local-songs";
-import { EMOTIONS, INSTRUMENTS, STYLES, VOICES, label } from "@/lib/constants";
+import { EMOTIONS, INSTRUMENTS, SONG_PRICES, STYLES, VOICES, label } from "@/lib/constants";
+import { formatPrice } from "@/lib/pricing";
 import { briefSchema, fieldErrors, finalStepSchema, lyricsStepSchema, styleStepSchema, voiceStepSchema } from "@/lib/schemas";
-import type { CreationMode, Emotion, InstrumentId, MusicStyleId, PublicSong, ReferenceAudio, SongConfig, SongLanguage, VoiceType } from "@/lib/types";
+import type { CreationMode, Emotion, FlowMode, InstrumentId, MusicStyleId, PublicSong, ReferenceAudio, SongConfig, SongLanguage, VoiceType } from "@/lib/types";
 import { AiLyricistForm, type BriefDraft } from "./AiLyricistForm";
 import { EmotionSlider } from "./EmotionSlider";
 import { LyricsStudio } from "./LyricsStudio";
@@ -111,7 +112,8 @@ function toConfig(d: Draft): SongConfig {
   };
 }
 
-export function SongCreator() {
+export function SongCreator({ flowMode = "pay_first" }: { flowMode?: FlowMode }) {
+  const payFirst = flowMode === "pay_first";
   const router = useRouter();
   const [d, setD] = useState<Draft>(EMPTY);
   const [step, setStep] = useState(0);
@@ -366,6 +368,11 @@ export function SongCreator() {
           {step === 3 && (
             <div className="space-y-6">
               <h2 className="font-display text-2xl font-bold">Dernière touche</h2>
+              {payFirst && (
+                <p className="rounded-2xl border border-gold/30 bg-gold/5 p-3 text-sm text-cream/90">
+                  Étape suivante : paiement sécurisé de {formatPrice(SONG_PRICES.XOF, "XOF")} (Mobile Money ou carte), puis le studio compose votre chanson.
+                </p>
+              )}
               <ul className="divide-y divide-line rounded-2xl border border-line">
                 {summary.map((s) => (
                   <li key={s.label} className="flex items-center gap-3 p-4">
@@ -434,7 +441,7 @@ export function SongCreator() {
         ) : (
           <button type="button" onClick={submit} disabled={submitting} className="btn btn-gold flex-1 sm:flex-none">
             {submitting ? <Loader className="size-5 animate-spin" /> : <Sparkles className="size-5" />}
-            Créer ma chanson
+            {payFirst ? "Passer au paiement" : "Créer ma chanson"}
           </button>
         )}
       </div>

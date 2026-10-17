@@ -23,7 +23,8 @@ export async function POST(req: Request) {
     }
     const existing = await requireSong(id);
     const fresh = existing.generation.status === "idle" || existing.generation.status === "failed";
-    if (fresh && !existing.demo) {
+    // Une chanson payée peut être relancée (nombre limité par chanson) sans limite par adresse IP.
+    if (fresh && !existing.demo && existing.payment.status !== "paid") {
       const limit = rateLimit(`generate:${clientIp(req)}`, env.generationsPerHour(), 3600_000);
       if (!limit.ok) {
         throw new HttpError(429, `Limite de créations atteinte : réessayez dans ${Math.ceil(limit.retryAfterSec / 60)} min.`);

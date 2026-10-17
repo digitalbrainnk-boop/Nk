@@ -1,6 +1,7 @@
 // Validation partagée navigateur / serveur (zod).
 import { z } from "zod";
-import { LIMITS } from "./constants";
+import { COUNTRY_CODES, CURRENCIES, LIMITS, OPERATORS } from "./constants";
+import type { Currency, MobileOperator } from "./types";
 
 const voice = z.enum(["male", "female", "duo", "child"]);
 const emotion = z.enum(["joyful", "nostalgic", "romantic", "epic"]);
@@ -126,15 +127,17 @@ export const lyricsRequestSchema = z.object({
 
 export const checkoutSchema = z.object({
   songId: id,
-  plan: z.enum(["essentiel", "prestige"]),
-  currency: z.enum(["XOF", "XAF", "EUR", "USD"]),
+  plan: z.enum(["essentiel", "prestige"]).default("essentiel"),
   method: z.enum(["mobile_money", "card"]),
-  operator: z.enum(["orange_money", "wave", "mtn_momo", "moov_money"]).optional(),
-  country: z.enum(["CI", "SN", "BF", "ML", "CM", "TG", "BJ", "NE", "GA", "CG"]).optional(),
+  /** Pays du client : détermine la passerelle et la monnaie du Mobile Money. */
+  country: z.enum(COUNTRY_CODES as [string, ...string[]], { message: "Choisissez votre pays." }),
+  /** Devise du paiement par carte (pour le Mobile Money, c'est la monnaie du pays). */
+  currency: z.enum(Object.keys(CURRENCIES) as [Currency, ...Currency[]]).optional(),
+  operator: z.enum(Object.keys(OPERATORS) as [MobileOperator, ...MobileOperator[]]).optional(),
   phone: z
     .string()
     .trim()
-    .regex(/^\d{8,12}$/, "Numéro invalide : chiffres uniquement, sans indicatif.")
+    .regex(/^\d{7,12}$/, "Numéro invalide : chiffres uniquement, sans l'indicatif.")
     .optional(),
   email: z.string().trim().email("Adresse e-mail invalide.").optional(),
   customerName: z.string().trim().max(80).optional(),

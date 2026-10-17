@@ -2,6 +2,7 @@
 //   preview : début du morceau, disponible avant paiement
 //   hd      : morceau complet, étiqueté (titre, artiste, pochette), après paiement
 import { audioFilename, audioResponse, fullAudio, previewAudio, taggedAudio, wavAudio } from "@/lib/server/audio";
+import { config } from "@/lib/server/env";
 import { apiError, HttpError } from "@/lib/server/http";
 import { requireSong } from "@/lib/server/songs";
 import type { VariantId } from "@/lib/types";
@@ -18,7 +19,10 @@ export async function GET(req: Request, { params }: Ctx) {
     const download = q.get("download") === "1";
     const song = await requireSong(id);
 
-    if (quality === "preview") return audioResponse(await previewAudio(song, variant, take));
+    if (quality === "preview") {
+      if (config.flowMode() === "pay_first" && song.payment.status !== "paid") throw new HttpError(402, "La chanson s'écoute après le paiement.");
+      return audioResponse(await previewAudio(song, variant, take));
+    }
 
     if (song.payment.status !== "paid") throw new HttpError(402, "Débloquez la chanson pour l'écouter en entier.");
     const prestige = song.payment.plan === "prestige";

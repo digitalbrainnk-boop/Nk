@@ -26,7 +26,10 @@ export const config = {
   kieChatModel: () => str("KIE_CHAT_MODEL") || "deepseek-v4-1-flash",
 
   publicBaseUrl: () => str("PUBLIC_BASE_URL").replace(/\/+$/, ""),
-  flowMode: (): FlowMode => (str("FLOW_MODE") === "pay_first" ? "pay_first" : "preview_first"),
+  /** Par défaut, le client paie avant la composition : aucun son n'existe avant le paiement. */
+  flowMode: (): FlowMode => (str("FLOW_MODE") === "preview_first" ? "preview_first" : "pay_first"),
+  /** Lancements Suno autorisés par chanson (relances comprises, après un échec). */
+  maxAttempts: () => num("MAX_GENERATION_ATTEMPTS", 3, 1, 20),
   previewSeconds: () => num("PREVIEW_SECONDS", 45, 10, 90),
   generationsPerHour: () => num("GENERATIONS_PER_HOUR", 4, 1, 1000),
 
@@ -34,6 +37,9 @@ export const config = {
   stripeWebhookSecret: () => str("STRIPE_WEBHOOK_SECRET"),
   cinetpay: () => ({ apiKey: str("CINETPAY_API_KEY"), siteId: str("CINETPAY_SITE_ID"), secretKey: str("CINETPAY_SECRET_KEY") }),
   paystackSecret: () => str("PAYSTACK_SECRET_KEY"),
+  flutterwave: () => ({ secretKey: str("FLUTTERWAVE_SECRET_KEY"), webhookHash: str("FLUTTERWAVE_WEBHOOK_HASH") }),
+  /** E-mail du marchand, utilisé quand une passerelle exige un e-mail et que le client n'en donne pas. */
+  merchantEmail: () => str("MERCHANT_EMAIL"),
   /** Paiement simulé : explicitement autorisé, ou chanson de démo (sans valeur marchande). */
   allowDemoPayments: () => str("ALLOW_DEMO_PAYMENTS") === "true",
 

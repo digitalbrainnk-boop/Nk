@@ -12,7 +12,7 @@ async function handle(req: Request) {
   if (!payment) return NextResponse.redirect(`${base}/`, 303);
   if (payment.status === "pending") {
     try {
-      await applyPaymentResult(payment, await PROVIDERS[payment.provider].verify(payment));
+      await applyPaymentResult(payment, await PROVIDERS[payment.provider].verify(payment), base);
     } catch (e) {
       console.warn("[DB.Mélo] Vérification au retour :", (e as Error).message); // la page réessaiera
     }

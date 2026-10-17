@@ -1,33 +1,41 @@
 // POST /api/payments/checkout : crée la transaction chez la bonne passerelle et renvoie la page de paiement.
 import { NextResponse } from "next/server";
-import { COUNTRIES } from "@/lib/constants";
-import { priceOf } from "@/lib/pricing";
+import { findCountry, PLANS, validPhone } from "@/lib/constants";
 import { checkoutSchema } from "@/lib/schemas";
 import { baseUrl } from "@/lib/server/env";
 import { apiError, HttpError, readJson } from "@/lib/server/http";
 import { paymentReference } from "@/lib/server/ids";
-import { resolveProvider } from "@/lib/server/payments";
+import { momoProviderFor, resolveCardProvider } from "@/lib/server/payments";
 import { clientIp, rateLimit } from "@/lib/server/rate-limit";
 import { requireSong } from "@/lib/server/songs";
 import { payments } from "@/lib/server/store";
-import type { PaymentRecord } from "@/lib/types";
+import type { Currency, PaymentProvider, PaymentRecord } from "@/lib/types";
 
 export async function POST(req: Request) {
   try {
     if (!rateLimit(`checkout:${clientIp(req)}`, 20, 3600_000).ok) throw new HttpError(429, "Trop de tentatives : réessayez plus tard.");
     const input = checkoutSchema.parse(await readJson(req));
     const song = await requireSong(input.songId);
-    if (song.payment.status === "paid") throw new HttpError(409, "Cette chanson est déjà débloquée.");
-    if (song.generation.status === "generating") throw new HttpError(409, "Patientez jusqu'à la fin de la création pour choisir votre offre.");
-    if (song.generation.status === "failed") throw new HttpError(409, "La création a échoué : relancez-la avant de payer.");
-    const provider = resolveProvider(input.method, input.currency, song);
+    if (song.payment.status === "paid") throw new HttpError(409, "Cette chanson est déjà payée.");
+    if (song.generation.status === "generating") throw new HttpError(409, "La chanson est déjà en cours de composition.");
+    const plan = PLANS[input.plan];
+    if (!plan.enabled) throw new HttpError(400, "Cette offre n'est pas disponible.");
+    const country = findCountry(input.country)!;
 
-    if (input.method === "mobile_money" && provider.id !== "demo") {
-      const country = COUNTRIES.find((c) => c.code === input.country);
-      if (!country || !input.operator || !input.phone) throw new HttpError(400, "Choisissez le pays, l'opérateur et le numéro Mobile Money.");
-      if (!country.operators.includes(input.operator)) throw new HttpError(400, "Cet opérateur n'est pas disponible dans ce pays.");
-      if (!country.digits.includes(input.phone.length)) throw new HttpError(400, `Le numéro doit comporter ${country.digits.join(" ou ")} chiffres.`);
-      if (country.currency !== input.currency) throw new HttpError(400, `En ${country.label}, le paiement Mobile Money se fait en ${country.currency}.`);
+    let provider: PaymentProvider;
+    let currency: Currency;
+    if (input.method === "mobile_money") {
+      const momo = momoProviderFor(country.code, song);
+      if (!momo || !country.momo) throw new HttpError(400, `Le Mobile Money n'est pas disponible au ${country.label} : payez par carte bancaire.`);
+      provider = momo;
+      currency = country.momo.currency; // le Mobile Money se paie dans la monnaie du pays
+      if (provider.id !== "demo") {
+        if (!input.operator || !country.momo.operators.includes(input.operator)) throw new HttpError(400, "Choisissez votre opérateur Mobile Money.");
+        if (!input.phone || !validPhone(country, input.phone)) throw new HttpError(400, "Numéro Mobile Money invalide.");
+      }
+    } else {
+      currency = input.currency ?? "XOF";
+      provider = resolveCardProvider(currency, song);
     }
 
     const base = baseUrl(req);
@@ -39,9 +47,9 @@ export async function POST(req: Request) {
       provider: provider.id,
       method: input.method,
       operator: input.operator,
-      plan: input.plan,
-      amount: priceOf(input.plan, input.currency), // le prix vient toujours du serveur
-      currency: input.currency,
+      plan: plan.id,
+      amount: plan.prices[currency], // le prix vient toujours du serveur
+      currency,
       status: "pending",
       createdAt: now,
       updatedAt: now,
@@ -51,12 +59,12 @@ export async function POST(req: Request) {
     const session = await provider.createCheckout({
       reference,
       song,
-      plan: input.plan,
+      plan: plan.id,
       amount: record.amount,
-      currency: input.currency,
+      currency,
       method: input.method,
       operator: input.operator,
-      country: input.country,
+      country: country.code,
       phone: input.phone,
       email: input.email,
       customerName: input.customerName,
@@ -67,7 +75,7 @@ export async function POST(req: Request) {
     await payments.update(reference, (p) => {
       p.providerRef = session.providerRef;
     });
-    return NextResponse.json({ reference, redirectUrl: session.redirectUrl, provider: provider.id });
+    return NextResponse.json({ reference, redirectUrl: session.redirectUrl, provider: provider.id, amount: record.amount, currency });
   } catch (e) {
     return apiError(e);
   }

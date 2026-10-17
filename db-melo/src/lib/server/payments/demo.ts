@@ -1,12 +1,13 @@
 // Paiement simulé : chansons de démonstration, ou ALLOW_DEMO_PAYMENTS=true pour les tests.
-import type { PaymentProvider } from "../../types";
+import { COUNTRIES, CURRENCIES } from "../../constants";
+import type { Currency, PaymentProvider } from "../../types";
 
 export const demoProvider: PaymentProvider = {
   id: "demo",
   label: "Paiement de démonstration",
   methods: ["mobile_money", "card"],
-  currencies: ["XOF", "XAF", "EUR", "USD"],
-  operators: ["orange_money", "wave", "mtn_momo", "moov_money"],
+  currencies: Object.keys(CURRENCIES) as Currency[],
+  momoCountries: COUNTRIES.filter((c) => c.momo).map((c) => c.code),
   isConfigured: () => true,
   async createCheckout(input) {
     return { redirectUrl: input.returnUrl, providerRef: `demo-${input.reference}` };

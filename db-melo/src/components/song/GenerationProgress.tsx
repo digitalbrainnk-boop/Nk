@@ -18,7 +18,7 @@ const TIPS = [
   "Deux versions sont composées en parallèle : une rythmée, une acoustique.",
   "Vous pouvez fermer cette page : votre chanson continue d'être composée. Gardez simplement ce lien.",
   "Astuce : installez DB.Mélo sur votre téléphone pour retrouver vos chansons en un geste.",
-  "La page cadeau et son QR code seront prêts dès le paiement.",
+  "Dès la fin de la composition, vous pourrez télécharger la chanson et partager la page cadeau.",
 ];
 
 export function GenerationProgress({ song, phase, progress, variantProgress, elapsed }: {

@@ -181,50 +181,89 @@ export const LIMITS = {
 
 /* ───────────────────────────── Tarifs ───────────────────────────── */
 
+export interface CurrencyInfo {
+  label: string;
+  /** Pas de centimes (XOF, XAF…) : utile pour Stripe. */
+  zeroDecimal: boolean;
+}
+
+export const CURRENCIES: Record<Currency, CurrencyInfo> = {
+  XOF: { label: "FCFA (UEMOA)", zeroDecimal: true },
+  XAF: { label: "FCFA (CEMAC)", zeroDecimal: true },
+  GNF: { label: "Franc guinéen", zeroDecimal: true },
+  CDF: { label: "Franc congolais", zeroDecimal: false },
+  GHS: { label: "Cedi ghanéen", zeroDecimal: false },
+  KES: { label: "Shilling kényan", zeroDecimal: false },
+  UGX: { label: "Shilling ougandais", zeroDecimal: true },
+  TZS: { label: "Shilling tanzanien", zeroDecimal: false },
+  RWF: { label: "Franc rwandais", zeroDecimal: true },
+  ZMW: { label: "Kwacha zambien", zeroDecimal: false },
+  EUR: { label: "Euro", zeroDecimal: false },
+  USD: { label: "Dollar US", zeroDecimal: false },
+};
+
+/**
+ * Prix d'une chanson : 1 000 FCFA.
+ * Hors zone FCFA (Mobile Money en monnaie locale), les montants sont des équivalents
+ * approximatifs : ajuste-les ici selon les taux du moment. Les montants FCFA, GNF et CDF
+ * sont des multiples de 5 (exigé par CinetPay).
+ */
+export const SONG_PRICES: Record<Currency, number> = {
+  XOF: 1000,
+  XAF: 1000,
+  GNF: 15000,
+  CDF: 5000,
+  GHS: 20,
+  KES: 230,
+  UGX: 6500,
+  TZS: 4500,
+  RWF: 2500,
+  ZMW: 45,
+  EUR: 1.5,
+  USD: 1.75,
+};
+
+/** Devises proposées pour le paiement par carte (la banque du client convertit si besoin). */
+export const CARD_CURRENCIES: Currency[] = ["XOF", "EUR", "USD"];
+
 export interface Plan {
   id: PlanId;
   name: string;
   tagline: string;
   features: string[];
   prices: Record<Currency, number>;
+  /** Offre proposée à la vente. */
+  enabled: boolean;
   highlight?: boolean;
 }
 
-// XOF et XAF sont arrimés à l'euro (1 € = 655,957 FCFA). Les montants FCFA sont des multiples de 5 (exigé par CinetPay).
 export const PLANS: Record<PlanId, Plan> = {
   essentiel: {
     id: "essentiel",
-    name: "Essentiel",
-    tagline: "La chanson qui fait pleurer de joie",
+    name: "Chanson complète",
+    tagline: "Composée pour vous juste après le paiement",
     features: [
       "2 versions : rythmée + acoustique",
-      "MP3 HD sans watermark",
+      "MP3 HD sans watermark, à garder sur votre téléphone",
       "Paroles synchronisées (karaoké)",
       "Page cadeau + QR code",
     ],
-    prices: { XOF: 9900, XAF: 9900, EUR: 15, USD: 17 },
+    prices: SONG_PRICES,
+    enabled: true,
   },
+  // Offre désactivée : passe `enabled` à true et fixe ses prix pour la proposer (WAV, 4 prises, pochette IA).
   prestige: {
     id: "prestige",
     name: "Prestige Studio",
     tagline: "L'édition collector",
-    features: [
-      "Tout l'Essentiel, avec 4 prises",
-      "Fichier WAV qualité studio",
-      "Pochette IA avec votre photo",
-      "Page cadeau premium",
-    ],
-    prices: { XOF: 19900, XAF: 19900, EUR: 30, USD: 34 },
+    features: ["Tout l'essentiel, avec 4 prises", "Fichier WAV qualité studio", "Pochette IA avec votre photo", "Page cadeau premium"],
+    prices: Object.fromEntries(Object.entries(SONG_PRICES).map(([c, p]) => [c, p * 2])) as Record<Currency, number>,
+    enabled: false,
     highlight: true,
   },
 };
 
-export const CURRENCIES: Record<Currency, { label: string; zeroDecimal: boolean }> = {
-  XOF: { label: "FCFA (UEMOA)", zeroDecimal: true },
-  XAF: { label: "FCFA (CEMAC)", zeroDecimal: true },
-  EUR: { label: "Euro", zeroDecimal: false },
-  USD: { label: "Dollar US", zeroDecimal: false },
-};
+export const ACTIVE_PLANS = Object.values(PLANS).filter((p) => p.enabled);
 
 /* ───────────────────────────── Mobile Money ───────────────────────────── */
 
@@ -233,6 +272,16 @@ export const OPERATORS: Record<MobileOperator, { label: string; color: string; t
   wave: { label: "Wave", color: "#1DC8FF", text: "#04223A" },
   mtn_momo: { label: "MTN MoMo", color: "#FFCC00", text: "#111" },
   moov_money: { label: "Moov Money", color: "#0066B3", text: "#fff" },
+  airtel_money: { label: "Airtel Money", color: "#E40000", text: "#fff" },
+  mpesa: { label: "M-Pesa", color: "#43B02A", text: "#fff" },
+  free_money: { label: "Free Money", color: "#CD1E25", text: "#fff" },
+  tmoney: { label: "T-Money", color: "#00A0E3", text: "#fff" },
+  telecel_cash: { label: "Telecel Cash", color: "#E60000", text: "#fff" },
+  airteltigo_money: { label: "AirtelTigo Money", color: "#1D4F91", text: "#fff" },
+  africell_money: { label: "Afrimoney", color: "#7B2C8E", text: "#fff" },
+  mixx: { label: "Mixx by Yas", color: "#0E2C74", text: "#fff" },
+  halopesa: { label: "HaloPesa", color: "#F58220", text: "#111" },
+  zamtel_money: { label: "Zamtel Money", color: "#00A651", text: "#fff" },
 };
 
 export interface CountryOption {
@@ -240,24 +289,102 @@ export interface CountryOption {
   label: string;
   flag: string;
   dial: string;
-  currency: Currency;
-  operators: MobileOperator[];
-  /** Chiffres du numéro national. */
-  digits: number[];
+  /** Mobile Money pris en charge par au moins une passerelle : devise et opérateurs. */
+  momo?: { currency: Currency; operators: MobileOperator[] };
+  /** Longueur du numéro national, quand elle est fixe. */
+  digits?: number[];
 }
 
-export const COUNTRIES: CountryOption[] = [
-  { code: "CI", label: "Côte d'Ivoire", flag: "🇨🇮", dial: "225", currency: "XOF", operators: ["orange_money", "mtn_momo", "moov_money", "wave"], digits: [10] },
-  { code: "SN", label: "Sénégal", flag: "🇸🇳", dial: "221", currency: "XOF", operators: ["orange_money", "wave"], digits: [9] },
-  { code: "BF", label: "Burkina Faso", flag: "🇧🇫", dial: "226", currency: "XOF", operators: ["orange_money", "moov_money"], digits: [8] },
-  { code: "ML", label: "Mali", flag: "🇲🇱", dial: "223", currency: "XOF", operators: ["orange_money", "moov_money"], digits: [8] },
-  { code: "CM", label: "Cameroun", flag: "🇨🇲", dial: "237", currency: "XAF", operators: ["orange_money", "mtn_momo"], digits: [9] },
-  { code: "TG", label: "Togo", flag: "🇹🇬", dial: "228", currency: "XOF", operators: ["moov_money"], digits: [8] },
-  { code: "BJ", label: "Bénin", flag: "🇧🇯", dial: "229", currency: "XOF", operators: ["mtn_momo", "moov_money"], digits: [8, 10] },
-  { code: "NE", label: "Niger", flag: "🇳🇪", dial: "227", currency: "XOF", operators: ["orange_money", "moov_money"], digits: [8] },
-  { code: "GA", label: "Gabon", flag: "🇬🇦", dial: "241", currency: "XAF", operators: ["moov_money"], digits: [8, 9] },
-  { code: "CG", label: "Congo", flag: "🇨🇬", dial: "242", currency: "XAF", operators: ["mtn_momo"], digits: [9] },
+const flag = (code: string) => String.fromCodePoint(...[...code].map((c) => 0x1f1e6 + c.charCodeAt(0) - 65));
+
+// Les 54 pays d'Afrique. Sans Mobile Money pris en charge, le paiement se fait par carte bancaire.
+const RAW_COUNTRIES: [CountryCode, string, string, CountryOption["momo"]?, number[]?][] = [
+  ["DZ", "Algérie", "213"],
+  ["AO", "Angola", "244"],
+  ["BJ", "Bénin", "229", { currency: "XOF", operators: ["mtn_momo", "moov_money"] }, [8, 10]],
+  ["BW", "Botswana", "267"],
+  ["BF", "Burkina Faso", "226", { currency: "XOF", operators: ["orange_money", "moov_money"] }, [8]],
+  ["BI", "Burundi", "257"],
+  ["CV", "Cap-Vert", "238"],
+  ["CM", "Cameroun", "237", { currency: "XAF", operators: ["orange_money", "mtn_momo"] }, [9]],
+  ["CF", "Centrafrique", "236"],
+  ["KM", "Comores", "269"],
+  ["CG", "Congo-Brazzaville", "242"],
+  ["CD", "RD Congo", "243", { currency: "CDF", operators: ["orange_money", "airtel_money", "mpesa", "africell_money"] }, [9]],
+  ["CI", "Côte d'Ivoire", "225", { currency: "XOF", operators: ["orange_money", "mtn_momo", "moov_money", "wave"] }, [10]],
+  ["DJ", "Djibouti", "253"],
+  ["EG", "Égypte", "20"],
+  ["ER", "Érythrée", "291"],
+  ["SZ", "Eswatini", "268"],
+  ["ET", "Éthiopie", "251"],
+  ["GA", "Gabon", "241"],
+  ["GM", "Gambie", "220"],
+  ["GH", "Ghana", "233", { currency: "GHS", operators: ["mtn_momo", "telecel_cash", "airteltigo_money"] }, [9]],
+  ["GN", "Guinée", "224", { currency: "GNF", operators: ["orange_money", "mtn_momo"] }, [9]],
+  ["GQ", "Guinée équatoriale", "240"],
+  ["GW", "Guinée-Bissau", "245"],
+  ["KE", "Kenya", "254", { currency: "KES", operators: ["mpesa", "airtel_money"] }, [9]],
+  ["LS", "Lesotho", "266"],
+  ["LR", "Liberia", "231"],
+  ["LY", "Libye", "218"],
+  ["MG", "Madagascar", "261"],
+  ["MW", "Malawi", "265"],
+  ["ML", "Mali", "223", { currency: "XOF", operators: ["orange_money", "moov_money"] }, [8]],
+  ["MA", "Maroc", "212"],
+  ["MU", "Maurice", "230"],
+  ["MR", "Mauritanie", "222"],
+  ["MZ", "Mozambique", "258"],
+  ["NA", "Namibie", "264"],
+  ["NE", "Niger", "227", { currency: "XOF", operators: ["airtel_money", "moov_money"] }, [8]],
+  ["NG", "Nigeria", "234"],
+  ["UG", "Ouganda", "256", { currency: "UGX", operators: ["mtn_momo", "airtel_money"] }, [9]],
+  ["RW", "Rwanda", "250", { currency: "RWF", operators: ["mtn_momo", "airtel_money"] }, [9]],
+  ["ST", "Sao Tomé-et-Principe", "239"],
+  ["SN", "Sénégal", "221", { currency: "XOF", operators: ["orange_money", "wave", "free_money"] }, [9]],
+  ["SC", "Seychelles", "248"],
+  ["SL", "Sierra Leone", "232"],
+  ["SO", "Somalie", "252"],
+  ["SD", "Soudan", "249"],
+  ["SS", "Soudan du Sud", "211"],
+  ["ZA", "Afrique du Sud", "27"],
+  ["TZ", "Tanzanie", "255", { currency: "TZS", operators: ["mpesa", "airtel_money", "mixx", "halopesa"] }, [9]],
+  ["TD", "Tchad", "235"],
+  ["TG", "Togo", "228", { currency: "XOF", operators: ["moov_money", "tmoney"] }, [8]],
+  ["TN", "Tunisie", "216"],
+  ["ZM", "Zambie", "260", { currency: "ZMW", operators: ["mtn_momo", "airtel_money", "zamtel_money"] }, [9]],
+  ["ZW", "Zimbabwe", "263"],
 ];
+
+export const COUNTRIES: CountryOption[] = RAW_COUNTRIES.map(([code, label, dial, momo, digits]) => ({ code, label, flag: flag(code), dial, momo, digits })).sort(
+  (a, b) => a.label.localeCompare(b.label, "fr"),
+);
+
+export const COUNTRY_CODES = COUNTRIES.map((c) => c.code);
+
+export const findCountry = (code: string | undefined) => COUNTRIES.find((c) => c.code === code);
+
+/** Numéro national valide pour ce pays (7 à 12 chiffres quand la longueur n'est pas fixe). */
+export function validPhone(country: CountryOption, phone: string): boolean {
+  if (!/^\d+$/.test(phone)) return false;
+  return country.digits ? country.digits.includes(phone.length) : phone.length >= 7 && phone.length <= 12;
+}
+
+// Fuseaux horaires → pays, pour présélectionner le pays du client.
+const ZONES: Record<string, CountryCode> = {
+  Abidjan: "CI", Accra: "GH", Addis_Ababa: "ET", Algiers: "DZ", Asmara: "ER", Bamako: "ML", Bangui: "CF", Banjul: "GM",
+  Bissau: "GW", Blantyre: "MW", Brazzaville: "CG", Bujumbura: "BI", Cairo: "EG", Casablanca: "MA", Conakry: "GN",
+  Dakar: "SN", Dar_es_Salaam: "TZ", Djibouti: "DJ", Douala: "CM", El_Aaiun: "MA", Freetown: "SL", Gaborone: "BW",
+  Harare: "ZW", Johannesburg: "ZA", Juba: "SS", Kampala: "UG", Khartoum: "SD", Kigali: "RW", Kinshasa: "CD",
+  Lagos: "NG", Libreville: "GA", Lome: "TG", Luanda: "AO", Lubumbashi: "CD", Lusaka: "ZM", Malabo: "GQ", Maputo: "MZ",
+  Maseru: "LS", Mbabane: "SZ", Mogadishu: "SO", Monrovia: "LR", Nairobi: "KE", Ndjamena: "TD", Niamey: "NE",
+  Nouakchott: "MR", Ouagadougou: "BF", "Porto-Novo": "BJ", Sao_Tome: "ST", Tripoli: "LY", Tunis: "TN", Windhoek: "NA",
+  Antananarivo: "MG", Comoro: "KM", Mauritius: "MU", Mahe: "SC", Cape_Verde: "CV",
+};
+
+export function guessCountry(timeZone?: string): CountryCode | null {
+  const city = timeZone?.split("/").pop() ?? "";
+  return ZONES[city] ?? null;
+}
 
 export const label = <T extends { id: string; label: string }>(list: T[], id: string | undefined) =>
   list.find((o) => o.id === id)?.label ?? "";
