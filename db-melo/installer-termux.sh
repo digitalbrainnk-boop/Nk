@@ -19,8 +19,16 @@ case "$(uname -m)" in
     ;;
 esac
 
-pkg update -y -o Dpkg::Options::="--force-confnew"
-pkg install -y nodejs-lts git procps || pkg install -y nodejs git procps
+paquets() { pkg install -y nodejs-lts git procps || pkg install -y nodejs git procps; }
+pkg update -y -o Dpkg::Options::="--force-confnew" || true
+if ! paquets; then
+  # Miroir Termux pas à jour (erreur 404) : on passe au serveur principal de Termux.
+  echo "⚠️  Le serveur Termux choisi est défaillant : passage au serveur principal de Termux..."
+  echo "deb https://packages.termux.dev/apt/termux-main stable main" > "$PREFIX/etc/apt/sources.list"
+  apt-get update
+  apt-get -y -o Dpkg::Options::="--force-confnew" full-upgrade
+  apt-get install -y nodejs-lts git procps || apt-get install -y nodejs git procps
+fi
 
 if ! node -e 'const [a,b]=process.versions.node.split(".").map(Number); process.exit(a>20||(a===20&&b>=9)?0:1)'; then
   echo "❌ Node.js $(node -v) est trop ancien (20.9 minimum). Lance : pkg upgrade nodejs-lts"
