@@ -81,7 +81,7 @@ echo "Compilation de l'application (5 à 15 minutes sur un téléphone, ne ferme
 # --webpack : Turbopack n'existe pas en version WebAssembly.
 npx next build --webpack
 
-# ───── Commandes : dbmelo, dbmelo-stop, dbmelo-journal, dbmelo-public, dbmelo-maj ─────
+# ───── Commandes : dbmelo, dbmelo-stop, dbmelo-journal, dbmelo-public, dbmelo-maj, dbmelo-cles ─────
 # Le serveur et le tunnel sont suivis par leur numéro de processus (fichiers .pid) :
 # une fois lancé, Next.js se renomme « next-server », on ne peut pas le retrouver par son nom.
 
@@ -175,7 +175,13 @@ dbmelo-stop >/dev/null 2>&1 || true
 curl -fsSL https://raw.githubusercontent.com/digitalbrainnk-boop/Nk/claude/db-melo-saas-app-14k2yw/db-melo/installer-termux.sh | bash
 EOS
 
-chmod +x "$PREFIX/bin/dbmelo" "$PREFIX/bin/dbmelo-stop" "$PREFIX/bin/dbmelo-journal" "$PREFIX/bin/dbmelo-public" "$PREFIX/bin/dbmelo-maj"
+cat > "$PREFIX/bin/dbmelo-cles" <<EOS
+#!/data/data/com.termux/files/usr/bin/bash
+# Menu pour saisir et tester les clés API (Kie, Claude, paiements).
+exec bash "$APP/scripts/cles-termux.sh" "\$@"
+EOS
+
+chmod +x "$PREFIX/bin/dbmelo" "$PREFIX/bin/dbmelo-stop" "$PREFIX/bin/dbmelo-journal" "$PREFIX/bin/dbmelo-public" "$PREFIX/bin/dbmelo-maj" "$PREFIX/bin/dbmelo-cles"
 
 # Lancement automatique (en arrière-plan) à chaque ouverture de Termux. Placé en tête du fichier
 # pour passer avant le lancement de l'agent IA, qui occupe la session.
@@ -195,6 +201,6 @@ echo "  dbmelo-stop     → arrêter"
 echo "  dbmelo-journal  → voir ce que fait le serveur"
 echo "  dbmelo-public   → accès public temporaire (montrer à des clients)"
 echo "  dbmelo-maj      → mettre à jour"
-echo "  Réglages (clés, paiements) : nano $APP/.env.local  puis dbmelo-stop et dbmelo"
+echo "  dbmelo-cles     → saisir et tester tes clés API (Kie, Claude, paiements)"
 sleep 2
 exec dbmelo

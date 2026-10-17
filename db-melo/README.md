@@ -40,8 +40,9 @@ Commandes dans Termux :
 | `dbmelo-journal` | affiche ce que fait le serveur |
 | `dbmelo-public` | ouvre une adresse publique temporaire `https://….trycloudflare.com` pour montrer DB.Mélo à des clients (refusé tant que le paiement simulé est actif) |
 | `dbmelo-maj` | met à jour, recompile et relance |
+| `dbmelo-cles` | menu pour saisir **et tester** tes clés API (Kie.ai avec ton crédit restant, Claude, CinetPay, Flutterwave, Stripe, Paystack), activer ou couper le paiement simulé, puis relancer |
 
-Réglages (clés Kie, Claude, paiements) : `nano ~/DBMelo/db-melo/.env.local`, puis `dbmelo-stop` et `dbmelo`. Les commandes et les chansons sont gardées dans `~/dbmelo-donnees`.
+Les clés restent dans `~/DBMelo/db-melo/.env.local` (lisible par toi seul), les commandes et les chansons dans `~/dbmelo-donnees`.
 
 Limites : Termux doit rester ouvert et le téléphone allumé (idéalement en charge) ; l'adresse publique change à chaque `dbmelo-public`, et les webhooks configurés dans les tableaux de bord (Stripe, Flutterwave) ne peuvent pas la suivre. Le téléphone convient pour tester et faire des démonstrations ; pour vendre durablement, héberge DB.Mélo (o2switch, Render…).
 Contrôles : `npm test` (tests unitaires), `npm run typecheck`.
