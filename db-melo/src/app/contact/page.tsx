@@ -9,7 +9,8 @@ export const dynamic = "force-dynamic";
 
 export default function Contact() {
   const m = config.merchant();
-  const digits = m.phone.replace(/\D/g, "");
+  const whatsapp = m.whatsapp.replace(/\D/g, "");
+  const phone = m.phone.replace(/\D/g, "");
   return (
     <LegalPage eyebrow="Nous écrire" title="Contact et mentions légales">
       <LegalSection title="Une question sur votre chanson ?">
@@ -22,17 +23,17 @@ export default function Contact() {
               </a>
             </li>
           )}
-          {digits && (
+          {whatsapp && (
             <li>
-              <a href={`https://wa.me/${digits}`} className="flex items-center gap-3 hover:text-gold">
-                <MessageCircle className="size-5 text-gold" /> WhatsApp : {m.phone}
+              <a href={`https://wa.me/${whatsapp}`} className="flex items-center gap-3 hover:text-gold">
+                <MessageCircle className="size-5 text-gold" /> WhatsApp : {m.whatsapp}
               </a>
             </li>
           )}
-          {digits && (
+          {phone && (
             <li>
-              <a href={`tel:+${digits}`} className="flex items-center gap-3 hover:text-gold">
-                <Phone className="size-5 text-gold" /> {m.phone}
+              <a href={`tel:+${phone}`} className="flex items-center gap-3 hover:text-gold">
+                <Phone className="size-5 text-gold" /> Téléphone : {m.phone}
               </a>
             </li>
           )}

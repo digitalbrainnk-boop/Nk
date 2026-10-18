@@ -140,7 +140,6 @@ tester() {
       case "$r" in 200) echo "✅ Site en ligne : $k" ;; 000) echo "❌ Site injoignable : $k (domaine, certificat SSL ou application arrêtée ?)" ;; *) echo "❌ Site : réponse $r (voir dbmelo-journal)" ;; esac
     fi
     [ "$(lire ALLOW_DEMO_PAYMENTS)" = "true" ] && echo "⛔ Paiement simulé ACTIVÉ sur le site public : désactive-le (8) !"
-    [ -z "$(lire MERCHANT_NAME)" ] && echo "⚠️  Ton entreprise n'est pas remplie (7) : CinetPay vérifie la page Contact."
   elif [ "$(lire ALLOW_DEMO_PAYMENTS)" = "true" ]; then
     echo "ℹ️  Paiement simulé ACTIVÉ : parfait pour tes essais, mais dbmelo-public reste bloqué."
   fi
@@ -166,7 +165,7 @@ menu() {
   ligne 4 "Flutterwave" "$(etat FLUTTERWAVE_SECRET_KEY)"
   ligne 5 "Stripe (cartes)" "$(etat STRIPE_SECRET_KEY)"
   ligne 6 "Paystack (facult.)" "$(etat PAYSTACK_SECRET_KEY)"
-  ligne 7 "Ton entreprise" "$(n=$(lire MERCHANT_NAME); echo "${n:-❌ à remplir}")"
+  ligne 7 "Ton entreprise" "$(n=$(lire MERCHANT_NAME); echo "${n:-DB.Mélo}")"
   ligne 8 "Paiement simulé" "$([ "$(lire ALLOW_DEMO_PAYMENTS)" = "true" ] && echo "ACTIVÉ" || echo "désactivé")"
   ligne v "Versions" "$([ "$(lire VERSIONS_MODE)" = "styles" ] && echo "rythmée+acoustique" || echo "économiques")"
   ligne m "Modèle Suno" "$(modele)"
@@ -200,10 +199,12 @@ while true; do
     7)
       echo
       echo "Ces informations s'affichent sur les pages Contact, Conditions et Confidentialité."
-      echo "CinetPay les vérifie avant de valider ton compte."
+      echo "CinetPay les vérifie avant de valider ton compte. Laissées vides, ce sont les coordonnées"
+      echo "de DB.Mélo : dbmelox@gmail.com, WhatsApp +226 72 83 01 94, téléphone +226 75 54 10 16."
       demander MERCHANT_NAME "Nom de ton entreprise (ou ton nom si tu vends en ton nom propre) :" texte
-      demander MERCHANT_EMAIL "E-mail de contact (aussi utilisé pour les reçus) :"
-      demander MERCHANT_PHONE "Numéro WhatsApp avec l'indicatif, ex. +22670123456 :"
+      demander MERCHANT_EMAIL "E-mail de contact (aussi utilisé pour les reçus) :" texte
+      demander MERCHANT_WHATSAPP "Numéro WhatsApp avec l'indicatif :" texte
+      demander MERCHANT_PHONE "Numéro de téléphone avec l'indicatif :" texte
       demander MERCHANT_ADDRESS "Ville et pays, ex. Ouagadougou, Burkina Faso :" texte
       demander MERCHANT_REGISTRATION "Numéro RCCM ou IFU (Entrée si tu n'en as pas) :" texte
       ;;

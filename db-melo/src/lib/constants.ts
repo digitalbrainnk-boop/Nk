@@ -21,6 +21,14 @@ export const BRAND = {
   tagline: "Votre histoire, chantée en qualité studio.",
 } as const;
 
+/** Coordonnées de DB.Mélo, utilisées quand les variables MERCHANT_* ne sont pas renseignées. */
+export const CONTACT = {
+  email: "dbmelox@gmail.com",
+  whatsapp: "+226 72 83 01 94",
+  phone: "+226 75 54 10 16",
+  address: "Burkina Faso",
+} as const;
+
 export interface VoiceOption {
   id: VoiceType;
   label: string;

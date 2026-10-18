@@ -1,6 +1,7 @@
 // Configuration serveur (lue à chaque appel : les variables peuvent changer sans rebuild).
 // Ne jamais importer ce fichier depuis un composant client.
 import { createHash } from "node:crypto";
+import { CONTACT } from "../constants";
 import type { FlowMode, KieSunoModel, VersionsMode } from "../types";
 
 const str = (key: string) => (process.env[key] ?? "").trim();
@@ -43,13 +44,14 @@ export const config = {
   paystackSecret: () => str("PAYSTACK_SECRET_KEY"),
   flutterwave: () => ({ secretKey: str("FLUTTERWAVE_SECRET_KEY"), webhookHash: str("FLUTTERWAVE_WEBHOOK_HASH") }),
   /** E-mail du marchand, utilisé quand une passerelle exige un e-mail et que le client n'en donne pas. */
-  merchantEmail: () => str("MERCHANT_EMAIL"),
+  merchantEmail: () => str("MERCHANT_EMAIL") || CONTACT.email,
   /** Identité du vendeur sur les pages légales (exigée par CinetPay et les autres passerelles). */
   merchant: () => ({
     name: str("MERCHANT_NAME"),
-    email: str("MERCHANT_EMAIL"),
-    phone: str("MERCHANT_PHONE"),
-    address: str("MERCHANT_ADDRESS"),
+    email: str("MERCHANT_EMAIL") || CONTACT.email,
+    whatsapp: str("MERCHANT_WHATSAPP") || CONTACT.whatsapp,
+    phone: str("MERCHANT_PHONE") || CONTACT.phone,
+    address: str("MERCHANT_ADDRESS") || CONTACT.address,
     registration: str("MERCHANT_REGISTRATION"),
     host: str("HOSTING_INFO"),
   }),

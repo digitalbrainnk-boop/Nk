@@ -3,13 +3,13 @@
 // Page d'une commande : paiement → composition (useKieSuno) → lecteur HD,
 // téléchargement mobile, pochette et page cadeau.
 import { AnimatePresence, motion } from "framer-motion";
-import { AlertTriangle, CheckCircle2, Loader, Music, RefreshCw, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Loader, MessageCircle, Music, RefreshCw, XCircle } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useKieSuno } from "@/hooks/useKieSuno";
 import { api } from "@/lib/client/api";
 import { rememberSong } from "@/lib/client/local-songs";
-import { BRAND, STYLES, VOICES, label, variantLabel } from "@/lib/constants";
+import { BRAND, CONTACT, STYLES, VOICES, label, variantLabel } from "@/lib/constants";
 import type { CoverChoice, PublicSong, VariantId } from "@/lib/types";
 import { AudioPlayer } from "../player/AudioPlayer";
 import { PaymentSelector } from "../payment/PaymentSelector";
@@ -201,7 +201,15 @@ export function SongWorkspace({ id, autoStart, paymentRef }: { id: string; autoS
                 </button>
               </>
             ) : (
-              <p className="text-sm text-muted">Contactez-nous avec le lien de cette page : nous relancerons votre chanson.</p>
+              <>
+                <p className="text-sm text-muted">Écrivez-nous sur WhatsApp : nous relançons votre chanson.</p>
+                <a
+                  href={`https://wa.me/${CONTACT.whatsapp.replace(/\D/g, "")}?text=${encodeURIComponent(`Bonjour, ma chanson « ${c.title} » n'a pas pu être composée. Référence : ${song.id}`)}`}
+                  className="btn btn-gold"
+                >
+                  <MessageCircle className="size-4" /> Écrire sur WhatsApp
+                </a>
+              </>
             )}
             {k.error && k.error !== song.generation.error && <p className="text-sm text-danger">{k.error}</p>}
           </div>

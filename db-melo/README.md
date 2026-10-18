@@ -128,7 +128,7 @@ Configuration chez les prestataires (au moins un pour le Mobile Money et un pour
 - **Flutterwave** : `FLUTTERWAVE_SECRET_KEY` ; webhook `https://ton-domaine/api/payments/webhooks/flutterwave` avec un « Secret hash » recopié dans `FLUTTERWAVE_WEBHOOK_HASH`.
 - **Stripe** : `STRIPE_SECRET_KEY` ; webhook `https://ton-domaine/api/payments/webhooks/stripe` avec les événements `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed`, `checkout.session.expired`, puis `STRIPE_WEBHOOK_SECRET`. Activez Apple Pay / Google Pay dans le tableau de bord Stripe.
 - **Paystack** : `PAYSTACK_SECRET_KEY` ; webhook `https://ton-domaine/api/payments/webhooks/paystack`.
-- **Ton entreprise** (`MERCHANT_NAME`, `MERCHANT_EMAIL`, `MERCHANT_PHONE`, `MERCHANT_ADDRESS`, `MERCHANT_REGISTRATION`, `HOSTING_INFO`) : affichée sur `/contact`, `/conditions` et `/confidentialite`, que CinetPay vérifie avant de valider un compte. `MERCHANT_EMAIL` sert aussi de reçu quand Flutterwave ou Paystack exigent un e-mail. Tout se règle dans `dbmelo-cles` → 7.
+- **Ton entreprise** (`MERCHANT_NAME`, `MERCHANT_EMAIL`, `MERCHANT_WHATSAPP`, `MERCHANT_PHONE`, `MERCHANT_ADDRESS`, `MERCHANT_REGISTRATION`, `HOSTING_INFO` ; vides, ce sont les coordonnées de `CONTACT` dans `src/lib/constants.ts` : dbmelox@gmail.com, WhatsApp +226 72 83 01 94, téléphone +226 75 54 10 16) : affichée sur `/contact`, `/conditions` et `/confidentialite`, que CinetPay vérifie avant de valider un compte. `MERCHANT_EMAIL` sert aussi de reçu quand Flutterwave ou Paystack exigent un e-mail. Tout se règle dans `dbmelo-cles` → 7.
 
 #### Ouvrir le compte CinetPay
 
