@@ -56,7 +56,10 @@ demander() {
     # Sans les caractères que le fichier .env interprète ($, #, guillemets).
     saisie="$(printf '%s' "$saisie" | tr -d '"#$`\\' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
   else
-    saisie="$(printf '%s' "$saisie" | tr -d '[:space:]')"
+    # Une clé ne contient pas d'espace : on garde le premier mot (évite deux valeurs collées ensemble).
+    set -- $saisie
+    [ $# -gt 1 ] && echo "   ⚠️  Plusieurs valeurs collées : seule la première est gardée ($(masque "$1"))."
+    saisie="${1:-}"
   fi
   if [ "$saisie" = "-" ]; then
     ecrire "$cle" ""
