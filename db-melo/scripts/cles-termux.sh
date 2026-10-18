@@ -108,7 +108,7 @@ tester() {
     elif [ -n "$(echo "$r" | json data.name)" ]; then echo "✅ Chariow : clé valide — boutique « $(echo "$r" | json data.name) »"
     else echo "❌ Chariow : clé refusée ($(echo "$r" | json message))"; fi
     p=$(lire CHARIOW_PRODUCT_ID)
-    if [ -z "$p" ]; then echo "   ❌ Produit Chariow manquant (3) : crée le produit « Chanson » de type Licence à 1 000 FCFA."
+    if [ -z "$p" ]; then echo "   ❌ Produit Chariow manquant (3) : crée le produit « Chanson » de type Licence à 1 200 FCFA."
     else
       r=$(curl -s -m 20 -H "Authorization: Bearer $k" -H "Accept: application/json" "https://api.chariow.com/v1/products/$p")
       t=$(echo "$r" | json data.type)

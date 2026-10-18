@@ -12,12 +12,12 @@ const KEYS = ["CHARIOW_API_KEY", "CHARIOW_PRODUCT_ID", "CHARIOW_PULSE_SECRET", "
 const clearKeys = () => KEYS.forEach((k) => vi.stubEnv(k, ""));
 
 describe("tarif", () => {
-  it("une chanson coûte 1 000 FCFA, une seule offre en vente", () => {
-    expect(SONG_PRICES.XOF).toBe(1000);
-    expect(SONG_PRICES.XAF).toBe(1000);
+  it("une chanson coûte 1 200 FCFA, une seule offre en vente", () => {
+    expect(SONG_PRICES.XOF).toBe(1200);
+    expect(SONG_PRICES.XAF).toBe(1200);
     expect(ACTIVE_PLANS.map((p) => p.id)).toEqual(["essentiel"]);
-    expect(formatPrice(1000, "XOF").replace(/\s/g, " ")).toBe("1 000 FCFA");
-    expect(formatPrice(1.5, "EUR").replace(/\s/g, " ")).toBe("1,50 €");
+    expect(formatPrice(1200, "XOF").replace(/\s/g, " ")).toBe("1 200 FCFA");
+    expect(formatPrice(SONG_PRICES.EUR, "EUR").replace(/\s/g, " ")).toBe("1,80 €");
   });
   it("a un prix pour chaque devise, multiple de 5 pour CinetPay", () => {
     for (const c of Object.keys(CURRENCIES) as (keyof typeof CURRENCIES)[]) expect(SONG_PRICES[c]).toBeGreaterThan(0);

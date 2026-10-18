@@ -212,24 +212,24 @@ export const CURRENCIES: Record<Currency, CurrencyInfo> = {
 };
 
 /**
- * Prix d'une chanson : 1 000 FCFA.
+ * Prix d'une chanson : 1 200 FCFA.
  * Hors zone FCFA (Mobile Money en monnaie locale), les montants sont des équivalents
  * approximatifs : ajuste-les ici selon les taux du moment. Les montants FCFA, GNF et CDF
  * sont des multiples de 5 (exigé par CinetPay).
  */
 export const SONG_PRICES: Record<Currency, number> = {
-  XOF: 1000,
-  XAF: 1000,
-  GNF: 15000,
-  CDF: 5000,
-  GHS: 20,
-  KES: 230,
-  UGX: 6500,
-  TZS: 4500,
-  RWF: 2500,
-  ZMW: 45,
-  EUR: 1.5,
-  USD: 1.75,
+  XOF: 1200,
+  XAF: 1200,
+  GNF: 18000,
+  CDF: 6000,
+  GHS: 24,
+  KES: 280,
+  UGX: 7800,
+  TZS: 5400,
+  RWF: 3000,
+  ZMW: 54,
+  EUR: 1.8,
+  USD: 2.1,
 };
 
 /** Devises proposées pour le paiement par carte (la banque du client convertit si besoin). */

@@ -2,7 +2,7 @@
 
 Application SaaS **Next.js 16 (App Router) · TypeScript · Tailwind CSS 4 · Framer Motion**, installable sur **Android, iPhone, iPad et ordinateur** (PWA).
 
-L'utilisateur écrit ses paroles (ou les fait écrire par l'IA), choisit la voix et le style, puis **paie 1 000 FCFA** par **Mobile Money** (Orange Money, Wave, MTN MoMo, Moov, Airtel Money, M-Pesa…) ou **carte** (Visa, Mastercard, Apple Pay, Google Pay), depuis **n'importe quel pays d'Afrique**. Le paiement confirmé, Suno (via Kie.ai) compose la chanson et en livre **deux versions** au choix (une seule composition, ≈ 12 crédits Kie) ; le **MP3 HD** s'enregistre sur le téléphone, s'envoie sur WhatsApp ou se partage via une **page cadeau avec QR code**.
+L'utilisateur écrit ses paroles (ou les fait écrire par l'IA), choisit la voix et le style, puis **paie 1 200 FCFA** par **Mobile Money** (Orange Money, Wave, MTN MoMo, Moov, Airtel Money, M-Pesa…) ou **carte** (Visa, Mastercard, Apple Pay, Google Pay), depuis **n'importe quel pays d'Afrique**. Le paiement confirmé, Suno (via Kie.ai) compose la chanson et en livre **deux versions** au choix (une seule composition, ≈ 12 crédits Kie) ; le **MP3 HD** s'enregistre sur le téléphone, s'envoie sur WhatsApp ou se partage via une **page cadeau avec QR code**.
 
 > **Aucun son n'existe avant le paiement** : il n'y a rien à enregistrer à l'écran pour obtenir la chanson sans payer. (Bloquer l'enregistrement d'écran est impossible sur un site web ou une application installée depuis le navigateur ; aucun navigateur ne le permet, et le son peut de toute façon être capté par un autre téléphone.)
 
@@ -108,9 +108,9 @@ public/sw.js              service worker (hors ligne, installation)
 
 Ordre : **Claude** (`ANTHROPIC_API_KEY`, modèle `LYRICS_MODEL`, sortie JSON structurée), sinon **DeepSeek via Kie** (`KIE_CHAT_MODEL`), sinon un parolier intégré à partir de modèles rimés (proposition à retoucher).
 
-### Paiements : 1 000 FCFA, partout en Afrique
+### Paiements : 1 200 FCFA, partout en Afrique
 
-Le prix est défini dans `src/lib/constants.ts` (`SONG_PRICES`) : **1 000 FCFA** (XOF et XAF). Pour le Mobile Money hors zone FCFA, le client paie l'équivalent dans sa monnaie (GNF, CDF, GHS, KES, UGX, TZS, RWF, ZMW) ; ces équivalents sont **approximatifs, à ajuster** selon les taux du moment. Par carte, le client paie 1 000 FCFA, 1,50 € ou 1,75 $ ; sa banque convertit.
+Le prix est défini dans `src/lib/constants.ts` (`SONG_PRICES`) : **1 200 FCFA** (XOF et XAF). Pour le Mobile Money hors zone FCFA, le client paie l'équivalent dans sa monnaie (GNF, CDF, GHS, KES, UGX, TZS, RWF, ZMW) ; ces équivalents sont **approximatifs, à ajuster** selon les taux du moment. Par carte, le client paie 1 200 FCFA, 1,80 € ou 2,10 $ ; sa banque convertit.
 
 Le client choisit son **pays** (présélectionné d'après son fuseau horaire, les **54 pays d'Afrique** sont listés) :
 
@@ -125,7 +125,7 @@ Sécurité : le **montant vient toujours du serveur**, la passerelle renvoie sur
 
 Configuration chez les prestataires (au moins un pour le Mobile Money et un pour la carte) :
 
-- **Chariow** : `CHARIOW_API_KEY`, `CHARIOW_PRODUCT_ID` (produit de type Licence à 1 000 FCFA) ; Pulse `https://ton-domaine/api/payments/webhooks/chariow` avec son secret dans `CHARIOW_PULSE_SECRET`. Chariow exige un e-mail et un téléphone : sans e-mail du client, celui de DB.Mélo est utilisé.
+- **Chariow** : `CHARIOW_API_KEY`, `CHARIOW_PRODUCT_ID` (produit de type Licence à 1 200 FCFA) ; Pulse `https://ton-domaine/api/payments/webhooks/chariow` avec son secret dans `CHARIOW_PULSE_SECRET`. Chariow exige un e-mail et un téléphone : sans e-mail du client, celui de DB.Mélo est utilisé.
 - **FedaPay** (facultatif) : `FEDAPAY_SECRET_KEY` (`sk_sandbox_…` = paiements fictifs, `sk_live_…` = réels) ; webhook `https://ton-domaine/api/payments/webhooks/fedapay` avec sa clé secrète dans `FEDAPAY_WEBHOOK_SECRET`.
 - **CinetPay** (facultatif) : `CINETPAY_API_KEY`, `CINETPAY_SITE_ID`, `CINETPAY_SECRET_KEY`. L'adresse de notification `https://ton-domaine/api/payments/webhooks/cinetpay` est transmise à chaque paiement.
 - **Flutterwave** : `FLUTTERWAVE_SECRET_KEY` ; webhook `https://ton-domaine/api/payments/webhooks/flutterwave` avec un « Secret hash » recopié dans `FLUTTERWAVE_WEBHOOK_HASH`.
@@ -138,10 +138,10 @@ Configuration chez les prestataires (au moins un pour le Mobile Money et un pour
 Chariow encaisse pour ta boutique (Mobile Money et cartes) et te reverse les ventes. Le prix est celui du produit créé dans Chariow : DB.Mélo l'ouvre au nom du client et vérifie la vente avant de composer.
 
 1. Crée ta boutique sur chariow.com avec `dbmelox@gmail.com`, en **FCFA**.
-2. Crée un produit **« Chanson personnalisée »** de type **Licence**, au prix de **1 000 FCFA**, puis publie-le. Le type Licence est indispensable : avec un autre type, un même client ne pourrait acheter qu'une seule chanson. Note son identifiant (`prd_…`).
+2. Crée un produit **« Chanson personnalisée »** de type **Licence**, au prix de **1 200 FCFA**, puis publie-le. Le type Licence est indispensable : avec un autre type, un même client ne pourrait acheter qu'une seule chanson. Note son identifiant (`prd_…`).
 3. **Paramètres → API** : copie la clé API (`sk_live_…`). Dans `dbmelo-cles` → 3 : la clé, l'identifiant du produit, puis (étape 4) le secret du Pulse.
 4. Quand le site est en ligne : **Automatisations → Pulses → Ajouter**, adresse `https://ton-domaine/api/payments/webhooks/chariow`, événements « vente réussie », « vente échouée », « vente abandonnée » ; copie son secret (`whsec_…`) dans `dbmelo-cles` → 3.
-5. `dbmelo-cles` → 9 vérifie la clé, le produit, son prix et son type. Fais ensuite un vrai paiement de 1 000 FCFA.
+5. `dbmelo-cles` → 9 vérifie la clé, le produit, son prix et son type. Fais ensuite un vrai paiement de 1 200 FCFA.
 
 L'API Chariow accepte 100 requêtes par minute : les vérifications d'une même vente sont espacées de 8 secondes.
 

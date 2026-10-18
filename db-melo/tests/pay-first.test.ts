@@ -27,7 +27,7 @@ beforeAll(async () => {
   store = await import("@/lib/server/store");
 });
 
-function payment(songId: string, amount = 1000): PaymentRecord {
+function payment(songId: string, amount = 1200): PaymentRecord {
   return { reference: `DBMTEST${Math.random().toString(36).slice(2, 10).toUpperCase()}`, songId, provider: "demo", method: "mobile_money", plan: "essentiel", amount, currency: "XOF", status: "pending", createdAt: 0, updatedAt: 0 };
 }
 
@@ -41,7 +41,7 @@ describe("paiement avant composition", () => {
   it("lance la composition dès la confirmation du paiement", async () => {
     const song = await lib.createSong(config);
     const p = await store.payments.put(payment(song.id));
-    await lib.applyPaymentResult(p, { status: "paid", amount: 1000, currency: "XOF" }, "http://localhost");
+    await lib.applyPaymentResult(p, { status: "paid", amount: 1200, currency: "XOF" }, "http://localhost");
     const after = (await store.songs.get(song.id))!;
     expect(after.payment.status).toBe("paid");
     expect(after.generation.status).toBe("generating");
@@ -51,7 +51,7 @@ describe("paiement avant composition", () => {
   it("ne débloque rien si le montant payé est trop faible", async () => {
     const song = await lib.createSong(config);
     const p = await store.payments.put(payment(song.id));
-    const r = await lib.applyPaymentResult(p, { status: "paid", amount: 100, currency: "XOF" }, "http://localhost");
+    const r = await lib.applyPaymentResult(p, { status: "paid", amount: 1000, currency: "XOF" }, "http://localhost");
     expect(r.status).toBe("failed");
     expect((await store.songs.get(song.id))!.generation.status).toBe("idle");
   });

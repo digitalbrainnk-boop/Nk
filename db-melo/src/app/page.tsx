@@ -2,7 +2,7 @@ import { Check, Gift, Headphones, PenLine, Smartphone, Sparkles, Wand2 } from "l
 import Link from "next/link";
 import { HeroVisual } from "@/components/landing/HeroVisual";
 import { Reveal } from "@/components/landing/Reveal";
-import { ACTIVE_PLANS, OPERATORS, STYLES, VOICES } from "@/lib/constants";
+import { ACTIVE_PLANS, OPERATORS, SONG_PRICES, STYLES, VOICES } from "@/lib/constants";
 import { formatPrice } from "@/lib/pricing";
 
 const STEPS = [
@@ -11,8 +11,10 @@ const STEPS = [
   { icon: Gift, title: "Offrez", text: "Téléchargez en HD sur votre téléphone, envoyez sur WhatsApp ou partagez la page cadeau et son QR code." },
 ];
 
+const PRICE = formatPrice(SONG_PRICES.XOF, "XOF");
+
 const FAQ = [
-  { q: "Combien ça coûte ?", a: "1 000 FCFA la chanson, livrée en deux versions au choix. Vous relisez et retouchez vos paroles gratuitement, puis vous payez : le studio compose alors votre chanson." },
+  { q: "Combien ça coûte ?", a: `${PRICE} la chanson, livrée en deux versions au choix. Vous relisez et retouchez vos paroles gratuitement, puis vous payez : le studio compose alors votre chanson.` },
   { q: "Combien de temps faut-il ?", a: "Quelques minutes pour remplir le formulaire, puis 1 à 5 minutes de composition après le paiement." },
   { q: "Comment payer depuis mon pays ?", a: "Par Mobile Money dans votre monnaie (Orange Money, Wave, MTN MoMo, Moov, Airtel Money, M-Pesa… selon le pays), ou par carte Visa / Mastercard depuis n'importe quel pays d'Afrique." },
   { q: "Comment garder la chanson sur mon téléphone ?", a: "Un bouton « Télécharger & Sauvegarder » ouvre l'enregistrement natif : app Fichiers sur iPhone et iPad, Téléchargements et lecteurs de musique sur Android. Le MP3 contient le titre, l'artiste et la pochette." },
@@ -41,7 +43,7 @@ export default function Home() {
             </a>
           </div>
           <ul className="mt-8 flex flex-wrap gap-x-6 gap-y-2 text-sm text-muted">
-            {["Paroles relues avant de payer", "2 versions pour 1 000 FCFA", "Mobile Money & carte, partout en Afrique"].map((t) => (
+            {["Paroles relues avant de payer", `2 versions pour ${PRICE}`, "Mobile Money & carte, partout en Afrique"].map((t) => (
               <li key={t} className="flex items-center gap-1.5">
                 <Check className="size-4 text-gold" /> {t}
               </li>
