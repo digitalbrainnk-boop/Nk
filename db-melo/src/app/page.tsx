@@ -7,12 +7,12 @@ import { formatPrice } from "@/lib/pricing";
 
 const STEPS = [
   { icon: PenLine, title: "Racontez", text: "Écrivez vos paroles ou confiez vos souvenirs au parolier IA : prénoms, anecdotes, l'émotion voulue." },
-  { icon: Headphones, title: "Composez", text: "Après le paiement, le studio compose deux versions — une rythmée, une acoustique — avec la voix de votre choix." },
+  { icon: Headphones, title: "Composez", text: "Après le paiement, le studio compose deux versions de votre chanson, avec la voix de votre choix." },
   { icon: Gift, title: "Offrez", text: "Téléchargez en HD sur votre téléphone, envoyez sur WhatsApp ou partagez la page cadeau et son QR code." },
 ];
 
 const FAQ = [
-  { q: "Combien ça coûte ?", a: "1 000 FCFA la chanson, avec ses deux versions (rythmée et acoustique). Vous relisez et retouchez vos paroles gratuitement, puis vous payez : le studio compose alors votre chanson." },
+  { q: "Combien ça coûte ?", a: "1 000 FCFA la chanson, livrée en deux versions au choix. Vous relisez et retouchez vos paroles gratuitement, puis vous payez : le studio compose alors votre chanson." },
   { q: "Combien de temps faut-il ?", a: "Quelques minutes pour remplir le formulaire, puis 1 à 5 minutes de composition après le paiement." },
   { q: "Comment payer depuis mon pays ?", a: "Par Mobile Money dans votre monnaie (Orange Money, Wave, MTN MoMo, Moov, Airtel Money, M-Pesa… selon le pays), ou par carte Visa / Mastercard, Apple Pay et Google Pay depuis n'importe quel pays d'Afrique." },
   { q: "Comment garder la chanson sur mon téléphone ?", a: "Un bouton « Télécharger & Sauvegarder » ouvre l'enregistrement natif : app Fichiers sur iPhone et iPad, Téléchargements et lecteurs de musique sur Android. Le MP3 contient le titre, l'artiste et la pochette." },

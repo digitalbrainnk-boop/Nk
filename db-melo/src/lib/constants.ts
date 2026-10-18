@@ -10,6 +10,7 @@ import type {
   Occasion,
   PlanId,
   SongLanguage,
+  SongVariant,
   VoiceType,
 } from "./types";
 
@@ -243,7 +244,7 @@ export const PLANS: Record<PlanId, Plan> = {
     name: "Chanson complète",
     tagline: "Composée pour vous juste après le paiement",
     features: [
-      "2 versions : rythmée + acoustique",
+      "2 versions de votre chanson, au choix",
       "MP3 HD sans watermark, à garder sur votre téléphone",
       "Paroles synchronisées (karaoké)",
       "Page cadeau + QR code",
@@ -388,3 +389,9 @@ export function guessCountry(timeZone?: string): CountryCode | null {
 
 export const label = <T extends { id: string; label: string }>(list: T[], id: string | undefined) =>
   list.find((o) => o.id === id)?.label ?? "";
+
+/** Nom affiché d'une version : prise 1 / 2 d'une même composition, ou arrangement rythmé / acoustique. */
+export function variantLabel(v: Pick<SongVariant, "id" | "mood">): string {
+  if (v.mood === "take") return v.id === "A" ? "Version 1" : "Version 2";
+  return v.mood === "acoustic" ? "Version acoustique" : "Version rythmée";
+}

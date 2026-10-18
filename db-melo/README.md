@@ -2,7 +2,7 @@
 
 Application SaaS **Next.js 16 (App Router) · TypeScript · Tailwind CSS 4 · Framer Motion**, installable sur **Android, iPhone, iPad et ordinateur** (PWA).
 
-L'utilisateur écrit ses paroles (ou les fait écrire par l'IA), choisit la voix et le style, puis **paie 1 000 FCFA** par **Mobile Money** (Orange Money, Wave, MTN MoMo, Moov, Airtel Money, M-Pesa…) ou **carte** (Visa, Mastercard, Apple Pay, Google Pay), depuis **n'importe quel pays d'Afrique**. Le paiement confirmé, Suno (via Kie.ai) compose **deux versions** (A rythmée, B acoustique) ; le **MP3 HD** s'enregistre sur le téléphone, s'envoie sur WhatsApp ou se partage via une **page cadeau avec QR code**.
+L'utilisateur écrit ses paroles (ou les fait écrire par l'IA), choisit la voix et le style, puis **paie 1 000 FCFA** par **Mobile Money** (Orange Money, Wave, MTN MoMo, Moov, Airtel Money, M-Pesa…) ou **carte** (Visa, Mastercard, Apple Pay, Google Pay), depuis **n'importe quel pays d'Afrique**. Le paiement confirmé, Suno (via Kie.ai) compose la chanson et en livre **deux versions** au choix (une seule composition, ≈ 12 crédits Kie) ; le **MP3 HD** s'enregistre sur le téléphone, s'envoie sur WhatsApp ou se partage via une **page cadeau avec QR code**.
 
 > **Aucun son n'existe avant le paiement** : il n'y a rien à enregistrer à l'écran pour obtenir la chanson sans payer. (Bloquer l'enregistrement d'écran est impossible sur un site web ou une application installée depuis le navigateur ; aucun navigateur ne le permet, et le son peut de toute façon être capté par un autre téléphone.)
 
@@ -40,7 +40,7 @@ Commandes dans Termux :
 | `dbmelo-journal` | affiche ce que fait le serveur |
 | `dbmelo-public` | ouvre une adresse publique temporaire `https://….trycloudflare.com` pour montrer DB.Mélo à des clients (refusé tant que le paiement simulé est actif) |
 | `dbmelo-maj` | met à jour, recompile et relance |
-| `dbmelo-cles` | menu pour saisir **et tester** tes clés API (Kie.ai avec ton crédit restant, Claude, CinetPay, Flutterwave, Stripe, Paystack), activer ou couper le paiement simulé, puis relancer |
+| `dbmelo-cles` | menu pour saisir **et tester** tes clés API (Kie.ai avec ton crédit restant, Claude, CinetPay, Flutterwave, Stripe, Paystack), activer ou couper le paiement simulé, choisir les versions (économiques ou rythmée + acoustique) et le modèle Suno, puis relancer |
 
 Les clés restent dans `~/DBMelo/db-melo/.env.local` (lisible par toi seul), les commandes et les chansons dans `~/dbmelo-donnees`.
 
@@ -156,7 +156,8 @@ Voir `.env.example`. Les plus importantes :
 |---|---|
 | `PUBLIC_BASE_URL` | Adresse https publique (webhooks Kie et paiements, liens cadeau) |
 | `KIE_API_KEY` | Clé Kie.ai (sans elle : mode démo) |
-| `KIE_SUNO_MODEL` | `V5` par défaut |
+| `KIE_SUNO_MODEL` | `V5` par défaut ; `V6`, `V6_MINI`, `V6_WILD` possibles (à écouter avant d'adopter) |
+| `VERSIONS_MODE` | `takes` (défaut) : 1 composition Suno, ses 2 prises font les 2 versions (≈ 12 crédits) ; `styles` : une version rythmée + une acoustique (2 compositions, ≈ 24 crédits) |
 | `ANTHROPIC_API_KEY` | Parolier Claude (facultatif) |
 | `FLOW_MODE` | `pay_first` (défaut : paiement avant composition) ou `preview_first` |
 | `MAX_GENERATION_ATTEMPTS` | Compositions autorisées par chanson, relances comprises (3) |

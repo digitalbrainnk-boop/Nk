@@ -1,7 +1,8 @@
 // Cycle de vie d'une chanson : création, lancement Suno (2 variantes), suivi, paiement.
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { buildKieRequests } from "../kie-prompt";
+import { buildKieRequest } from "../kie-prompt";
 import type {
+  KieRecordInfo,
   PaymentRecord,
   PaymentVerification,
   PublicSong,
@@ -26,6 +27,7 @@ export const DEMO_DURATION = 48;
 const isTerminal = (s: SongVariant["status"]) => s === "SUCCESS" || kie.FAILED_STATUSES.has(s);
 
 function emptyVariant(id: VariantId): SongVariant {
+  if (config.versionsMode() === "takes") return { id, mood: "take", take: id === "A" ? 0 : 1, status: "QUEUED", tracks: [] };
   return { id, mood: id === "A" ? "rhythmic" : "acoustic", status: "QUEUED", tracks: [] };
 }
 
@@ -98,13 +100,10 @@ export async function startGeneration(id: string, base: string): Promise<SongRec
 
   const ref = claimed.config.referenceAudio;
   const uploadUrl = ref?.useAsCover && ref.rightsConfirmed ? (await uploads.get(ref.uploadId))?.publicUrl : undefined;
-  const requests = buildKieRequests(claimed.config, {
-    model: config.sunoModel(),
-    callbackUrl: (v) => callbackUrl(base, id, v, "music"),
-    uploadUrl,
-  });
-
-  const results = await Promise.allSettled(VARIANTS.map((v) => kie.startSunoTask(requests[v])));
+  const opts = { model: config.sunoModel(), callbackUrl: (v: VariantId) => callbackUrl(base, id, v, "music"), uploadUrl };
+  // Mode « takes » : une seule composition, dont les deux prises deviennent les versions 1 et 2.
+  const single = claimed.variants.A.mood === "take" ? kie.startSunoTask(buildKieRequest(claimed.config, "both", opts)) : null;
+  const results = await Promise.allSettled(VARIANTS.map((v) => single ?? kie.startSunoTask(buildKieRequest(claimed.config, v, opts))));
   const updated = await songs.update(id, (s) => {
     results.forEach((r, i) => {
       const v = VARIANTS[i];
@@ -132,13 +131,18 @@ function demoProgress(v: SongVariant, now: number): Partial<SongVariant> {
   return { status: "SUCCESS", tracks, alignedWords: null, waveform: null, finishedAt: now };
 }
 
-async function sunoProgress(v: SongVariant): Promise<Partial<SongVariant>> {
-  const info = await kie.getSunoTask(v.taskId!);
-  const tracks: StoredTrack[] = (info.response?.sunoData ?? [])
-    .filter((t) => t?.audioUrl)
-    .map((t) => ({ audioId: t.id, audioUrl: t.audioUrl, imageUrl: t.imageUrl, duration: t.duration ? Number(t.duration) : undefined }));
+async function sunoProgress(v: SongVariant, taskInfo: (taskId: string) => Promise<KieRecordInfo>): Promise<Partial<SongVariant>> {
+  const info = await taskInfo(v.taskId!);
+  const all = (info.response?.sunoData ?? []).filter((t) => t?.audioUrl);
+  // Version tirée d'une composition partagée : uniquement sa prise.
+  const mine = v.take === undefined ? all : (info.response?.sunoData ?? []).slice(v.take, v.take + 1).filter((t) => t?.audioUrl);
+  const tracks: StoredTrack[] = mine.map((t) => ({ audioId: t.id, audioUrl: t.audioUrl, imageUrl: t.imageUrl, duration: t.duration ? Number(t.duration) : undefined }));
   if (kie.FAILED_STATUSES.has(info.status)) return { status: info.status, error: kie.failureMessage(info.status, info.errorMessage) };
-  if (info.status === "SUCCESS" && !tracks.length) return { status: "FIRST_SUCCESS" };
+  if (info.status === "SUCCESS" && !tracks.length) {
+    // Suno n'a livré qu'une prise : l'autre version reste disponible.
+    if (v.take !== undefined && all.length) return { status: "GENERATE_AUDIO_FAILED", error: "Suno n'a livré qu'une seule version." };
+    return { status: "FIRST_SUCCESS" };
+  }
   const patch: Partial<SongVariant> = { status: info.status };
   if (tracks.length) patch.tracks = tracks;
   if (info.status === "SUCCESS") {
@@ -200,12 +204,18 @@ export async function refreshSong(id: string, opts: { force?: boolean; base?: st
   if (!song || skip) return song;
 
   const patches: Partial<Record<VariantId, Partial<SongVariant>>> = {};
+  // Les deux versions d'une composition partagée ne lisent son état qu'une fois.
+  const infos = new Map<string, Promise<KieRecordInfo>>();
+  const taskInfo = (taskId: string) => {
+    if (!infos.has(taskId)) infos.set(taskId, kie.getSunoTask(taskId));
+    return infos.get(taskId)!;
+  };
   await Promise.all(
     VARIANTS.map(async (v) => {
       const variant = song.variants[v];
       try {
         if (variant.taskId && !isTerminal(variant.status)) {
-          patches[v] = song.demo ? demoProgress(variant, now) : await sunoProgress(variant);
+          patches[v] = song.demo ? demoProgress(variant, now) : await sunoProgress(variant, taskInfo);
         }
         if (wavToStart.includes(v)) {
           const taskId = await kie.startWavTask(variant.taskId!, variant.tracks[0].audioId, callbackUrl(opts.base!, id, v, "wav"));

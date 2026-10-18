@@ -4,6 +4,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import QRCode from "qrcode";
 import { GiftView } from "@/components/gift/GiftView";
+import { variantLabel } from "@/lib/constants";
 import { config } from "@/lib/server/env";
 import { songBySlug } from "@/lib/server/songs";
 
@@ -46,7 +47,7 @@ export default async function GiftPage({ params }: Props) {
   const c = song.config;
   const variants = (["A", "B"] as const)
     .filter((v) => song.variants[v].status === "SUCCESS")
-    .map((v) => ({ id: v, duration: song.variants[v].tracks[0]?.duration, alignedWords: song.variants[v].alignedWords }));
+    .map((v) => ({ id: v, label: variantLabel(song.variants[v]), duration: song.variants[v].tracks[0]?.duration, alignedWords: song.variants[v].alignedWords }));
 
   return (
     <section className="mx-auto max-w-2xl px-4 pt-10 pb-10">

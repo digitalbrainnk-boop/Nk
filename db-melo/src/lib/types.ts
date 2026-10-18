@@ -108,7 +108,7 @@ export interface SongConfig {
 
 /* ───────────────────────────── API Suno via Kie.ai ───────────────────────────── */
 
-export type KieSunoModel = "V3_5" | "V4" | "V4_5" | "V4_5PLUS" | "V5";
+export type KieSunoModel = "V3_5" | "V4" | "V4_5" | "V4_5PLUS" | "V5" | "V6" | "V6_MINI" | "V6_WILD";
 
 /**
  * Corps exact de `POST https://api.kie.ai/api/v1/generate` en mode « Custom Generation ».
@@ -196,8 +196,13 @@ export interface StoredTrack {
 
 export interface SongVariant {
   id: VariantId;
-  /** A = rythmée, B = acoustique / douce. */
-  mood: "rhythmic" | "acoustic";
+  /**
+   * A = rythmée, B = acoustique / douce (deux compositions Suno), ou « take » : les deux prises
+   * d'une seule composition, servies comme version 1 et version 2 (deux fois moins de crédits Kie).
+   */
+  mood: "rhythmic" | "acoustic" | "take";
+  /** Pour mood « take » : indice de la prise Suno (0 ou 1) dans la tâche partagée. */
+  take?: number;
   taskId?: string;
   status: VariantStatus;
   /** Suno renvoie 2 prises par tâche. */
@@ -267,6 +272,9 @@ export interface PublicSong {
 }
 
 export type FlowMode = "preview_first" | "pay_first";
+
+/** « takes » : 1 composition Suno → 2 prises ; « styles » : 2 compositions (rythmée + acoustique). */
+export type VersionsMode = "takes" | "styles";
 
 /* ───────────────────────────── Paiement ───────────────────────────── */
 

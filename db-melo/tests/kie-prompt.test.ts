@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildKieRequests, buildStyle } from "@/lib/kie-prompt";
+import { buildKieRequest, buildKieRequests, buildStyle } from "@/lib/kie-prompt";
 import type { SongConfig } from "@/lib/types";
 
 const config: SongConfig = {
@@ -39,6 +39,15 @@ describe("requêtes Kie", () => {
     expect(r.A.vocalGender).toBe("f");
     expect(r.A.uploadUrl).toBe("https://files.test/ref.mp3");
     expect(r.A.audioWeight).toBeGreaterThan(0);
+  });
+
+  it("compose une seule fois pour deux prises, sans imposer d'arrangement", () => {
+    const r = buildKieRequest(config, "both", { model: "V5", callbackUrl: (v) => `https://x.test/cb?v=${v}` });
+    expect(r.style).not.toContain("upbeat");
+    expect(r.style).not.toContain("acoustic version");
+    expect(r.style).toContain("96 BPM");
+    expect(r.negativeTags).toBe("explicit lyrics, low quality, adult vocals, growl");
+    expect(r.callBackUrl).toBe("https://x.test/cb?v=A");
   });
 
   it("nettoie l'inspiration libre", () => {

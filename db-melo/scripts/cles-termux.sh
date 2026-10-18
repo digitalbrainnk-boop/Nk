@@ -35,6 +35,8 @@ masque() {
   if [ -z "$v" ]; then echo "—"; elif [ ${#v} -le 10 ]; then echo "••••"; else echo "${v:0:4}…${v: -4}"; fi
 }
 
+modele() { local m; m=$(lire KIE_SUNO_MODEL); echo "${m:-V5}"; }
+
 etat() { [ -n "$(lire "$1")" ] && echo "✅ $(masque "$(lire "$1")")" || echo "❌ manquante"; }
 
 # Demande une valeur ; Entrée seule = garder l'actuelle, « - » = effacer.
@@ -136,6 +138,8 @@ menu() {
   ligne 6 "Paystack (facult.)" "$(etat PAYSTACK_SECRET_KEY)"
   ligne 7 "E-mail des reçus" "$(lire MERCHANT_EMAIL)"
   ligne 8 "Paiement simulé" "$([ "$(lire ALLOW_DEMO_PAYMENTS)" = "true" ] && echo "ACTIVÉ" || echo "désactivé")"
+  ligne v "Versions" "$([ "$(lire VERSIONS_MODE)" = "styles" ] && echo "rythmée+acoustique" || echo "économiques")"
+  ligne m "Modèle Suno" "$(modele)"
   echo " 9) Tester mes clés"
   echo " 0) Enregistrer et relancer DB.Mélo"
   echo " q) Quitter sans relancer"
@@ -167,6 +171,30 @@ while true; do
       if [ "$(lire ALLOW_DEMO_PAYMENTS)" = "true" ]; then ecrire ALLOW_DEMO_PAYMENTS false; echo "Paiement simulé désactivé : seuls les vrais paiements sont proposés."
       else ecrire ALLOW_DEMO_PAYMENTS true; echo "Paiement simulé activé (essais seulement : ne l'ouvre pas au public)."; fi
       sleep 2
+      ;;
+    v | V)
+      if [ "$(lire VERSIONS_MODE)" = "styles" ]; then
+        ecrire VERSIONS_MODE takes
+        echo "Versions économiques : 1 composition Suno, 2 versions au choix (≈ 12 crédits par chanson)."
+      else
+        ecrire VERSIONS_MODE styles
+        echo "Versions rythmée + acoustique : 2 compositions Suno (≈ 24 crédits par chanson)."
+      fi
+      echo "Pense à « 0 » pour relancer DB.Mélo."
+      sleep 3
+      ;;
+    m | M)
+      echo
+      echo "Modèle Suno (actuel : $(modele)) :"
+      echo " 1) V5       éprouvé"
+      echo " 2) V6       le plus récent"
+      echo " 3) V6_MINI  rapide"
+      echo " 4) V6_WILD  plus original"
+      printf "   > "
+      read -r n || n=""
+      case "$n" in 1) ecrire KIE_SUNO_MODEL V5 ;; 2) ecrire KIE_SUNO_MODEL V6 ;; 3) ecrire KIE_SUNO_MODEL V6_MINI ;; 4) ecrire KIE_SUNO_MODEL V6_WILD ;; esac
+      echo "Écoute une chanson test et regarde le crédit Kie (9) avant et après. « 0 » pour relancer DB.Mélo."
+      sleep 3
       ;;
     9) tester ;;
     0)

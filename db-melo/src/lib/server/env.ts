@@ -1,7 +1,7 @@
 // Configuration serveur (lue à chaque appel : les variables peuvent changer sans rebuild).
 // Ne jamais importer ce fichier depuis un composant client.
 import { createHash } from "node:crypto";
-import type { FlowMode, KieSunoModel } from "../types";
+import type { FlowMode, KieSunoModel, VersionsMode } from "../types";
 
 const str = (key: string) => (process.env[key] ?? "").trim();
 const num = (key: string, fallback: number, min: number, max: number) => {
@@ -15,6 +15,8 @@ export const config = {
   kieApiBase: () => (str("KIE_API_BASE") || "https://api.kie.ai/api/v1").replace(/\/+$/, ""),
   kieUploadBase: () => (str("KIE_UPLOAD_BASE") || "https://kieai.redpandaai.co").replace(/\/+$/, ""),
   sunoModel: () => (str("KIE_SUNO_MODEL") || "V5") as KieSunoModel,
+  /** Par défaut, une seule composition Suno par chanson : ses deux prises font les deux versions. */
+  versionsMode: (): VersionsMode => (str("VERSIONS_MODE") === "styles" ? "styles" : "takes"),
   /** Sans clé Kie, les chansons sont des maquettes de démonstration synthétisées localement. */
   demoMusic: () => !str("KIE_API_KEY"),
   callbackSecret: () => str("KIE_CALLBACK_SECRET") || createHash("sha256").update(`dbmelo-callback:${str("KIE_API_KEY")}`).digest("hex"),

@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Disc3 } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { GenerationPhase } from "@/hooks/useKieSuno";
+import { variantLabel } from "@/lib/constants";
 import type { PublicSong, VariantId } from "@/lib/types";
 
 const STAGES: Record<string, string> = {
@@ -15,7 +16,7 @@ const STAGES: Record<string, string> = {
 };
 
 const TIPS = [
-  "Deux versions sont composées en parallèle : une rythmée, une acoustique.",
+  "Deux versions de votre chanson sont composées en même temps : vous garderez votre préférée, ou les deux.",
   "Vous pouvez fermer cette page : votre chanson continue d'être composée. Gardez simplement ce lien.",
   "Astuce : installez DB.Mélo sur votre téléphone pour retrouver vos chansons en un geste.",
   "Dès la fin de la composition, vous pourrez télécharger la chanson et partager la page cadeau.",
@@ -59,7 +60,7 @@ export function GenerationProgress({ song, phase, progress, variantProgress, ela
           return (
             <div key={v}>
               <div className="mb-1.5 flex items-center justify-between text-sm">
-                <span className="font-semibold">{v === "A" ? "Version A · rythmée" : "Version B · acoustique"}</span>
+                <span className="font-semibold">{variantLabel(variant)}</span>
                 <span className="text-muted">{variant.error ? "Échec" : STAGES[variant.status] ?? "…"}</span>
               </div>
               <div className="h-2.5 overflow-hidden rounded-full bg-line">

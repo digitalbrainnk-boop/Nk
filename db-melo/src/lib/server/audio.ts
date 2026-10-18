@@ -1,6 +1,6 @@
 // Audio servi au navigateur : pré-écoute tronquée (avant paiement), MP3 HD étiqueté, WAV.
 // Les URL Kie/Suno ne quittent jamais le serveur.
-import { BRAND, STYLES } from "../constants";
+import { BRAND, STYLES, variantLabel } from "../constants";
 import { seedFrom, synthDemoSong } from "../audio/demo-synth";
 import { tagMp3 } from "../audio/id3";
 import type { SongRecord, VariantId } from "../types";
@@ -93,7 +93,7 @@ export async function wavAudio(song: SongRecord, variant: VariantId): Promise<Au
 
 export function audioFilename(song: SongRecord, variant: VariantId, ext: string): string {
   const title = song.config.title.replace(/[\\/:*?"<>|]+/g, "").trim() || "Ma chanson";
-  return `${title} - ${BRAND.name} (${variant === "A" ? "version rythmée" : "version acoustique"}).${ext}`;
+  return `${title} - ${BRAND.name} (${variantLabel(song.variants[variant]).toLowerCase()}).${ext}`;
 }
 
 export function contentDisposition(filename: string, inline = false): string {

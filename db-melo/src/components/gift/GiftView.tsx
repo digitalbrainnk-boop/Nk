@@ -11,6 +11,7 @@ import type { AlignedWord, VariantId } from "@/lib/types";
 
 export interface GiftVariant {
   id: VariantId;
+  label: string;
   duration?: number;
   alignedWords?: AlignedWord[] | null;
 }
@@ -80,7 +81,7 @@ export function GiftView({ slug, title, recipient, sender, dedication, lyrics, v
               }}
               className={`chip min-h-10 ${variant === v.id ? "chip-on" : ""}`}
             >
-              {v.id === "A" ? "Version rythmée" : "Version acoustique"}
+              {v.label}
             </button>
           ))}
         </div>

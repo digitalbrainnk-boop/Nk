@@ -9,7 +9,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useKieSuno } from "@/hooks/useKieSuno";
 import { api } from "@/lib/client/api";
 import { rememberSong } from "@/lib/client/local-songs";
-import { BRAND, STYLES, VOICES, label } from "@/lib/constants";
+import { BRAND, STYLES, VOICES, label, variantLabel } from "@/lib/constants";
 import type { CoverChoice, PublicSong, VariantId } from "@/lib/types";
 import { AudioPlayer } from "../player/AudioPlayer";
 import { PaymentSelector } from "../payment/PaymentSelector";
@@ -21,7 +21,6 @@ import { LyricsCard } from "./LyricsCard";
 
 type PayState = "checking" | "pending" | "paid" | "failed" | "cancelled" | null;
 
-const VARIANT_LABEL: Record<VariantId, string> = { A: "Version rythmée", B: "Version acoustique" };
 
 export function SongWorkspace({ id, autoStart, paymentRef }: { id: string; autoStart: boolean; paymentRef?: string }) {
   const k = useKieSuno(id, { autoStart });
@@ -112,7 +111,7 @@ export function SongWorkspace({ id, autoStart, paymentRef }: { id: string; autoS
   const paid = song.payment.status === "paid";
   const prestige = song.payment.plan === "prestige";
   const ext = song.demo ? "wav" : "mp3";
-  const filename = (v: VariantId) => `${c.title.replace(/[\\/:*?"<>|]+/g, "")} - ${BRAND.name} (${v === "A" ? "version rythmée" : "version acoustique"}).${ext}`;
+  const filename = (v: VariantId) => `${c.title.replace(/[\\/:*?"<>|]+/g, "")} - ${BRAND.name} (${variantLabel(song.variants[v]).toLowerCase()}).${ext}`;
   const previewUrl = (v: VariantId, t = 0) => `/api/songs/${id}/audio?variant=${v}&take=${t}&quality=preview`;
   const hdUrl = (v: VariantId, t: number) => `/api/songs/${id}/audio?variant=${v}&take=${t}&quality=hd&download=1&cv=${coverVersion}`;
   const coverUrl = `/api/songs/${id}/cover?v=${coverVersion}-${song.coverChoice}`;
@@ -223,7 +222,7 @@ export function SongWorkspace({ id, autoStart, paymentRef }: { id: string; autoS
                   key={v}
                   src={previewUrl(v)}
                   filename={`preview-${v}.${ext}`}
-                  title={VARIANT_LABEL[v]}
+                  title={variantLabel(song.variants[v])}
                   subtitle={c.title}
                   lyrics={c.lyrics}
                   alignedWords={song.variants[v].alignedWords}
@@ -251,7 +250,7 @@ export function SongWorkspace({ id, autoStart, paymentRef }: { id: string; autoS
                 }}
                 className={`chip min-h-10 ${variant === v ? "chip-on" : ""}`}
               >
-                {VARIANT_LABEL[v]}
+                {variantLabel(song.variants[v])}
               </button>
             ))}
             {prestige && song.variants[variant].takes > 1 && (
@@ -269,7 +268,7 @@ export function SongWorkspace({ id, autoStart, paymentRef }: { id: string; autoS
             src={hdUrl(variant, take)}
             filename={filename(variant)}
             title={c.title}
-            subtitle={`${VARIANT_LABEL[variant]} · ${BRAND.artist}`}
+            subtitle={`${variantLabel(song.variants[variant])} · ${BRAND.artist}`}
             lyrics={c.lyrics}
             alignedWords={song.variants[variant].alignedWords}
             trackDuration={song.variants[variant].duration}

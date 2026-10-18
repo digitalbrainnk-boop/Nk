@@ -1,5 +1,5 @@
 // /api/generate-music — moteur musical Suno via Kie.ai.
-//   POST { songId } ou { config } : lance les 2 variantes (A rythmée, B acoustique)
+//   POST { songId } ou { config } : lance la composition (2 versions : 2 prises d'une composition, ou A rythmée + B acoustique)
 //   GET  ?songId=…               : suivi (polling) jusqu'aux URL audio finales
 import { NextResponse } from "next/server";
 import { z } from "zod";
