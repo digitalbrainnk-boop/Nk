@@ -127,7 +127,21 @@ if actif "\$SERVEUR"; then
 else
   NEXT_TELEMETRY_DISABLED=1 nohup node_modules/.bin/next start -p $PORT > "$DONNEES/serveur.log" 2>&1 &
   echo \$! > "\$SERVEUR"
-  [ "\$1" = "--silencieux" ] || { echo "Démarrage de DB.Mélo..."; sleep 6; }
+  if [ "\$1" != "--silencieux" ]; then
+    # Attend que le serveur réponde avant d'ouvrir Chrome (un téléphone peut mettre 30 s ou plus).
+    echo "Démarrage de DB.Mélo (jusqu'à 2 minutes)..."
+    for i in \$(seq 1 120); do
+      curl -s -o /dev/null -m 2 http://localhost:$PORT && break
+      actif "\$SERVEUR" || break
+      sleep 1
+    done
+    if ! actif "\$SERVEUR"; then
+      rm -f "\$SERVEUR"
+      echo "❌ DB.Mélo n'a pas pu démarrer. Fin du journal :"
+      tail -n 20 "$DONNEES/serveur.log"
+      exit 1
+    fi
+  fi
 fi
 if [ "\$1" != "--silencieux" ]; then
   echo "DB.Mélo : http://localhost:$PORT  (laisse Termux ouvert)"
