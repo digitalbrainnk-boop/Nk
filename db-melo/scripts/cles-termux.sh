@@ -117,17 +117,25 @@ tester() {
   read -r _ || true
 }
 
+# Une ligne du menu, alignée pour tenir sur l'écran étroit d'un téléphone
+# (bash compte les caractères accentués comme un seul avec ${#}, pas printf).
+ligne() {
+  local pad=$((20 - ${#2}))
+  [ "$pad" -lt 1 ] && pad=1
+  printf ' %s) %s%*s%s\n' "$1" "$2" "$pad" "" "$3"
+}
+
 menu() {
   clear 2>/dev/null || printf '\033[2J\033[H'
   echo "=== DB.Mélo : mes clés API ==="
-  echo " 1) Kie.ai — musique Suno + parolier          $(etat KIE_API_KEY)"
-  echo " 2) Claude — parolier IA (facultatif)         $(etat ANTHROPIC_API_KEY)"
-  echo " 3) CinetPay — Mobile Money Afrique Ouest/Centre $(etat CINETPAY_API_KEY)"
-  echo " 4) Flutterwave — Ghana, Kenya… + cartes      $(etat FLUTTERWAVE_SECRET_KEY)"
-  echo " 5) Stripe — cartes bancaires                 $(etat STRIPE_SECRET_KEY)"
-  echo " 6) Paystack — facultatif                     $(etat PAYSTACK_SECRET_KEY)"
-  echo " 7) Ton e-mail (reçus de paiement)            $(lire MERCHANT_EMAIL)"
-  echo " 8) Paiement simulé pour tes essais           $([ "$(lire ALLOW_DEMO_PAYMENTS)" = "true" ] && echo "ACTIVÉ" || echo "désactivé")"
+  ligne 1 "Kie.ai (Suno)" "$(etat KIE_API_KEY)"
+  ligne 2 "Claude (facultatif)" "$(etat ANTHROPIC_API_KEY)"
+  ligne 3 "CinetPay (MoMo)" "$(etat CINETPAY_API_KEY)"
+  ligne 4 "Flutterwave" "$(etat FLUTTERWAVE_SECRET_KEY)"
+  ligne 5 "Stripe (cartes)" "$(etat STRIPE_SECRET_KEY)"
+  ligne 6 "Paystack (facult.)" "$(etat PAYSTACK_SECRET_KEY)"
+  ligne 7 "E-mail des reçus" "$(lire MERCHANT_EMAIL)"
+  ligne 8 "Paiement simulé" "$([ "$(lire ALLOW_DEMO_PAYMENTS)" = "true" ] && echo "ACTIVÉ" || echo "désactivé")"
   echo " 9) Tester mes clés"
   echo " 0) Enregistrer et relancer DB.Mélo"
   echo " q) Quitter sans relancer"
