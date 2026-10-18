@@ -1,5 +1,5 @@
 // FedaPay : Mobile Money (Bénin, Togo, Côte d'Ivoire, Sénégal, Burkina Faso, Niger, Mali) et cartes, en FCFA.
-// Passerelle choisie pour démarrer en indépendant, sans RCCM.
+// Facultatif : utilisé quand Chariow n'est pas configuré.
 //   POST /v1/transactions             → { "v1/transaction": { id, status… } }
 //   POST /v1/transactions/:id/token   → { token, url } (page de paiement FedaPay)
 //   GET  /v1/transactions/:id         → status : approved, declined, canceled…

@@ -3,6 +3,7 @@ import { CARD_CURRENCIES, COUNTRIES } from "../../constants";
 import type { CountryCode, Currency, PaymentOptions, PaymentProvider, PaymentProviderId, SongRecord } from "../../types";
 import { config } from "../env";
 import { HttpError } from "../http";
+import { chariow } from "./chariow";
 import { cinetpay } from "./cinetpay";
 import { demoProvider } from "./demo";
 import { fedapay } from "./fedapay";
@@ -11,6 +12,7 @@ import { paystack } from "./paystack";
 import { stripeProvider } from "./stripe";
 
 export const PROVIDERS: Record<PaymentProviderId, PaymentProvider> = {
+  chariow,
   fedapay,
   cinetpay,
   flutterwave,
@@ -19,9 +21,10 @@ export const PROVIDERS: Record<PaymentProviderId, PaymentProvider> = {
   demo: demoProvider,
 };
 
-// Ordre de préférence : agrégateurs régionaux pour le Mobile Money, Stripe puis FedaPay pour les cartes.
-const MOMO_ORDER: PaymentProviderId[] = ["fedapay", "cinetpay", "flutterwave", "paystack"];
-const CARD_ORDER: PaymentProviderId[] = ["stripe", "fedapay", "flutterwave", "paystack", "cinetpay"];
+// Ordre de préférence : Chariow puis les agrégateurs régionaux pour le Mobile Money ; pour les cartes,
+// Chariow puis Stripe, FedaPay…
+const MOMO_ORDER: PaymentProviderId[] = ["chariow", "fedapay", "cinetpay", "flutterwave", "paystack"];
+const CARD_ORDER: PaymentProviderId[] = ["chariow", "stripe", "fedapay", "flutterwave", "paystack", "cinetpay"];
 
 const demoAllowed = (song?: SongRecord | null) => config.allowDemoPayments() || !!song?.demo;
 

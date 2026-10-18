@@ -14,7 +14,7 @@ const STEPS = [
 const FAQ = [
   { q: "Combien ça coûte ?", a: "1 000 FCFA la chanson, livrée en deux versions au choix. Vous relisez et retouchez vos paroles gratuitement, puis vous payez : le studio compose alors votre chanson." },
   { q: "Combien de temps faut-il ?", a: "Quelques minutes pour remplir le formulaire, puis 1 à 5 minutes de composition après le paiement." },
-  { q: "Comment payer depuis mon pays ?", a: "Par Mobile Money dans votre monnaie (Orange Money, Wave, MTN MoMo, Moov, Airtel Money, M-Pesa… selon le pays), ou par carte Visa / Mastercard, Apple Pay et Google Pay depuis n'importe quel pays d'Afrique." },
+  { q: "Comment payer depuis mon pays ?", a: "Par Mobile Money dans votre monnaie (Orange Money, Wave, MTN MoMo, Moov, Airtel Money, M-Pesa… selon le pays), ou par carte Visa / Mastercard depuis n'importe quel pays d'Afrique." },
   { q: "Comment garder la chanson sur mon téléphone ?", a: "Un bouton « Télécharger & Sauvegarder » ouvre l'enregistrement natif : app Fichiers sur iPhone et iPad, Téléchargements et lecteurs de musique sur Android. Le MP3 contient le titre, l'artiste et la pochette." },
   { q: "Puis-je installer l'application ?", a: "Oui : sur Android et ordinateur, touchez « Installer l'app ». Sur iPhone et iPad, Safari → Partager → « Sur l'écran d'accueil »." },
   { q: "À qui appartient la chanson ?", a: "Vous pouvez l'offrir, la partager et la diffuser dans un cadre personnel (fête, cérémonie, réseaux sociaux). Pour un usage commercial, contactez-nous." },
@@ -145,7 +145,7 @@ export default function Home() {
               {o.label}
             </span>
           ))}
-          {["Visa", "Mastercard", "Apple Pay", "Google Pay"].map((b) => (
+          {["Visa", "Mastercard"].map((b) => (
             <span key={b} className="chip">
               {b}
             </span>

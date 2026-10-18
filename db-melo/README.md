@@ -116,33 +116,43 @@ Le client choisit son **pays** (présélectionné d'après son fuseau horaire, l
 
 | Pays | Mobile Money | Passerelle |
 |---|---|---|
-| Bénin, Togo, Côte d'Ivoire, Sénégal, Burkina Faso, Niger, Mali | Orange Money, Wave, MTN, Moov, Free Money, T-Money, Airtel (selon le pays) | **FedaPay** (sinon CinetPay, Flutterwave ou Paystack) |
+| Bénin, Togo, Côte d'Ivoire, Sénégal, Burkina Faso, Niger, Mali | Orange Money, Wave, MTN, Moov, Free Money, T-Money, Airtel (selon le pays) | **Chariow** (sinon FedaPay, CinetPay, Flutterwave ou Paystack) |
 | Cameroun, Guinée, RD Congo | Orange Money, MTN, Airtel, M-Pesa, Afrimoney (selon le pays) | **CinetPay** (facultatif) |
 | Ghana, Kenya, Ouganda, Rwanda, Zambie, Tanzanie | MTN, Telecel Cash, AirtelTigo, M-Pesa, Airtel, Mixx by Yas, HaloPesa, Zamtel | **Flutterwave** (Paystack pour le Ghana et le Kenya) |
-| Tous les autres pays (Nigeria, Maroc, Afrique du Sud, Gabon, Congo…) | — | **Carte bancaire** : Stripe, sinon FedaPay (en FCFA), Flutterwave, Paystack ou CinetPay |
+| Tous les autres pays (Nigeria, Maroc, Afrique du Sud, Gabon, Congo…) | — | **Carte bancaire** : Chariow (en FCFA), sinon Stripe, FedaPay, Flutterwave, Paystack ou CinetPay |
 
-Sécurité : le **montant vient toujours du serveur**, la passerelle renvoie sur `/api/payments/return`, puis le statut est **revérifié auprès du prestataire** (montant et devise contrôlés) avant de lancer la composition. Les webhooks sont authentifiés (HMAC FedaPay `x-fedapay-signature`, HMAC CinetPay `x-token`, HMAC-SHA512 Paystack, `verif-hash` Flutterwave, signature Stripe) puis revérifiés.
+Sécurité : le **montant vient toujours du serveur**, la passerelle renvoie sur `/api/payments/return`, puis le statut est **revérifié auprès du prestataire** (montant et devise contrôlés) avant de lancer la composition. Les webhooks sont authentifiés (HMAC Chariow `x-chariow-signature`, HMAC FedaPay `x-fedapay-signature`, HMAC CinetPay `x-token`, HMAC-SHA512 Paystack, `verif-hash` Flutterwave, signature Stripe) puis revérifiés.
 
 Configuration chez les prestataires (au moins un pour le Mobile Money et un pour la carte) :
 
-- **FedaPay** : `FEDAPAY_SECRET_KEY` (`sk_sandbox_…` = paiements fictifs, `sk_live_…` = réels) ; webhook `https://ton-domaine/api/payments/webhooks/fedapay` avec sa clé secrète dans `FEDAPAY_WEBHOOK_SECRET`.
+- **Chariow** : `CHARIOW_API_KEY`, `CHARIOW_PRODUCT_ID` (produit de type Licence à 1 000 FCFA) ; Pulse `https://ton-domaine/api/payments/webhooks/chariow` avec son secret dans `CHARIOW_PULSE_SECRET`. Chariow exige un e-mail et un téléphone : sans e-mail du client, celui de DB.Mélo est utilisé.
+- **FedaPay** (facultatif) : `FEDAPAY_SECRET_KEY` (`sk_sandbox_…` = paiements fictifs, `sk_live_…` = réels) ; webhook `https://ton-domaine/api/payments/webhooks/fedapay` avec sa clé secrète dans `FEDAPAY_WEBHOOK_SECRET`.
 - **CinetPay** (facultatif) : `CINETPAY_API_KEY`, `CINETPAY_SITE_ID`, `CINETPAY_SECRET_KEY`. L'adresse de notification `https://ton-domaine/api/payments/webhooks/cinetpay` est transmise à chaque paiement.
 - **Flutterwave** : `FLUTTERWAVE_SECRET_KEY` ; webhook `https://ton-domaine/api/payments/webhooks/flutterwave` avec un « Secret hash » recopié dans `FLUTTERWAVE_WEBHOOK_HASH`.
 - **Stripe** : `STRIPE_SECRET_KEY` ; webhook `https://ton-domaine/api/payments/webhooks/stripe` avec les événements `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed`, `checkout.session.expired`, puis `STRIPE_WEBHOOK_SECRET`. Activez Apple Pay / Google Pay dans le tableau de bord Stripe.
 - **Paystack** : `PAYSTACK_SECRET_KEY` ; webhook `https://ton-domaine/api/payments/webhooks/paystack`.
 - **Ton entreprise** (`MERCHANT_NAME`, `MERCHANT_EMAIL`, `MERCHANT_WHATSAPP`, `MERCHANT_PHONE`, `MERCHANT_ADDRESS`, `MERCHANT_REGISTRATION`, `HOSTING_INFO` ; vides, ce sont les coordonnées de `CONTACT` dans `src/lib/constants.ts` : dbmelox@gmail.com, WhatsApp +226 72 83 01 94, téléphone +226 75 54 10 16) : affichée sur `/contact`, `/conditions` et `/confidentialite`, que les passerelles de paiement vérifient avant de valider un compte. `MERCHANT_EMAIL` sert aussi de reçu quand Flutterwave ou Paystack exigent un e-mail. Tout se règle dans `dbmelo-cles` → 7.
 
-#### Ouvrir le compte FedaPay (sans RCCM)
+#### Vendre avec Chariow (sans RCCM)
 
-FedaPay est choisi pour démarrer en indépendant, sans RCCM ; les documents exigés sont indiqués à l'inscription.
+Chariow encaisse pour ta boutique (Mobile Money et cartes) et te reverse les ventes. Le prix est celui du produit créé dans Chariow : DB.Mélo l'ouvre au nom du client et vérifie la vente avant de composer.
 
-1. Inscris-toi sur fedapay.com avec `dbmelox@gmail.com`. Le **mode test** (sandbox) est disponible tout de suite, avant même la validation du compte.
-2. **Paramètres → Clés API** : copie la clé secrète de test (`sk_sandbox_…`) dans `dbmelo-cles` → 3. Les paiements sont alors fictifs : parfait pour tout essayer.
-3. **Paramètres → Webhooks** : ajoute l'adresse `https://ton-domaine/api/payments/webhooks/fedapay` (événements des transactions), puis copie sa clé secrète (`wh_…`) dans `dbmelo-cles` → 3.
-4. Envoie les documents demandés pour activer le **mode réel**, puis remplace la clé de test par la clé réelle (`sk_live_…`) et refais l'étape 3 en mode réel (le secret du webhook est différent).
-5. Fais un vrai paiement de 1 000 FCFA pour vérifier.
+1. Crée ta boutique sur chariow.com avec `dbmelox@gmail.com`, en **FCFA**.
+2. Crée un produit **« Chanson personnalisée »** de type **Licence**, au prix de **1 000 FCFA**, puis publie-le. Le type Licence est indispensable : avec un autre type, un même client ne pourrait acheter qu'une seule chanson. Note son identifiant (`prd_…`).
+3. **Paramètres → API** : copie la clé API (`sk_live_…`). Dans `dbmelo-cles` → 3 : la clé, l'identifiant du produit, puis (étape 4) le secret du Pulse.
+4. Quand le site est en ligne : **Automatisations → Pulses → Ajouter**, adresse `https://ton-domaine/api/payments/webhooks/chariow`, événements « vente réussie », « vente échouée », « vente abandonnée » ; copie son secret (`whsec_…`) dans `dbmelo-cles` → 3.
+5. `dbmelo-cles` → 9 vérifie la clé, le produit, son prix et son type. Fais ensuite un vrai paiement de 1 000 FCFA.
 
-Sans clé `FEDAPAY_*`, CinetPay (`dbmelo-cles` → c), Flutterwave ou Paystack prennent le relais s'ils sont configurés.
+L'API Chariow accepte 100 requêtes par minute : les vérifications d'une même vente sont espacées de 8 secondes.
+
+#### FedaPay (facultatif)
+
+Utilisé seulement si Chariow n'est pas configuré. Un compte FedaPay non vérifié est limité à quelques paiements.
+
+1. **Paramètres → Clés API** : clé de test (`sk_sandbox_…`, paiements fictifs) ou réelle (`sk_live_…`) dans `dbmelo-cles` → f.
+2. **Paramètres → Webhooks** : adresse `https://ton-domaine/api/payments/webhooks/fedapay`, puis sa clé secrète (`wh_…`) dans `dbmelo-cles` → f (le secret diffère entre test et réel).
+
+Sans Chariow ni FedaPay, CinetPay (`dbmelo-cles` → c), Flutterwave ou Paystack prennent le relais s'ils sont configurés.
 
 Le paiement simulé n'est proposé que pour les chansons de démo, ou si `ALLOW_DEMO_PAYMENTS=true` (tests uniquement).
 
@@ -177,7 +187,7 @@ Voir `.env.example`. Les plus importantes :
 | `FLOW_MODE` | `pay_first` (défaut : paiement avant composition) ou `preview_first` |
 | `MAX_GENERATION_ATTEMPTS` | Compositions autorisées par chanson, relances comprises (3) |
 | `PREVIEW_SECONDS`, `GENERATIONS_PER_HOUR` | Pré-écoute et limite par adresse IP, en `preview_first` uniquement |
-| `FEDAPAY_*`, `CINETPAY_*`, `FLUTTERWAVE_*`, `PAYSTACK_SECRET_KEY`, `STRIPE_*`, `MERCHANT_EMAIL` | Passerelles de paiement |
+| `CHARIOW_*`, `FEDAPAY_*`, `CINETPAY_*`, `FLUTTERWAVE_*`, `PAYSTACK_SECRET_KEY`, `STRIPE_*`, `MERCHANT_EMAIL` | Passerelles de paiement |
 | `DATA_DIR` | Dossier de stockage persistant (défaut `.data`) |
 | `UPSTASH_REDIS_REST_URL` / `_TOKEN` | Stockage pour l'hébergement serverless |
 
@@ -199,7 +209,7 @@ GitHub compile DB.Mélo à chaque modification (`.github/workflows/dbmelo-o2swit
    ```bash
    curl -fsSL https://raw.githubusercontent.com/digitalbrainnk-boop/Nk/claude/db-melo-saas-app-14k2yw/db-melo/deploy/o2switch/installer.sh | bash
    ```
-4. Ouvre un **nouveau** Terminal et tape `dbmelo-cles` : clé Kie (1), FedaPay (3), ton entreprise (7) si besoin, test (9), puis 0 pour redémarrer.
+4. Ouvre un **nouveau** Terminal et tape `dbmelo-cles` : clé Kie (1), Chariow (3), ton entreprise (7) si besoin, test (9), puis 0 pour redémarrer.
 5. **cPanel → SSL/TLS Status** : vérifie que ton domaine a un certificat (AutoSSL, gratuit). Ouvre `https://ton-domaine` : DB.Mélo est en ligne.
 
 | Commande (Terminal cPanel) | Rôle |

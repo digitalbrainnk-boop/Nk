@@ -40,6 +40,14 @@ export const config = {
 
   stripeSecret: () => str("STRIPE_SECRET_KEY"),
   stripeWebhookSecret: () => str("STRIPE_WEBHOOK_SECRET"),
+  chariow: () => ({
+    apiKey: str("CHARIOW_API_KEY"),
+    /** Identifiant (prd_…) ou slug du produit « chanson » de la boutique, de type Licence. */
+    productId: str("CHARIOW_PRODUCT_ID"),
+    pulseSecret: str("CHARIOW_PULSE_SECRET"),
+    /** Pour les tests uniquement. */
+    apiBase: str("CHARIOW_API_BASE"),
+  }),
   fedapay: () => ({
     secretKey: str("FEDAPAY_SECRET_KEY"),
     webhookSecret: str("FEDAPAY_WEBHOOK_SECRET"),

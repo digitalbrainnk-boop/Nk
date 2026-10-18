@@ -11,8 +11,10 @@ import { COUNTRIES, CURRENCIES, findCountry, guessCountry, OPERATORS, validPhone
 import { formatPrice } from "@/lib/pricing";
 import type { CountryCode, Currency, MobileOperator, PaymentMethod, PaymentOptions, PaymentProviderId, PlanId, PublicSong } from "@/lib/types";
 
-const CARD_BRANDS = ["Visa", "Mastercard", "Apple Pay", "Google Pay"];
+// Apple Pay et Google Pay passent par Stripe uniquement.
+const cardBrands = (provider?: PaymentProviderId) => (provider === "stripe" ? ["Visa", "Mastercard", "Apple Pay", "Google Pay"] : ["Visa", "Mastercard"]);
 const PROVIDER_NAMES: Record<PaymentProviderId, string> = {
+  chariow: "Chariow",
   fedapay: "FedaPay",
   cinetpay: "CinetPay",
   flutterwave: "Flutterwave",
@@ -65,19 +67,18 @@ export function PaymentSelector({ song, title = "Finalisez votre chanson" }: { s
   const currency: Currency = method === "mobile_money" && countryInfo.momo ? countryInfo.momo.currency : cardCurrency;
   const amount = selectedPlan?.prices[currency];
   const provider = method === "mobile_money" ? momoProvider : options?.card?.provider;
+  // Chariow demande un numéro de téléphone, même pour la carte.
+  const needsPhone = method === "mobile_money" ? momoProvider !== "demo" : provider === "chariow";
+
+  const phoneError = () =>
+    countryInfo.digits
+      ? `Le numéro doit comporter ${countryInfo.digits.join(" ou ")} chiffres (sans l'indicatif +${countryInfo.dial}).`
+      : `Numéro invalide (sans l'indicatif +${countryInfo.dial}).`;
 
   const pay = async () => {
     setError(null);
-    if (method === "mobile_money" && momoProvider !== "demo") {
-      if (!operator) return setError("Choisissez votre opérateur Mobile Money.");
-      if (!validPhone(countryInfo, phone)) {
-        return setError(
-          countryInfo.digits
-            ? `Le numéro doit comporter ${countryInfo.digits.join(" ou ")} chiffres (sans l'indicatif +${countryInfo.dial}).`
-            : `Numéro invalide (sans l'indicatif +${countryInfo.dial}).`,
-        );
-      }
-    }
+    if (method === "mobile_money" && momoProvider !== "demo" && !operator) return setError("Choisissez votre opérateur Mobile Money.");
+    if (needsPhone && !validPhone(countryInfo, phone)) return setError(phoneError());
     setBusy(true);
     try {
       const { redirectUrl } = await api<{ redirectUrl: string }>("/api/payments/checkout", {
@@ -88,7 +89,7 @@ export function PaymentSelector({ song, title = "Finalisez votre chanson" }: { s
           country,
           currency: method === "card" ? cardCurrency : undefined,
           operator: method === "mobile_money" ? operator ?? undefined : undefined,
-          phone: method === "mobile_money" && phone ? phone : undefined,
+          phone: needsPhone && phone ? phone : undefined,
           email: email || undefined,
         },
       });
@@ -108,6 +109,26 @@ export function PaymentSelector({ song, title = "Finalisez votre chanson" }: { s
   }
 
   const nothingAvailable = !momoAvailable && !options.card;
+
+  const phoneInput = (label: string) => (
+    <>
+      <label htmlFor="pay-phone" className="label">
+        {label}
+      </label>
+      <div className="flex">
+        <span className="flex items-center rounded-l-2xl border border-r-0 border-line bg-studio-2 px-3 text-sm text-muted">+{countryInfo.dial}</span>
+        <input
+          id="pay-phone"
+          className="field rounded-l-none"
+          inputMode="numeric"
+          autoComplete="tel-national"
+          value={phone}
+          onChange={(e) => setPhone(e.target.value.replace(/\D/g, "").slice(0, 12))}
+          placeholder={"0".repeat(countryInfo.digits?.[0] ?? 9)}
+        />
+      </div>
+    </>
+  );
 
   return (
     <section className="card space-y-6 p-5 sm:p-7" aria-labelledby="pay-title">
@@ -220,21 +241,7 @@ export function PaymentSelector({ song, title = "Finalisez votre chanson" }: { s
             </div>
           </div>
           <div>
-            <label htmlFor="pay-phone" className="label">
-              Numéro Mobile Money
-            </label>
-            <div className="flex">
-              <span className="flex items-center rounded-l-2xl border border-r-0 border-line bg-studio-2 px-3 text-sm text-muted">+{countryInfo.dial}</span>
-              <input
-                id="pay-phone"
-                className="field rounded-l-none"
-                inputMode="numeric"
-                autoComplete="tel-national"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value.replace(/\D/g, "").slice(0, 12))}
-                placeholder={"0".repeat(countryInfo.digits?.[0] ?? 9)}
-              />
-            </div>
+            {phoneInput("Numéro Mobile Money")}
             <p className="mt-1.5 text-xs text-muted">
               Paiement en {CURRENCIES[countryInfo.momo.currency].label}. Vous validerez sur votre téléphone (code secret ou notification de l&apos;opérateur).
             </p>
@@ -245,12 +252,13 @@ export function PaymentSelector({ song, title = "Finalisez votre chanson" }: { s
       {method === "card" && options.card && (
         <div className="space-y-4">
           <div className="flex flex-wrap gap-2">
-            {CARD_BRANDS.map((b) => (
+            {cardBrands(options.card.provider).map((b) => (
               <span key={b} className="chip text-xs">
                 {b}
               </span>
             ))}
           </div>
+          {needsPhone && <div>{phoneInput("Numéro de téléphone")}</div>}
           {options.card.currencies.length > 1 && (
             <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Devise">
               {options.card.currencies.map((c) => (

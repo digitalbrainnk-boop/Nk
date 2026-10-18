@@ -101,6 +101,26 @@ tester() {
     case "$r" in 200) echo "✅ Claude : clé valide" ;; 000) echo "❌ Claude : $HORS_LIGNE" ;; *) echo "❌ Claude : clé refusée (code $r)" ;; esac
   else echo "⚪ Claude : pas de clé (le parolier utilisera Kie / DeepSeek, sinon des modèles intégrés)"; fi
 
+  k=$(lire CHARIOW_API_KEY)
+  if [ -n "$k" ]; then
+    r=$(curl -s -m 20 -H "Authorization: Bearer $k" -H "Accept: application/json" https://api.chariow.com/v1/store)
+    if [ -z "$r" ]; then echo "❌ Chariow : $HORS_LIGNE"
+    elif [ -n "$(echo "$r" | json data.name)" ]; then echo "✅ Chariow : clé valide — boutique « $(echo "$r" | json data.name) »"
+    else echo "❌ Chariow : clé refusée ($(echo "$r" | json message))"; fi
+    p=$(lire CHARIOW_PRODUCT_ID)
+    if [ -z "$p" ]; then echo "   ❌ Produit Chariow manquant (3) : crée le produit « Chanson » de type Licence à 1 000 FCFA."
+    else
+      r=$(curl -s -m 20 -H "Authorization: Bearer $k" -H "Accept: application/json" "https://api.chariow.com/v1/products/$p")
+      t=$(echo "$r" | json data.type)
+      if [ -z "$t" ]; then echo "   ❌ Produit « $p » introuvable : vérifie son identifiant (prd_…) et qu'il est publié."
+      else
+        echo "   Produit : $(echo "$r" | json data.name) — $(echo "$r" | json data.pricing.current_price.formatted) — type $t"
+        [ "$t" = "license" ] || echo "   ⚠️  Choisis le type « Licence » : sinon un client ne peut acheter qu'une seule chanson."
+      fi
+    fi
+    [ -z "$(lire CHARIOW_PULSE_SECRET)" ] && echo "   ⚠️  Secret du Pulse manquant : les ventes sont confirmées au retour du client, mais ajoute-le (3)."
+  else echo "⚪ Chariow : pas configuré"; fi
+
   k=$(lire FEDAPAY_SECRET_KEY)
   if [ -n "$k" ]; then
     case "$k" in sk_sandbox*) b="https://sandbox-api.fedapay.com/v1"; mode="mode test : paiements fictifs" ;; *) b="https://api.fedapay.com/v1"; mode="mode réel" ;; esac
@@ -169,10 +189,11 @@ menu() {
   echo "=== DB.Mélo : mes clés API ==="
   ligne 1 "Kie.ai (Suno)" "$(etat KIE_API_KEY)"
   ligne 2 "Claude (facultatif)" "$(etat ANTHROPIC_API_KEY)"
-  ligne 3 "FedaPay (paiement)" "$(k=$(lire FEDAPAY_SECRET_KEY); case "$k" in "") echo "❌ manquante" ;; sk_sandbox*) echo "✅ mode test" ;; *) echo "✅ $(masque "$k")" ;; esac)"
+  ligne 3 "Chariow (paiement)" "$(etat CHARIOW_API_KEY)"
   ligne 4 "Flutterwave" "$(etat FLUTTERWAVE_SECRET_KEY)"
   ligne 5 "Stripe (cartes)" "$(etat STRIPE_SECRET_KEY)"
   ligne 6 "Paystack (facult.)" "$(etat PAYSTACK_SECRET_KEY)"
+  ligne f "FedaPay (facult.)" "$(k=$(lire FEDAPAY_SECRET_KEY); case "$k" in "") echo "❌ manquante" ;; sk_sandbox*) echo "✅ mode test" ;; *) echo "✅ $(masque "$k")" ;; esac)"
   ligne c "CinetPay (facult.)" "$(etat CINETPAY_API_KEY)"
   ligne 7 "Ton entreprise" "$(n=$(lire MERCHANT_NAME); echo "${n:-DB.Mélo}")"
   ligne 8 "Paiement simulé" "$([ "$(lire ALLOW_DEMO_PAYMENTS)" = "true" ] && echo "ACTIVÉ" || echo "désactivé")"
@@ -192,6 +213,11 @@ while true; do
     1) demander KIE_API_KEY "Clé Kie.ai (kie.ai > API Keys) :" ;;
     2) demander ANTHROPIC_API_KEY "Clé Claude (console.anthropic.com > API Keys, commence par sk-ant-) :" ;;
     3)
+      demander CHARIOW_API_KEY "Chariow — Clé API (Paramètres > API, commence par sk_) :"
+      demander CHARIOW_PRODUCT_ID "Chariow — Identifiant du produit « Chanson » (commence par prd_) :" texte
+      demander CHARIOW_PULSE_SECRET "Chariow — Secret du Pulse (Automatisations > Pulses > ton Pulse, commence par whsec_) :"
+      ;;
+    f | F)
       echo
       echo "Clés de test (sk_sandbox_…) pour essayer sans argent réel, puis clés réelles (sk_live_…)."
       demander FEDAPAY_SECRET_KEY "FedaPay — Clé secrète (Paramètres > Clés API, commence par sk_) :"

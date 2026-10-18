@@ -68,6 +68,7 @@ export async function POST(req: Request) {
       phone: input.phone,
       email: input.email,
       customerName: input.customerName,
+      customerIp: /^[0-9a-fA-F.:]+$/.test(clientIp(req)) ? clientIp(req) : undefined,
       returnUrl: `${base}/api/payments/return?ref=${reference}`,
       notifyUrl: `${base}/api/payments/webhooks/${provider.id}`,
       cancelUrl: `${base}/chanson/${song.id}?paiement=annule`,
