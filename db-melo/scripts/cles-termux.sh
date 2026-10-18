@@ -138,22 +138,22 @@ while true; do
   menu
   read -r choix || exit 0
   case "$choix" in
-    1) demander KIE_API_KEY "Clé Kie.ai (kie.ai → API Keys) :" ;;
-    2) demander ANTHROPIC_API_KEY "Clé Claude (console.anthropic.com → API Keys, commence par sk-ant-) :" ;;
+    1) demander KIE_API_KEY "Clé Kie.ai (kie.ai > API Keys) :" ;;
+    2) demander ANTHROPIC_API_KEY "Clé Claude (console.anthropic.com > API Keys, commence par sk-ant-) :" ;;
     3)
-      demander CINETPAY_API_KEY "CinetPay — API KEY (espace marchand → Intégrations) :"
+      demander CINETPAY_API_KEY "CinetPay — API KEY (espace marchand > Intégrations) :"
       demander CINETPAY_SITE_ID "CinetPay — SITE ID :"
       demander CINETPAY_SECRET_KEY "CinetPay — Clé secrète (SECRET KEY) :"
       ;;
     4)
-      demander FLUTTERWAVE_SECRET_KEY "Flutterwave — Secret key (Settings → API Keys, commence par FLWSECK) :"
-      demander FLUTTERWAVE_WEBHOOK_HASH "Flutterwave — Secret hash des webhooks (Settings → Webhooks) :"
+      demander FLUTTERWAVE_SECRET_KEY "Flutterwave — Secret key (Settings > API Keys, commence par FLWSECK) :"
+      demander FLUTTERWAVE_WEBHOOK_HASH "Flutterwave — Secret hash des webhooks (Settings > Webhooks) :"
       ;;
     5)
-      demander STRIPE_SECRET_KEY "Stripe — Secret key (Developers → API keys, commence par sk_) :"
+      demander STRIPE_SECRET_KEY "Stripe — Secret key (Developers > API keys, commence par sk_) :"
       demander STRIPE_WEBHOOK_SECRET "Stripe — Signing secret du webhook (commence par whsec_) :"
       ;;
-    6) demander PAYSTACK_SECRET_KEY "Paystack — Secret key (Settings → API Keys, commence par sk_) :" ;;
+    6) demander PAYSTACK_SECRET_KEY "Paystack — Secret key (Settings > API Keys, commence par sk_) :" ;;
     7) demander MERCHANT_EMAIL "Ton adresse e-mail (utilisée pour les reçus si le client n'en donne pas) :" ;;
     8)
       if [ "$(lire ALLOW_DEMO_PAYMENTS)" = "true" ]; then ecrire ALLOW_DEMO_PAYMENTS false; echo "Paiement simulé désactivé : seuls les vrais paiements sont proposés."

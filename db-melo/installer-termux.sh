@@ -83,7 +83,7 @@ if [ ! -f .env.local ]; then
   fi
 
   echo
-  echo "Colle ta clé Kie.ai (kie.ai → API Keys) pour composer de vraies chansons avec Suno,"
+  echo "Colle ta clé Kie.ai (kie.ai > API Keys) pour composer de vraies chansons avec Suno,"
   echo "ou appuie simplement sur Entrée pour le mode démo :"
   read -r CLE_KIE < /dev/tty
   if [ -n "$CLE_KIE" ]; then sed -i "s|^KIE_API_KEY=.*|KIE_API_KEY=$CLE_KIE|" .env.local; fi
@@ -223,11 +223,11 @@ fi
 
 echo
 echo "=== DB.Mélo est installé ! ==="
-echo "  dbmelo          → lancer et ouvrir http://localhost:$PORT"
-echo "  dbmelo-stop     → arrêter"
-echo "  dbmelo-journal  → voir ce que fait le serveur"
-echo "  dbmelo-public   → accès public temporaire (montrer à des clients)"
-echo "  dbmelo-maj      → mettre à jour"
-echo "  dbmelo-cles     → saisir et tester tes clés API (Kie, Claude, paiements)"
+echo "  dbmelo          : lancer et ouvrir http://localhost:$PORT"
+echo "  dbmelo-stop     : arrêter"
+echo "  dbmelo-journal  : voir ce que fait le serveur"
+echo "  dbmelo-public   : accès public temporaire (montrer à des clients)"
+echo "  dbmelo-maj      : mettre à jour"
+echo "  dbmelo-cles     : saisir et tester tes clés API (Kie, Claude, paiements)"
 sleep 2
 exec dbmelo
