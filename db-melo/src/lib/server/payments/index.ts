@@ -5,11 +5,13 @@ import { config } from "../env";
 import { HttpError } from "../http";
 import { cinetpay } from "./cinetpay";
 import { demoProvider } from "./demo";
+import { fedapay } from "./fedapay";
 import { flutterwave } from "./flutterwave";
 import { paystack } from "./paystack";
 import { stripeProvider } from "./stripe";
 
 export const PROVIDERS: Record<PaymentProviderId, PaymentProvider> = {
+  fedapay,
   cinetpay,
   flutterwave,
   paystack,
@@ -17,9 +19,9 @@ export const PROVIDERS: Record<PaymentProviderId, PaymentProvider> = {
   demo: demoProvider,
 };
 
-// Ordre de préférence : agrégateurs régionaux pour le Mobile Money, Stripe pour les cartes.
-const MOMO_ORDER: PaymentProviderId[] = ["cinetpay", "flutterwave", "paystack"];
-const CARD_ORDER: PaymentProviderId[] = ["stripe", "flutterwave", "paystack", "cinetpay"];
+// Ordre de préférence : agrégateurs régionaux pour le Mobile Money, Stripe puis FedaPay pour les cartes.
+const MOMO_ORDER: PaymentProviderId[] = ["fedapay", "cinetpay", "flutterwave", "paystack"];
+const CARD_ORDER: PaymentProviderId[] = ["stripe", "fedapay", "flutterwave", "paystack", "cinetpay"];
 
 const demoAllowed = (song?: SongRecord | null) => config.allowDemoPayments() || !!song?.demo;
 

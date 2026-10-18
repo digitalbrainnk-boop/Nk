@@ -15,7 +15,7 @@ export function randomId(length = 22): string {
   return out.length === length ? out : randomId(length);
 }
 
-/** Référence de paiement : lettres majuscules et chiffres (accepté par CinetPay, Paystack et Stripe). */
+/** Référence de paiement : lettres majuscules et chiffres (accepté par FedaPay, CinetPay, Paystack et Stripe). */
 export function paymentReference(): string {
   return `DBM${Date.now().toString(36).toUpperCase()}${randomBytes(5).toString("hex").toUpperCase()}`;
 }

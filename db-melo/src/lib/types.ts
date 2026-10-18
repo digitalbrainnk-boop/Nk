@@ -280,7 +280,7 @@ export type VersionsMode = "takes" | "styles";
 
 export type Currency = "XOF" | "XAF" | "GNF" | "CDF" | "GHS" | "KES" | "UGX" | "TZS" | "RWF" | "ZMW" | "EUR" | "USD";
 
-export type PaymentProviderId = "cinetpay" | "flutterwave" | "paystack" | "stripe" | "demo";
+export type PaymentProviderId = "fedapay" | "cinetpay" | "flutterwave" | "paystack" | "stripe" | "demo";
 
 /** Moyen de paiement tel que le choisit l'utilisateur. */
 export type PaymentMethod = "mobile_money" | "card";
@@ -344,7 +344,7 @@ export interface WebhookEvent {
 }
 
 /**
- * Contrat implémenté par chaque passerelle (CinetPay, Paystack, Stripe, démo).
+ * Contrat implémenté par chaque passerelle (FedaPay, CinetPay, Flutterwave, Paystack, Stripe, démo).
  * Les implémentations vivent côté serveur uniquement (clés secrètes).
  */
 export interface PaymentProvider {

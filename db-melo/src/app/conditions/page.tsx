@@ -32,7 +32,7 @@ export default function Conditions() {
       <LegalSection title="3. Commande et paiement">
         <p>
           Le client relit et corrige gratuitement ses paroles, puis paie avant la composition, par Mobile Money ou par carte bancaire, auprès d&apos;un
-          prestataire de paiement agréé (CinetPay, Flutterwave, Paystack ou Stripe selon le pays). {BRAND.name} ne reçoit ni ne conserve aucune donnée
+          prestataire de paiement agréé (FedaPay, CinetPay, Flutterwave, Paystack ou Stripe selon le pays). {BRAND.name} ne reçoit ni ne conserve aucune donnée
           bancaire ou code Mobile Money. La commande est ferme dès la confirmation du paiement par le prestataire.
         </p>
       </LegalSection>

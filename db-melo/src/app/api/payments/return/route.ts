@@ -1,4 +1,4 @@
-// Retour depuis la passerelle (GET pour Stripe/Paystack, POST pour CinetPay) → page de la chanson.
+// Retour depuis la passerelle (GET pour Stripe/Paystack/FedaPay, POST pour CinetPay) → page de la chanson.
 import { NextResponse } from "next/server";
 import { baseUrl } from "@/lib/server/env";
 import { PROVIDERS } from "@/lib/server/payments";
@@ -7,7 +7,8 @@ import { payments } from "@/lib/server/store";
 
 async function handle(req: Request) {
   const base = baseUrl(req);
-  const ref = new URL(req.url).searchParams.get("ref") ?? "";
+  // FedaPay ajoute « ?id=…&status=… » à l'adresse de retour, parfois derrière notre « ?ref= ».
+  const ref = (new URL(req.url).searchParams.get("ref") ?? "").split("?")[0];
   const payment = /^[A-Z0-9]{8,40}$/.test(ref) ? await payments.get(ref) : null;
   if (!payment) return NextResponse.redirect(`${base}/`, 303);
   if (payment.status === "pending") {

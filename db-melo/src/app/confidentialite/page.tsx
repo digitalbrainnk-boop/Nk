@@ -34,7 +34,7 @@ export default function Confidentialite() {
       <LegalSection title="Partenaires">
         <p>
           Le contenu de la chanson est transmis aux services d&apos;intelligence artificielle qui la réalisent (génération de paroles, de musique et
-          d&apos;images, via Kie.ai). Les informations de paiement sont transmises au prestataire choisi (CinetPay, Flutterwave, Paystack ou Stripe), qui
+          d&apos;images, via Kie.ai). Les informations de paiement sont transmises au prestataire choisi (FedaPay, CinetPay, Flutterwave, Paystack ou Stripe), qui
           applique sa propre politique de confidentialité. {BRAND.name} ne conserve aucune donnée bancaire.
         </p>
       </LegalSection>

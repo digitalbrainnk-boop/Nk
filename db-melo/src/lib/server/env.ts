@@ -40,12 +40,18 @@ export const config = {
 
   stripeSecret: () => str("STRIPE_SECRET_KEY"),
   stripeWebhookSecret: () => str("STRIPE_WEBHOOK_SECRET"),
+  fedapay: () => ({
+    secretKey: str("FEDAPAY_SECRET_KEY"),
+    webhookSecret: str("FEDAPAY_WEBHOOK_SECRET"),
+    /** Pour les tests uniquement ; sinon déduite de la clé (sandbox ou réelle). */
+    apiBase: str("FEDAPAY_API_BASE"),
+  }),
   cinetpay: () => ({ apiKey: str("CINETPAY_API_KEY"), siteId: str("CINETPAY_SITE_ID"), secretKey: str("CINETPAY_SECRET_KEY") }),
   paystackSecret: () => str("PAYSTACK_SECRET_KEY"),
   flutterwave: () => ({ secretKey: str("FLUTTERWAVE_SECRET_KEY"), webhookHash: str("FLUTTERWAVE_WEBHOOK_HASH") }),
   /** E-mail du marchand, utilisé quand une passerelle exige un e-mail et que le client n'en donne pas. */
   merchantEmail: () => str("MERCHANT_EMAIL") || CONTACT.email,
-  /** Identité du vendeur sur les pages légales (exigée par CinetPay et les autres passerelles). */
+  /** Identité du vendeur sur les pages légales (vérifiée par les passerelles de paiement). */
   merchant: () => ({
     name: str("MERCHANT_NAME"),
     email: str("MERCHANT_EMAIL") || CONTACT.email,

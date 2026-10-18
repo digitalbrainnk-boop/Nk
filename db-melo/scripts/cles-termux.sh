@@ -101,6 +101,14 @@ tester() {
     case "$r" in 200) echo "✅ Claude : clé valide" ;; 000) echo "❌ Claude : $HORS_LIGNE" ;; *) echo "❌ Claude : clé refusée (code $r)" ;; esac
   else echo "⚪ Claude : pas de clé (le parolier utilisera Kie / DeepSeek, sinon des modèles intégrés)"; fi
 
+  k=$(lire FEDAPAY_SECRET_KEY)
+  if [ -n "$k" ]; then
+    case "$k" in sk_sandbox*) b="https://sandbox-api.fedapay.com/v1"; mode="mode test : paiements fictifs" ;; *) b="https://api.fedapay.com/v1"; mode="mode réel" ;; esac
+    r=$(curl -s -m 20 -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $k" "$b/transactions?per_page=1")
+    case "$r" in 200) echo "✅ FedaPay : clé valide ($mode)" ;; 000) echo "❌ FedaPay : $HORS_LIGNE" ;; *) echo "❌ FedaPay : clé refusée (code $r)" ;; esac
+    [ -z "$(lire FEDAPAY_WEBHOOK_SECRET)" ] && echo "   ⚠️  Secret du webhook FedaPay manquant : les paiements sont confirmés au retour du client, mais ajoute-le (3)."
+  else echo "⚪ FedaPay : pas configuré"; fi
+
   k=$(lire CINETPAY_API_KEY)
   if [ -n "$k" ]; then
     r=$(curl -s -m 20 -X POST https://api-checkout.cinetpay.com/v2/payment/check -H "Content-Type: application/json" \
@@ -161,10 +169,11 @@ menu() {
   echo "=== DB.Mélo : mes clés API ==="
   ligne 1 "Kie.ai (Suno)" "$(etat KIE_API_KEY)"
   ligne 2 "Claude (facultatif)" "$(etat ANTHROPIC_API_KEY)"
-  ligne 3 "CinetPay (MoMo)" "$(etat CINETPAY_API_KEY)"
+  ligne 3 "FedaPay (paiement)" "$(k=$(lire FEDAPAY_SECRET_KEY); case "$k" in "") echo "❌ manquante" ;; sk_sandbox*) echo "✅ mode test" ;; *) echo "✅ $(masque "$k")" ;; esac)"
   ligne 4 "Flutterwave" "$(etat FLUTTERWAVE_SECRET_KEY)"
   ligne 5 "Stripe (cartes)" "$(etat STRIPE_SECRET_KEY)"
   ligne 6 "Paystack (facult.)" "$(etat PAYSTACK_SECRET_KEY)"
+  ligne c "CinetPay (facult.)" "$(etat CINETPAY_API_KEY)"
   ligne 7 "Ton entreprise" "$(n=$(lire MERCHANT_NAME); echo "${n:-DB.Mélo}")"
   ligne 8 "Paiement simulé" "$([ "$(lire ALLOW_DEMO_PAYMENTS)" = "true" ] && echo "ACTIVÉ" || echo "désactivé")"
   ligne v "Versions" "$([ "$(lire VERSIONS_MODE)" = "styles" ] && echo "rythmée+acoustique" || echo "économiques")"
@@ -183,6 +192,12 @@ while true; do
     1) demander KIE_API_KEY "Clé Kie.ai (kie.ai > API Keys) :" ;;
     2) demander ANTHROPIC_API_KEY "Clé Claude (console.anthropic.com > API Keys, commence par sk-ant-) :" ;;
     3)
+      echo
+      echo "Clés de test (sk_sandbox_…) pour essayer sans argent réel, puis clés réelles (sk_live_…)."
+      demander FEDAPAY_SECRET_KEY "FedaPay — Clé secrète (Paramètres > Clés API, commence par sk_) :"
+      demander FEDAPAY_WEBHOOK_SECRET "FedaPay — Clé secrète du webhook (Paramètres > Webhooks, commence par wh_) :"
+      ;;
+    c | C)
       demander CINETPAY_API_KEY "CinetPay — API KEY (espace marchand > Intégrations) :"
       demander CINETPAY_SITE_ID "CinetPay — SITE ID :"
       demander CINETPAY_SECRET_KEY "CinetPay — Clé secrète (SECRET KEY) :"
@@ -199,7 +214,7 @@ while true; do
     7)
       echo
       echo "Ces informations s'affichent sur les pages Contact, Conditions et Confidentialité."
-      echo "CinetPay les vérifie avant de valider ton compte. Laissées vides, ce sont les coordonnées"
+      echo "Les passerelles de paiement les vérifient. Laissées vides, ce sont les coordonnées"
       echo "de DB.Mélo : dbmelox@gmail.com, WhatsApp +226 72 83 01 94, téléphone +226 75 54 10 16."
       demander MERCHANT_NAME "Nom de ton entreprise (ou ton nom si tu vends en ton nom propre) :" texte
       demander MERCHANT_EMAIL "E-mail de contact (aussi utilisé pour les reçus) :" texte

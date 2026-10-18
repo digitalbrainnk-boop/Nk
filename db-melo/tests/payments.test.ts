@@ -3,10 +3,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ACTIVE_PLANS, CARD_CURRENCIES, COUNTRIES, CURRENCIES, guessCountry, OPERATORS, SONG_PRICES, validPhone } from "@/lib/constants";
 import { formatPrice, toMinor } from "@/lib/pricing";
 import { cinetpayToken } from "@/lib/server/payments/cinetpay";
+import { fedapaySignature } from "@/lib/server/payments/fedapay";
 import { paystackSignature } from "@/lib/server/payments/paystack";
-import type { SongRecord } from "@/lib/types";
+import type { PaymentRecord, SongRecord } from "@/lib/types";
 
-const KEYS = ["CINETPAY_API_KEY", "CINETPAY_SITE_ID", "CINETPAY_SECRET_KEY", "STRIPE_SECRET_KEY", "PAYSTACK_SECRET_KEY", "FLUTTERWAVE_SECRET_KEY", "ALLOW_DEMO_PAYMENTS"];
+const KEYS = ["FEDAPAY_SECRET_KEY", "FEDAPAY_WEBHOOK_SECRET", "CINETPAY_API_KEY", "CINETPAY_SITE_ID", "CINETPAY_SECRET_KEY", "STRIPE_SECRET_KEY", "PAYSTACK_SECRET_KEY", "FLUTTERWAVE_SECRET_KEY", "ALLOW_DEMO_PAYMENTS"];
 const clearKeys = () => KEYS.forEach((k) => vi.stubEnv(k, ""));
 
 describe("tarif", () => {
@@ -104,5 +105,93 @@ describe("choix de la passerelle selon le pays", () => {
     const demo = paymentOptions({ demo: true } as SongRecord);
     expect(demo.card?.provider).toBe("demo");
     expect(demo.mobileMoney.CI).toBe("demo");
+  });
+});
+
+describe("FedaPay", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  });
+
+  const signed = (body: string, secret: string, t = Math.floor(Date.now() / 1000)) =>
+    new Request("http://x", { method: "POST", headers: { "x-fedapay-signature": `t=${t},s=${fedapaySignature(t, body, secret)}` } });
+
+  it("vérifie la signature des webhooks et retrouve la référence", async () => {
+    clearKeys();
+    vi.stubEnv("FEDAPAY_SECRET_KEY", "sk_sandbox_x");
+    vi.stubEnv("FEDAPAY_WEBHOOK_SECRET", "wh_sandbox_secret");
+    const { fedapay } = await import("@/lib/server/payments/fedapay");
+    const body = JSON.stringify({ name: "transaction.approved", entity: { id: 7, status: "approved", custom_metadata: { reference: "DBMFEDA1234" } } });
+    expect(await fedapay.parseWebhook(signed(body, "wh_sandbox_secret"), body)).toEqual({ reference: "DBMFEDA1234", claimedStatus: "paid" });
+    await expect(fedapay.parseWebhook(signed(body, "autre-secret"), body)).rejects.toThrow(/Signature/);
+    await expect(fedapay.parseWebhook(signed(body, "wh_sandbox_secret", 1_000_000), body)).rejects.toThrow(/Signature/);
+    // Sans métadonnées : la référence est relue dans l'adresse de retour.
+    const sansMeta = JSON.stringify({ name: "transaction.declined", entity: { id: 8, callback_url: "https://dbmelo.com/api/payments/return?ref=DBMFEDA5678" } });
+    expect(await fedapay.parseWebhook(signed(sansMeta, "wh_sandbox_secret"), sansMeta)).toEqual({ reference: "DBMFEDA5678", claimedStatus: "pending" });
+  });
+
+  it("encaisse le Mobile Money en zone FCFA de l'Ouest et la carte partout", async () => {
+    clearKeys();
+    vi.stubEnv("FEDAPAY_SECRET_KEY", "sk_live_x");
+    const { paymentOptions } = await import("@/lib/server/payments");
+    const o = paymentOptions(null);
+    for (const c of ["BF", "BJ", "TG", "CI", "SN", "NE", "ML"]) expect(o.mobileMoney[c]).toBe("fedapay");
+    expect(o.mobileMoney.CM).toBeUndefined(); // FCFA d'Afrique centrale : carte
+    expect(o.card).toEqual({ provider: "fedapay", currencies: ["XOF"] });
+  });
+
+  it("crée la transaction puis la page de paiement (bac à sable avec une clé de test)", async () => {
+    clearKeys();
+    vi.stubEnv("FEDAPAY_SECRET_KEY", "sk_sandbox_x");
+    const calls: { url: string; body?: Record<string, unknown> }[] = [];
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+      const body = init?.body ? JSON.parse(String(init.body)) : undefined;
+      calls.push({ url, body });
+      if (url.endsWith("/transactions") && body?.customer?.phone_number) return Response.json({ message: "Numéro invalide" }, { status: 422 });
+      if (url.endsWith("/transactions")) return Response.json({ "v1/transaction": { id: 42, status: "pending", amount: 1000 } });
+      return Response.json({ token: "TOK", url: "https://process.fedapay.com/TOK" });
+    });
+    const { fedapay } = await import("@/lib/server/payments/fedapay");
+    const session = await fedapay.createCheckout({
+      reference: "DBMFEDA0001",
+      song: { id: "s1", config: { title: "Maman Awa" } } as SongRecord,
+      plan: "essentiel",
+      amount: 1000,
+      currency: "XOF",
+      method: "mobile_money",
+      operator: "orange_money",
+      country: "BF",
+      phone: "70123456",
+      returnUrl: "https://dbmelo.com/api/payments/return?ref=DBMFEDA0001",
+      notifyUrl: "https://dbmelo.com/api/payments/webhooks/fedapay",
+      cancelUrl: "https://dbmelo.com/chanson/s1",
+    });
+    expect(session).toEqual({ redirectUrl: "https://process.fedapay.com/TOK", providerRef: "42" });
+    expect(calls.map((c) => c.url)).toEqual([
+      "https://sandbox-api.fedapay.com/v1/transactions",
+      "https://sandbox-api.fedapay.com/v1/transactions",
+      "https://sandbox-api.fedapay.com/v1/transactions/42/token",
+    ]);
+    expect(calls[0].body).toMatchObject({ amount: 1000, currency: { iso: "XOF" }, customer: { phone_number: { number: "+22670123456", country: "bf" } } });
+    expect(calls[1].body?.customer).not.toHaveProperty("phone_number");
+  });
+
+  it("ne valide que les transactions approuvées", async () => {
+    clearKeys();
+    vi.stubEnv("FEDAPAY_SECRET_KEY", "sk_live_x");
+    let status = "approved";
+    vi.stubGlobal("fetch", async (url: string) => {
+      expect(url).toBe("https://api.fedapay.com/v1/transactions/42");
+      return Response.json({ "v1/transaction": { id: 42, status, amount: 1000 } });
+    });
+    const { fedapay } = await import("@/lib/server/payments/fedapay");
+    const payment = { providerRef: "42" } as PaymentRecord;
+    expect(await fedapay.verify(payment)).toMatchObject({ status: "paid", amount: 1000 });
+    status = "declined";
+    expect((await fedapay.verify(payment)).status).toBe("failed");
+    status = "pending";
+    expect((await fedapay.verify(payment)).status).toBe("pending");
+    expect((await fedapay.verify({} as PaymentRecord)).status).toBe("pending");
   });
 });

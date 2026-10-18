@@ -13,6 +13,7 @@ import type { CountryCode, Currency, MobileOperator, PaymentMethod, PaymentOptio
 
 const CARD_BRANDS = ["Visa", "Mastercard", "Apple Pay", "Google Pay"];
 const PROVIDER_NAMES: Record<PaymentProviderId, string> = {
+  fedapay: "FedaPay",
   cinetpay: "CinetPay",
   flutterwave: "Flutterwave",
   paystack: "Paystack",
