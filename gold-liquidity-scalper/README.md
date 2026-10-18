@@ -77,6 +77,8 @@ gold-liquidity-scalper/
 ├── tester/sets/*.set                paramètres du testeur (une famille par fichier, comparaisons A/B)
 ├── tester/ini/*.ini                 modèle de lancement du testeur en ligne de commande
 ├── tools/analyze_trades.py          analyse statistique et décision (Python 3, sans dépendance)
+├── tests/compile_metaeditor.sh      compilation réelle par MetaEditor sous Wine (accès MetaQuotes requis)
+├── tests/run_validation.sh          rejeu sur barres M1 réelles exportées de MT5 + protocole statistique
 ├── tools/criteria_default.json      critères pré-enregistrés
 └── tests/                           vérification hors MetaTrader (voir § 12)
 ```
@@ -94,6 +96,31 @@ gold-liquidity-scalper/
    n'est utilisée (pas de bibliothèque standard `Trade.mqh`).
 
 Les fichiers source sont en UTF-8 avec BOM (accents français dans les textes).
+
+**Compiler sans Windows** (Linux, WSL ou session de développement) :
+`tests/compile_metaeditor.sh [chemin/metaeditor64.exe]` lance le compilateur
+officiel MetaEditor sous Wine sans écran, puis affiche les erreurs et
+avertissements **réellement** signalés (`tests/build/metaeditor/compile_utf8.log`).
+Sans argument, le script télécharge l'installateur officiel MetaQuotes, ce qui
+exige un accès réseau à `download.mql5.com` (et aux serveurs de téléchargement
+MetaQuotes). Code retour 2 = aucune compilation n'a eu lieu.
+
+**Valider sur données réelles par simulation** : exporter l'historique M1 du
+symbole depuis MT5 (**Affichage → Symboles → Barres**, choisir le symbole or et
+M1, une période de plusieurs années, **Exporter les barres**), placer le fichier
+(éventuellement zippé) dans `donnees/`, puis :
+
+```
+tests/run_validation.sh donnees/XAUUSDm_M1.csv                       # 6 familles
+tests/run_validation.sh donnees/XAUUSDm_M1.csv tester/sets/fvg_*.set # étude FVG
+```
+
+Le script rejoue l'EA (même code, mêmes préréglages `.set`) sur chaque barre avec
+son **spread réel**, puis applique le protocole statistique (développement 60 %,
+validation 20 %, test final 20 % verrouillé ; variables `DEV`, `VAL`, `TEST`,
+`UNLOCK_TEST`, `BASELINE`, `REPLAY_OPTS` pour la commission, le glissement, le
+capital ou le décalage horaire). C'est une **simulation** (4 cotations par barre,
+pas de ticks réels) : elle ne remplace ni le testeur MT5 ni la démo.
 
 ## 3. Mise en route
 

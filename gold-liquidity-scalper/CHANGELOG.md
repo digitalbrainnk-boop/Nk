@@ -42,6 +42,11 @@ Journal et suivi :
 - tableau de bord : FVG du jour détectées / qualifiées / retestées / invalidées,
   OB actifs ; rapport EA par fraîcheur de la zone.
 
+Outillage (sans changement de règles) : `tests/compile_metaeditor.sh` (compilation
+réelle par MetaEditor sous Wine, analyse du journal) ; `tests/replay_main.cpp` et
+`tests/run_validation.sh` (rejeu de l'EA sur un export M1 de MT5 avec le spread de
+chaque barre, préréglages `.set` appliqués, protocole statistique en sortie).
+
 Outil d'analyse : répartition zones fraîches / revisitées, « Verdict des filtres »
 (CONSERVER seulement si gain en développement ET validation, sinon DÉSACTIVER).
 Préréglages des 6 variantes de l'étude FVG (`tester/sets/fvg_*.set`). Banc de

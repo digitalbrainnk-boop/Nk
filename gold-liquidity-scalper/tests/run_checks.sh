@@ -15,5 +15,7 @@ CXX="${CXX:-g++}"
 FLAGS=(-std=c++17 -O2 -g -Wall -Wextra -Wshadow -Wconversion -Wsign-compare -Wno-unused-parameter -Werror)
 echo "Compilation C++ stricte ($CXX)..."
 "$CXX" "${FLAGS[@]}" -I"$HERE" -I"$BUILD" "$HERE/test_main.cpp" -o "$BUILD/gls_tests"
+echo "Compilation du rejeu sur données réelles (replay_main.cpp)..."
+"$CXX" "${FLAGS[@]}" -I"$HERE" -I"$BUILD" "$HERE/replay_main.cpp" -o "$BUILD/replay"
 echo "Exécution des tests..."
 "$BUILD/gls_tests"

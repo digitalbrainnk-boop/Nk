@@ -212,13 +212,28 @@ def main():
             fh.write(out)
     # fonction de remise aux valeurs par défaut des paramètres (isolation des tests)
     resets = []
+    setters = []
     for f in files:
         for line in texts[f].split("\n"):
             m = re.match(r"^\s*(?:input|sinput)\s+(?!group\b)([A-Za-z_]\w*)\s+([A-Za-z_]\w*)\s*=\s*([^;]+);", line)
             if m:
-                resets.append("  %s = %s;" % (m.group(2), m.group(3).strip()))
+                typ, name = m.group(1), m.group(2)
+                resets.append("  %s = %s;" % (name, m.group(3).strip()))
+                if typ == "bool":
+                    conv = "(v == \"true\" || v == \"1\")"
+                elif typ in ("double", "float"):
+                    conv = "(%s)std::stod(v)" % typ
+                elif typ == "string":
+                    conv = "string(v)"
+                else:  # entiers, datetime, color et énumérations : valeur numérique comme dans un .set MT5
+                    conv = "(%s)std::stoll(v)" % typ
+                setters.append("  if (n == \"%s\")\n  {\n    %s = %s;\n    return true;\n  }" % (name, name, conv))
     with open(os.path.join(dst, "inputs_reset.inc"), "w", encoding="utf-8") as fh:
         fh.write("inline void ResetInputs()\n{\n" + "\n".join(resets) + "\n}\n")
+    # application d'un paramètre par son nom (préréglages .set du testeur MT5, valeur avant « || »)
+    with open(os.path.join(dst, "inputs_set.inc"), "w", encoding="utf-8") as fh:
+        fh.write("inline bool SetInputByName(const std::string &n, const std::string &v)\n{\n" + "\n".join(setters)
+                 + "\n  return false;\n}\n")
     for e in errors:
         print("MQL5-LINT " + e)
     print("mql2cpp : %d fichier(s) transformé(s), %d problème(s) MQL5" % (len(files), len(errors)))
