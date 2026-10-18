@@ -128,7 +128,14 @@ Configuration chez les prestataires (au moins un pour le Mobile Money et un pour
 - **Flutterwave** : `FLUTTERWAVE_SECRET_KEY` ; webhook `https://ton-domaine/api/payments/webhooks/flutterwave` avec un « Secret hash » recopié dans `FLUTTERWAVE_WEBHOOK_HASH`.
 - **Stripe** : `STRIPE_SECRET_KEY` ; webhook `https://ton-domaine/api/payments/webhooks/stripe` avec les événements `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed`, `checkout.session.expired`, puis `STRIPE_WEBHOOK_SECRET`. Activez Apple Pay / Google Pay dans le tableau de bord Stripe.
 - **Paystack** : `PAYSTACK_SECRET_KEY` ; webhook `https://ton-domaine/api/payments/webhooks/paystack`.
-- `MERCHANT_EMAIL` : ton e-mail, utilisé quand Flutterwave ou Paystack exigent un e-mail et que le client n'en a pas donné.
+- **Ton entreprise** (`MERCHANT_NAME`, `MERCHANT_EMAIL`, `MERCHANT_PHONE`, `MERCHANT_ADDRESS`, `MERCHANT_REGISTRATION`, `HOSTING_INFO`) : affichée sur `/contact`, `/conditions` et `/confidentialite`, que CinetPay vérifie avant de valider un compte. `MERCHANT_EMAIL` sert aussi de reçu quand Flutterwave ou Paystack exigent un e-mail. Tout se règle dans `dbmelo-cles` → 7.
+
+#### Ouvrir le compte CinetPay
+
+1. Sur cinetpay.com, crée un compte **marchand** (entreprise, ou particulier si ton pays le permet) et envoie les pièces demandées.
+2. Comme site web, donne ton domaine (ex. `https://dbmelo.com`) ; comme activité : « vente en ligne de chansons personnalisées (contenu numérique) ». Les pages Contact, Conditions de vente et Confidentialité sont en bas de chaque page.
+3. Une fois le compte validé : **Intégrations** → copie l'**API KEY**, le **SITE ID** et la **SECRET KEY** dans `dbmelo-cles` → 3. Rien d'autre à régler : l'adresse de notification est envoyée par DB.Mélo à chaque paiement.
+4. Active les opérateurs Mobile Money de ton pays (et la carte si tu veux), puis fais un vrai paiement de 1 000 FCFA pour vérifier.
 
 Le paiement simulé n'est proposé que pour les chansons de démo, ou si `ALLOW_DEMO_PAYMENTS=true` (tests uniquement).
 
@@ -156,7 +163,8 @@ Voir `.env.example`. Les plus importantes :
 |---|---|
 | `PUBLIC_BASE_URL` | Adresse https publique (webhooks Kie et paiements, liens cadeau) |
 | `KIE_API_KEY` | Clé Kie.ai (sans elle : mode démo) |
-| `KIE_SUNO_MODEL` | `V5` par défaut ; `V6`, `V6_MINI`, `V6_WILD` possibles (à écouter avant d'adopter) |
+| `KIE_SUNO_MODEL` | `V6` par défaut ; `V6_MINI`, `V6_WILD` ou `V5` possibles |
+| `KIE_SUNO_FALLBACK_MODEL` | `V5` : utilisé si Kie refuse le modèle principal, et pour les relances après un échec |
 | `VERSIONS_MODE` | `takes` (défaut) : 1 composition Suno, ses 2 prises font les 2 versions (≈ 12 crédits) ; `styles` : une version rythmée + une acoustique (2 compositions, ≈ 24 crédits) |
 | `ANTHROPIC_API_KEY` | Parolier Claude (facultatif) |
 | `FLOW_MODE` | `pay_first` (défaut : paiement avant composition) ou `preview_first` |
@@ -168,7 +176,38 @@ Voir `.env.example`. Les plus importantes :
 
 ## Hébergement
 
-- **Render / VPS / Railway** (recommandé) : dossier racine `db-melo`, build `npm install && npm run build`, démarrage `npm start`, **disque persistant** monté sur `DATA_DIR` (commandes, copies audio, photos).
+### o2switch (recommandé)
+
+GitHub compile DB.Mélo à chaque modification (`.github/workflows/dbmelo-o2switch.yml`) et publie un paquet prêt à installer : le serveur n'a rien à compiler. Les données (`~/dbmelo-donnees`) et la configuration (`~/dbmelo-app/.env`) sont conservées d'une version à l'autre.
+
+1. **Commande** l'offre o2switch et choisis ton nom de domaine. Attends l'e-mail avec l'accès à cPanel.
+2. **cPanel → Setup Node.js App → Create Application** :
+   - Node.js version : la plus récente (au moins 20) ;
+   - Application mode : Production ;
+   - Application root : `dbmelo-app` ;
+   - Application URL : ton domaine ;
+   - Application startup file : `app.js` ;
+   - puis **Create**.
+3. **cPanel → Terminal** : colle la ligne suivante, puis Entrée, et donne ton domaine quand il est demandé :
+   ```bash
+   curl -fsSL https://raw.githubusercontent.com/digitalbrainnk-boop/Nk/claude/db-melo-saas-app-14k2yw/db-melo/deploy/o2switch/installer.sh | bash
+   ```
+4. Ouvre un **nouveau** Terminal et tape `dbmelo-cles` : clé Kie (1), ton entreprise (7), CinetPay (3) quand ton compte est validé, test (9), puis 0 pour redémarrer.
+5. **cPanel → SSL/TLS Status** : vérifie que ton domaine a un certificat (AutoSSL, gratuit). Ouvre `https://ton-domaine` : DB.Mélo est en ligne.
+
+| Commande (Terminal cPanel) | Rôle |
+|---|---|
+| `dbmelo-cles` | clés API, ton entreprise, adresse du site, test du site et des clés |
+| `dbmelo-maj` | installer la dernière version |
+| `dbmelo-journal` | voir ce que fait le serveur |
+| `dbmelo-relancer` | redémarrer DB.Mélo (ou bouton **Restart** dans Setup Node.js App) |
+| `dbmelo-retour` | revenir à la version précédente |
+
+Passenger peut lancer plusieurs processus Node : le stockage sur fichiers est protégé par un verrou partagé.
+
+### Autres hébergeurs
+
+- **Render / VPS / Railway** : dossier racine `db-melo`, build `npm install && npm run build`, démarrage `npm start`, **disque persistant** monté sur `DATA_DIR` (commandes, copies audio, photos).
 - **Vercel** : dossier racine `db-melo`, renseigner `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN`. Sans disque, les fichiers ne sont pas copiés localement : les liens audio restent ceux de Kie (expiration d'environ deux semaines). Prévoir un stockage objet (S3, R2…) pour une conservation longue.
 
 ## Échantillons vocaux
@@ -180,9 +219,9 @@ Voir `.env.example`. Les plus importantes :
 - **Accès** : pas de compte utilisateur. Une commande est accessible par son lien privé (identifiant aléatoire de 128 bits) ; la page cadeau a un identifiant distinct et ne donne accès qu'à l'écoute. Pour un historique multi-appareils, ajouter une authentification (Auth.js, Clerk…).
 - **Limiteur de débit** en mémoire : suffisant sur une instance ; derrière plusieurs instances, utiliser un limiteur partagé.
 - **Enregistrement d'écran** : impossible à bloquer sur le web. La protection repose sur le paiement avant composition ; une fois payée, la chanson appartient au client.
-- **Coût par commande** : chaque chanson lance 2 compositions Suno (versions A et B) et jusqu'à 3 relances en cas d'échec. Vérifie que 1 000 FCFA couvre le coût Kie et les frais des passerelles ; sinon, augmente le prix ou ne garde qu'une version.
+- **Coût par commande** : une composition Suno par chanson (≈ 12 crédits Kie, ses 2 prises font les 2 versions), et jusqu'à 2 relances gratuites en cas d'échec, en V5. Garde toujours du crédit Kie d'avance : sans crédit, un client qui a payé ne reçoit pas sa chanson.
 - **Langue** : l'interface est en français ; une version anglaise faciliterait l'usage au Nigeria, au Ghana, au Kenya…
 - **API Kie** : les routes `get-timestamped-lyrics`, `wav`, `jobs` (images) et l'envoi de fichiers suivent la documentation Kie ; les noms de modèles d'image sont réglables (`KIE_IMAGE_MODEL`, `KIE_IMAGE_EDIT_MODEL`). Faites un premier essai réel avec une petite recharge.
 - **Paystack en XOF** : le montant est envoyé en « sous-unité » (× 100), comme pour les autres devises ; à confirmer sur votre compte.
 - **Flutterwave** : les options Mobile Money par pays (`mobilemoneyghana`, `mpesa`, `mobilemoneyfranco`…) suivent sa documentation ; faites un paiement test par pays visé.
-- **Textes** : la FAQ et les conditions (droits d'usage des chansons) sont des propositions à faire relire.
+- **Textes** : la FAQ, les conditions de vente et la politique de confidentialité sont des propositions à faire relire ; vérifie aussi les conditions de Kie et de Suno sur l'usage commercial des chansons générées.

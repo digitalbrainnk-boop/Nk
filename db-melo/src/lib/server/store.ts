@@ -1,4 +1,5 @@
 // Stockage : fichiers JSON sur disque (VPS, Render + disque) ou Upstash Redis (Vercel / serverless).
+import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { config } from "./env";
@@ -7,7 +8,14 @@ import type { PaymentRecord, SongRecord, UploadRecord } from "../types";
 interface KV {
   get(key: string): Promise<string | null>;
   set(key: string, value: string): Promise<void>;
+  /** Verrou partagé entre processus (o2switch / Passenger en lance plusieurs) ; renvoie sa libération. */
+  lock(key: string): Promise<() => Promise<void>>;
 }
+
+const LOCK_WAIT_MS = 10_000;
+/** Au-delà, un verrou est considéré comme abandonné (processus arrêté en pleine écriture). */
+const LOCK_STALE_MS = 30_000;
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 const SAFE = /^[A-Za-z0-9_-]+$/;
 
@@ -34,6 +42,23 @@ class FileKV implements KV {
     await fs.writeFile(tmp, value);
     await fs.rename(tmp, file); // écriture atomique
   }
+  async lock(key: string) {
+    const file = `${keyPath(this.root, key)}.lock`;
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    const deadline = Date.now() + LOCK_WAIT_MS;
+    for (;;) {
+      try {
+        await (await fs.open(file, "wx")).close();
+        return () => fs.rm(file, { force: true });
+      } catch (e) {
+        if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
+        const since = await fs.stat(file).then((st) => Date.now() - st.mtimeMs, () => 0);
+        if (since > LOCK_STALE_MS) await fs.rm(file, { force: true });
+        else if (Date.now() > deadline) throw new Error(`Verrou occupé : ${key}`);
+        else await sleep(15 + Math.random() * 35);
+      }
+    }
+  }
 }
 
 class UpstashKV implements KV {
@@ -59,6 +84,19 @@ class UpstashKV implements KV {
   async set(key: string, value: string) {
     await this.cmd(["SET", `dbmelo:${key}`, value]);
   }
+  async lock(key: string) {
+    const name = `dbmelo:lock:${key}`;
+    const token = randomUUID();
+    const deadline = Date.now() + LOCK_WAIT_MS;
+    while ((await this.cmd(["SET", name, token, "NX", "PX", String(LOCK_STALE_MS)])) !== "OK") {
+      if (Date.now() > deadline) throw new Error(`Verrou occupé : ${key}`);
+      await sleep(50 + Math.random() * 50);
+    }
+    return async () => {
+      // Ne libère que son propre verrou (il a pu expirer et être repris entre-temps).
+      await this.cmd(["EVAL", "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) end return 0", "1", name, token]).catch(() => {});
+    };
+  }
 }
 
 let kv: KV | null = null;
@@ -70,7 +108,8 @@ function store(): KV {
   return kv;
 }
 
-// Verrou en mémoire : sérialise les mises à jour d'un même objet dans ce processus.
+// Verrou en mémoire : sérialise les mises à jour d'un même objet dans ce processus
+// (le verrou du stockage protège ensuite contre les autres processus).
 const locks = new Map<string, Promise<void>>();
 async function withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
   const prev = locks.get(key) ?? Promise.resolve();
@@ -102,12 +141,18 @@ function collection<T extends object>(prefix: string, idOf: (v: T) => string) {
     /** Lecture-modification-écriture protégée par le verrou. */
     async update(id: string, mutate: (current: T) => T | void | Promise<T | void>): Promise<T | null> {
       return withLock(key(id), async () => {
-        const raw = SAFE.test(id) ? await store().get(key(id)) : null;
-        if (!raw) return null;
-        const current = JSON.parse(raw) as T;
-        const next = ((await mutate(current)) ?? current) as T;
-        await store().set(key(id), JSON.stringify(next));
-        return next;
+        if (!SAFE.test(id)) return null;
+        const release = await store().lock(key(id));
+        try {
+          const raw = await store().get(key(id));
+          if (!raw) return null;
+          const current = JSON.parse(raw) as T;
+          const next = ((await mutate(current)) ?? current) as T;
+          await store().set(key(id), JSON.stringify(next));
+          return next;
+        } finally {
+          await release();
+        }
       });
     },
   };

@@ -282,6 +282,12 @@ export function PaymentSelector({ song, title = "Finalisez votre chanson" }: { s
         <br />
         <Lock className="mr-1 inline size-3" />
         Paiement chiffré chez {provider ? PROVIDER_NAMES[provider] : "notre partenaire"} · vos coordonnées bancaires ne passent pas par DB.Mélo
+        <br />
+        En payant, vous acceptez nos{" "}
+        <a href="/conditions" target="_blank" className="underline hover:text-cream">
+          conditions générales de vente
+        </a>
+        .
       </p>
     </section>
   );

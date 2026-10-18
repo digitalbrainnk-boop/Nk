@@ -97,6 +97,13 @@ if [ ! -f .env.local ]; then
   esac
 fi
 
+# Passage à Suno V6 (une seule fois ; « dbmelo-cles » → m pour changer de modèle).
+if grep -q '^KIE_SUNO_MODEL=V5$' .env.local && ! grep -q '^# dbmelo:v6' .env.local; then
+  sed -i 's/^KIE_SUNO_MODEL=V5$/KIE_SUNO_MODEL=V6/' .env.local
+  echo "# dbmelo:v6" >> .env.local
+  echo "Modèle Suno : V6 (V5 reste en secours automatique)."
+fi
+
 # Arrête l'ancienne version avant de recompiler (mise à jour).
 if [ -f "$DONNEES/serveur.pid" ]; then
   kill "$(cat "$DONNEES/serveur.pid")" 2>/dev/null || true

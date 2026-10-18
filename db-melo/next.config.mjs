@@ -7,6 +7,8 @@ const root = path.dirname(fileURLToPath(import.meta.url));
 /** @type {import("next").NextConfig} */
 const nextConfig = {
   poweredByHeader: false,
+  // Paquet autonome (server.js + dépendances utiles) pour o2switch ; activé par NEXT_OUTPUT=standalone.
+  ...(process.env.NEXT_OUTPUT === "standalone" ? { output: "standalone" } : {}),
   // Le dépôt contient aussi l'agent (package-lock à la racine) : DB.Mélo est autonome dans ce dossier.
   outputFileTracingRoot: root,
   turbopack: { root },

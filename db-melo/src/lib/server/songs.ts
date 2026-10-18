@@ -1,6 +1,6 @@
 // Cycle de vie d'une chanson : création, lancement Suno (2 variantes), suivi, paiement.
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { buildKieRequest } from "../kie-prompt";
+import { type Arrangement, buildKieRequest } from "../kie-prompt";
 import type {
   KieRecordInfo,
   PaymentRecord,
@@ -100,10 +100,22 @@ export async function startGeneration(id: string, base: string): Promise<SongRec
 
   const ref = claimed.config.referenceAudio;
   const uploadUrl = ref?.useAsCover && ref.rightsConfirmed ? (await uploads.get(ref.uploadId))?.publicUrl : undefined;
-  const opts = { model: config.sunoModel(), callbackUrl: (v: VariantId) => callbackUrl(base, id, v, "music"), uploadUrl };
+  // Une relance après échec passe par le modèle de secours, éprouvé.
+  const fallback = config.sunoFallbackModel();
+  const model = (claimed.generation.attempts ?? 1) > 1 ? fallback : config.sunoModel();
+  const opts = { model, callbackUrl: (v: VariantId) => callbackUrl(base, id, v, "music"), uploadUrl };
+  const start = async (arrangement: Arrangement) => {
+    try {
+      return await kie.startSunoTask(buildKieRequest(claimed.config, arrangement, opts));
+    } catch (e) {
+      if (model === fallback || !kie.isModelRejection(e)) throw e;
+      console.warn(`[DB.Mélo] Suno ${model} refusé (${(e as Error).message}) : nouvel essai en ${fallback}.`);
+      return kie.startSunoTask(buildKieRequest(claimed.config, arrangement, { ...opts, model: fallback }));
+    }
+  };
   // Mode « takes » : une seule composition, dont les deux prises deviennent les versions 1 et 2.
-  const single = claimed.variants.A.mood === "take" ? kie.startSunoTask(buildKieRequest(claimed.config, "both", opts)) : null;
-  const results = await Promise.allSettled(VARIANTS.map((v) => single ?? kie.startSunoTask(buildKieRequest(claimed.config, v, opts))));
+  const single = claimed.variants.A.mood === "take" ? start("both") : null;
+  const results = await Promise.allSettled(VARIANTS.map((v) => single ?? start(v)));
   const updated = await songs.update(id, (s) => {
     results.forEach((r, i) => {
       const v = VARIANTS[i];

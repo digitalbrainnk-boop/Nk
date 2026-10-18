@@ -14,7 +14,9 @@ export const config = {
   /** Adresses Kie (modifiables pour un proxy ou des tests). */
   kieApiBase: () => (str("KIE_API_BASE") || "https://api.kie.ai/api/v1").replace(/\/+$/, ""),
   kieUploadBase: () => (str("KIE_UPLOAD_BASE") || "https://kieai.redpandaai.co").replace(/\/+$/, ""),
-  sunoModel: () => (str("KIE_SUNO_MODEL") || "V5") as KieSunoModel,
+  sunoModel: () => (str("KIE_SUNO_MODEL") || "V6") as KieSunoModel,
+  /** Modèle de secours : si Kie refuse le modèle principal, et pour les relances après un échec. */
+  sunoFallbackModel: () => (str("KIE_SUNO_FALLBACK_MODEL") || "V5") as KieSunoModel,
   /** Par défaut, une seule composition Suno par chanson : ses deux prises font les deux versions. */
   versionsMode: (): VersionsMode => (str("VERSIONS_MODE") === "styles" ? "styles" : "takes"),
   /** Sans clé Kie, les chansons sont des maquettes de démonstration synthétisées localement. */
@@ -42,6 +44,15 @@ export const config = {
   flutterwave: () => ({ secretKey: str("FLUTTERWAVE_SECRET_KEY"), webhookHash: str("FLUTTERWAVE_WEBHOOK_HASH") }),
   /** E-mail du marchand, utilisé quand une passerelle exige un e-mail et que le client n'en donne pas. */
   merchantEmail: () => str("MERCHANT_EMAIL"),
+  /** Identité du vendeur sur les pages légales (exigée par CinetPay et les autres passerelles). */
+  merchant: () => ({
+    name: str("MERCHANT_NAME"),
+    email: str("MERCHANT_EMAIL"),
+    phone: str("MERCHANT_PHONE"),
+    address: str("MERCHANT_ADDRESS"),
+    registration: str("MERCHANT_REGISTRATION"),
+    host: str("HOSTING_INFO"),
+  }),
   /** Paiement simulé : explicitement autorisé, ou chanson de démo (sans valeur marchande). */
   allowDemoPayments: () => str("ALLOW_DEMO_PAYMENTS") === "true",
 

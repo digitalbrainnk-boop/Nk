@@ -1,8 +1,10 @@
 #!/data/data/com.termux/files/usr/bin/bash
-# DB.Mélo : saisie et test des clés API dans Termux (commande « dbmelo-cles »).
-# Les clés sont écrites dans .env.local, sur ce téléphone uniquement.
+# DB.Mélo : saisie et test des clés API (commande « dbmelo-cles »), dans Termux ou chez o2switch.
+# Les clés sont écrites dans .env.local (téléphone) ou dans le fichier DBMELO_ENV (serveur o2switch).
 APP="$(cd "$(dirname "$0")/.." && pwd)"
-ENV="$APP/.env.local"
+ENV="${DBMELO_ENV:-$APP/.env.local}"
+# Sur le serveur : fichier à toucher pour redémarrer DB.Mélo (Passenger).
+SERVEUR="${DBMELO_REDEMARRER:-}"
 DONNEES="$HOME/dbmelo-donnees"
 
 # Installe le raccourci « dbmelo-cles » pour les prochaines fois.
@@ -35,19 +37,27 @@ masque() {
   if [ -z "$v" ]; then echo "—"; elif [ ${#v} -le 10 ]; then echo "••••"; else echo "${v:0:4}…${v: -4}"; fi
 }
 
-modele() { local m; m=$(lire KIE_SUNO_MODEL); echo "${m:-V5}"; }
+modele() { local m; m=$(lire KIE_SUNO_MODEL); echo "${m:-V6}"; }
 
 etat() { [ -n "$(lire "$1")" ] && echo "✅ $(masque "$(lire "$1")")" || echo "❌ manquante"; }
 
 # Demande une valeur ; Entrée seule = garder l'actuelle, « - » = effacer.
+# Troisième argument « texte » : valeur lisible (nom, adresse…), affichée en clair et gardant ses espaces.
 demander() {
-  local cle="$1" texte="$2" saisie
+  local cle="$1" texte="$2" mode="${3:-}" saisie actuelle
+  actuelle="$(lire "$cle")"
+  [ "$mode" = "texte" ] || actuelle="$(masque "$actuelle")"
   echo
   echo "$texte"
-  echo "   Actuelle : $(masque "$(lire "$cle")")   (Entrée = garder, - = effacer)"
+  echo "   Actuelle : ${actuelle:-—}   (Entrée = garder, - = effacer)"
   printf "   > "
   read -r saisie || saisie=""
-  saisie="$(printf '%s' "$saisie" | tr -d '[:space:]')"
+  if [ "$mode" = "texte" ]; then
+    # Sans les caractères que le fichier .env interprète ($, #, guillemets).
+    saisie="$(printf '%s' "$saisie" | tr -d '"#$`\\' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+  else
+    saisie="$(printf '%s' "$saisie" | tr -d '[:space:]')"
+  fi
   if [ "$saisie" = "-" ]; then
     ecrire "$cle" ""
     echo "   Effacée."
@@ -58,7 +68,18 @@ demander() {
 }
 
 # Extrait un champ d'une réponse JSON (node est déjà installé).
-json() { node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const v=process.argv[1].split(".").reduce((o,k)=>o?.[k],JSON.parse(s));console.log(v===undefined?"":typeof v==="object"?JSON.stringify(v):String(v))}catch{console.log("")}})' "$1"; }
+json() {
+  if ! command -v node >/dev/null 2>&1; then
+    python3 -c 'import json,sys
+try:
+    v=json.load(sys.stdin)
+    for k in sys.argv[1].split("."): v=v.get(k) if isinstance(v,dict) else None
+    print("" if v is None else json.dumps(v) if isinstance(v,(dict,list)) else str(v).lower() if isinstance(v,bool) else str(v))
+except Exception: print("")' "$1"
+    return
+  fi
+  node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const v=process.argv[1].split(".").reduce((o,k)=>o?.[k],JSON.parse(s));console.log(v===undefined?"":typeof v==="object"?JSON.stringify(v):String(v))}catch{console.log("")}})' "$1"
+}
 
 HORS_LIGNE="pas de réponse : vérifie ta connexion internet, puis réessaie"
 
@@ -111,7 +132,16 @@ tester() {
     else echo "❌ Paystack : clé refusée ($(echo "$r" | json message))"; fi
   else echo "⚪ Paystack : pas configuré"; fi
 
-  if [ "$(lire ALLOW_DEMO_PAYMENTS)" = "true" ]; then
+  if [ -n "$SERVEUR" ]; then
+    k=$(lire PUBLIC_BASE_URL)
+    if [ -z "$k" ]; then echo "❌ Site : adresse manquante (choix s)"
+    else
+      r=$(curl -s -m 20 -o /dev/null -w "%{http_code}" "$k/api/payments/options")
+      case "$r" in 200) echo "✅ Site en ligne : $k" ;; 000) echo "❌ Site injoignable : $k (domaine, certificat SSL ou application arrêtée ?)" ;; *) echo "❌ Site : réponse $r (voir dbmelo-journal)" ;; esac
+    fi
+    [ "$(lire ALLOW_DEMO_PAYMENTS)" = "true" ] && echo "⛔ Paiement simulé ACTIVÉ sur le site public : désactive-le (8) !"
+    [ -z "$(lire MERCHANT_NAME)" ] && echo "⚠️  Ton entreprise n'est pas remplie (7) : CinetPay vérifie la page Contact."
+  elif [ "$(lire ALLOW_DEMO_PAYMENTS)" = "true" ]; then
     echo "ℹ️  Paiement simulé ACTIVÉ : parfait pour tes essais, mais dbmelo-public reste bloqué."
   fi
   echo
@@ -136,10 +166,11 @@ menu() {
   ligne 4 "Flutterwave" "$(etat FLUTTERWAVE_SECRET_KEY)"
   ligne 5 "Stripe (cartes)" "$(etat STRIPE_SECRET_KEY)"
   ligne 6 "Paystack (facult.)" "$(etat PAYSTACK_SECRET_KEY)"
-  ligne 7 "E-mail des reçus" "$(lire MERCHANT_EMAIL)"
+  ligne 7 "Ton entreprise" "$(n=$(lire MERCHANT_NAME); echo "${n:-❌ à remplir}")"
   ligne 8 "Paiement simulé" "$([ "$(lire ALLOW_DEMO_PAYMENTS)" = "true" ] && echo "ACTIVÉ" || echo "désactivé")"
   ligne v "Versions" "$([ "$(lire VERSIONS_MODE)" = "styles" ] && echo "rythmée+acoustique" || echo "économiques")"
   ligne m "Modèle Suno" "$(modele)"
+  [ -n "$SERVEUR" ] && ligne s "Adresse du site" "$(u=$(lire PUBLIC_BASE_URL); echo "${u:-❌ à remplir}")"
   echo " 9) Tester mes clés"
   echo " 0) Enregistrer et relancer DB.Mélo"
   echo " q) Quitter sans relancer"
@@ -166,9 +197,23 @@ while true; do
       demander STRIPE_WEBHOOK_SECRET "Stripe — Signing secret du webhook (commence par whsec_) :"
       ;;
     6) demander PAYSTACK_SECRET_KEY "Paystack — Secret key (Settings > API Keys, commence par sk_) :" ;;
-    7) demander MERCHANT_EMAIL "Ton adresse e-mail (utilisée pour les reçus si le client n'en donne pas) :" ;;
+    7)
+      echo
+      echo "Ces informations s'affichent sur les pages Contact, Conditions et Confidentialité."
+      echo "CinetPay les vérifie avant de valider ton compte."
+      demander MERCHANT_NAME "Nom de ton entreprise (ou ton nom si tu vends en ton nom propre) :" texte
+      demander MERCHANT_EMAIL "E-mail de contact (aussi utilisé pour les reçus) :"
+      demander MERCHANT_PHONE "Numéro WhatsApp avec l'indicatif, ex. +22670123456 :"
+      demander MERCHANT_ADDRESS "Ville et pays, ex. Ouagadougou, Burkina Faso :" texte
+      demander MERCHANT_REGISTRATION "Numéro RCCM ou IFU (Entrée si tu n'en as pas) :" texte
+      ;;
     8)
       if [ "$(lire ALLOW_DEMO_PAYMENTS)" = "true" ]; then ecrire ALLOW_DEMO_PAYMENTS false; echo "Paiement simulé désactivé : seuls les vrais paiements sont proposés."
+      elif [ -n "$SERVEUR" ]; then
+        echo "⛔ Sur ton site public, le paiement simulé donnerait des chansons GRATUITES à tout le monde."
+        printf "   Tape OUI en majuscules pour l'activer quand même (quelques minutes de test) : "
+        read -r ok || ok=""
+        if [ "$ok" = "OUI" ]; then ecrire ALLOW_DEMO_PAYMENTS true; echo "Activé : pense à le désactiver juste après ton test (8)."; else echo "Rien n'a changé."; fi
       else ecrire ALLOW_DEMO_PAYMENTS true; echo "Paiement simulé activé (essais seulement : ne l'ouvre pas au public)."; fi
       sleep 2
       ;;
@@ -186,19 +231,24 @@ while true; do
     m | M)
       echo
       echo "Modèle Suno (actuel : $(modele)) :"
-      echo " 1) V5       éprouvé"
-      echo " 2) V6       le plus récent"
-      echo " 3) V6_MINI  rapide"
-      echo " 4) V6_WILD  plus original"
+      echo " 1) V6       le plus récent (conseillé)"
+      echo " 2) V6_MINI  rapide"
+      echo " 3) V6_WILD  plus original"
+      echo " 4) V5       ancien modèle"
+      echo " (si Kie refuse le modèle choisi, DB.Mélo repasse seul en V5)"
       printf "   > "
       read -r n || n=""
-      case "$n" in 1) ecrire KIE_SUNO_MODEL V5 ;; 2) ecrire KIE_SUNO_MODEL V6 ;; 3) ecrire KIE_SUNO_MODEL V6_MINI ;; 4) ecrire KIE_SUNO_MODEL V6_WILD ;; esac
+      case "$n" in 1) ecrire KIE_SUNO_MODEL V6 ;; 2) ecrire KIE_SUNO_MODEL V6_MINI ;; 3) ecrire KIE_SUNO_MODEL V6_WILD ;; 4) ecrire KIE_SUNO_MODEL V5 ;; esac
       echo "Écoute une chanson test et regarde le crédit Kie (9) avant et après. « 0 » pour relancer DB.Mélo."
       sleep 3
       ;;
     9) tester ;;
+    s | S) [ -n "$SERVEUR" ] && demander PUBLIC_BASE_URL "Adresse de ton site, ex. https://dbmelo.com :" texte ;;
     0)
-      if command -v dbmelo >/dev/null 2>&1; then
+      if [ -n "$SERVEUR" ]; then
+        mkdir -p "$(dirname "$SERVEUR")" && touch "$SERVEUR"
+        echo "Enregistré : DB.Mélo redémarre avec la nouvelle configuration (quelques secondes)."
+      elif command -v dbmelo >/dev/null 2>&1; then
         dbmelo-stop --serveur >/dev/null 2>&1
         dbmelo
       else

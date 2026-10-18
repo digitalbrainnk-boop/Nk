@@ -52,6 +52,14 @@ async function kie<T>(path: string, init: { method?: "GET" | "POST"; body?: unkn
   return data.data as T;
 }
 
+/** Refus qui ne dépendent pas du modèle (clé, crédit, cadence, maintenance) : inutile d'en changer. */
+const NOT_MODEL_RELATED = new Set([401, 402, 429, 430, 455]);
+
+/** Kie a répondu, mais a refusé la création : un autre modèle Suno peut passer. */
+export function isModelRejection(e: unknown): boolean {
+  return e instanceof KieError && e.code !== undefined && !NOT_MODEL_RELATED.has(e.code);
+}
+
 /** Lance une création Suno (Custom Generation, ou upload-cover si `uploadUrl` est fourni). */
 export async function startSunoTask(req: KieGenerationRequest): Promise<string> {
   const path = req.uploadUrl ? "/generate/upload-cover" : "/generate";

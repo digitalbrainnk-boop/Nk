@@ -18,6 +18,15 @@ export function Footer() {
           <Link href="/#faq" className="hover:text-cream">
             Questions fréquentes
           </Link>
+          <Link href="/conditions" className="hover:text-cream">
+            Conditions de vente
+          </Link>
+          <Link href="/confidentialite" className="hover:text-cream">
+            Confidentialité
+          </Link>
+          <Link href="/contact" className="hover:text-cream">
+            Contact
+          </Link>
         </nav>
       </div>
     </footer>

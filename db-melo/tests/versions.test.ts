@@ -97,3 +97,31 @@ describe("versions d'une chanson", () => {
     expect(started.variants.B).toMatchObject({ taskId: "tache-B", mood: "acoustic" });
   });
 });
+
+describe("modèle Suno", () => {
+  it("compose en V6 et repasse en V5 si Kie refuse le modèle", async () => {
+    vi.mocked(kie.startSunoTask).mockRejectedValueOnce(new kie.KieError("model not supported", 422)).mockResolvedValueOnce("tache-v5");
+    const id = await paidSong();
+    const started = await lib.startGeneration(id, "http://localhost");
+    expect(vi.mocked(kie.startSunoTask).mock.calls.map(([r]) => r.model)).toEqual(["V6", "V5"]);
+    expect(started.variants.A.taskId).toBe("tache-v5");
+  });
+
+  it("ne change pas de modèle pour un crédit insuffisant", async () => {
+    vi.mocked(kie.startSunoTask).mockRejectedValue(new kie.KieError("Crédit Kie.ai insuffisant", 402));
+    const id = await paidSong();
+    const started = await lib.startGeneration(id, "http://localhost");
+    expect(kie.startSunoTask).toHaveBeenCalledTimes(1);
+    expect(started.generation.status).toBe("failed");
+  });
+
+  it("relance une chanson échouée avec le modèle de secours", async () => {
+    vi.mocked(kie.startSunoTask).mockResolvedValue("tache-relance");
+    const id = await paidSong();
+    await store.songs.update(id, (s) => {
+      s.generation = { status: "failed", attempts: 1 };
+    });
+    await lib.startGeneration(id, "http://localhost");
+    expect(vi.mocked(kie.startSunoTask).mock.calls[0][0].model).toBe("V5");
+  });
+});
