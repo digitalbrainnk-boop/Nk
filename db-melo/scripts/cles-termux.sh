@@ -44,18 +44,31 @@ etat() { [ -n "$(lire "$1")" ] && echo "✅ $(masque "$(lire "$1")")" || echo "�
 # Demande une valeur ; Entrée seule = garder l'actuelle, « - » = effacer.
 # Troisième argument « texte » : valeur lisible (nom, adresse…), affichée en clair et gardant ses espaces.
 demander() {
-  local cle="$1" texte="$2" mode="${3:-}" saisie actuelle
+  local cle="$1" texte="$2" mode="${3:-}" saisie actuelle attendu=""
   actuelle="$(lire "$cle")"
   [ "$mode" = "texte" ] || actuelle="$(masque "$actuelle")"
+  # Début attendu de chaque clé : évite d'enregistrer un mot tapé par erreur.
+  case "$cle" in
+    CHARIOW_API_KEY | FEDAPAY_SECRET_KEY | PAYSTACK_SECRET_KEY) attendu="sk_" ;;
+    CHARIOW_PRODUCT_ID) attendu="prd_" ;;
+    CHARIOW_PULSE_SECRET | STRIPE_WEBHOOK_SECRET) attendu="whsec_" ;;
+    FEDAPAY_WEBHOOK_SECRET) attendu="wh" ;;
+    ANTHROPIC_API_KEY) attendu="sk-ant-" ;;
+    FLUTTERWAVE_SECRET_KEY) attendu="FLWSECK" ;;
+  esac
   echo
   echo "$texte"
-  echo "   Actuelle : ${actuelle:-—}   (Entrée = garder, - = effacer)"
+  echo "   Actuelle : ${actuelle:-—}"
+  echo "   (touche Entrée seule = garder · tiret - puis Entrée = effacer)"
   printf "   > "
-  read -r saisie || saisie=""
   if [ "$mode" = "texte" ]; then
+    read -r saisie || saisie=""
     # Sans les caractères que le fichier .env interprète ($, #, guillemets).
     saisie="$(printf '%s' "$saisie" | tr -d '"#$`\\' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
   else
+    # Une clé secrète ne s'affiche pas pendant qu'on la colle.
+    read -rs saisie || saisie=""
+    echo
     # Une clé ne contient pas d'espace : on garde le premier mot (évite deux valeurs collées ensemble).
     set -- $saisie
     [ $# -gt 1 ] && echo "   ⚠️  Plusieurs valeurs collées : seule la première est gardée ($(masque "$1"))."
@@ -64,9 +77,11 @@ demander() {
   if [ "$saisie" = "-" ]; then
     ecrire "$cle" ""
     echo "   Effacée."
+  elif [ -n "$saisie" ] && [ -n "$attendu" ] && [ "${saisie#"$attendu"}" = "$saisie" ]; then
+    echo "   ⚠️  Ce n'est pas la bonne valeur : elle doit commencer par « $attendu ». Rien n'a changé."
   elif [ -n "$saisie" ]; then
     ecrire "$cle" "$saisie"
-    echo "   Enregistrée."
+    if [ "$mode" = "texte" ]; then echo "   Enregistrée."; else echo "   Enregistrée : $(masque "$saisie")"; fi
   fi
 }
 
