@@ -43,6 +43,41 @@ if [ ! -f "$APP/.env" ]; then
 fi
 chmod 600 "$APP/.env"
 
+# Redirige http:// vers https:// dans le .htaccess du dossier du site, devant la configuration Passenger.
+# Annulé aussitôt si le site en https ne répond plus normalement (boucle de redirection).
+SITE=$(sed -n 's/^PUBLIC_BASE_URL=//p' "$APP/.env" | tail -n 1 | tr -d "\"' \r")
+case "$SITE" in
+  https://?*)
+    DOMAINE=${SITE#https://}; DOMAINE=${DOMAINE%%/*}
+    RACINE=$(uapi DomainInfo single_domain_data domain="$DOMAINE" 2>/dev/null | sed -n 's/^ *documentroot: *//p' | head -n 1 || true)
+    HTACCESS=""
+    [ -n "$RACINE" ] && [ -d "$RACINE" ] && HTACCESS="$RACINE/.htaccess"
+    [ -n "$HTACCESS" ] || HTACCESS=$(grep -lsE "PassengerAppRoot.*dbmelo-app" "$HOME"/public_html/.htaccess "$HOME"/*/.htaccess 2>/dev/null | head -n 1 || true)
+    code() { curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$1" || true; }
+    if [ -z "$HTACCESS" ]; then
+      echo "ℹ️  Redirection https : dossier du site introuvable."
+    elif grep -qs "# dbmelo-https" "$HTACCESS"; then
+      :
+    elif [ "$(code "https://$DOMAINE/")" != 200 ]; then
+      echo "ℹ️  Redirection https reportée : https://$DOMAINE ne répond pas encore (certificat SSL ?)."
+    else
+      touch "$HTACCESS"
+      cp "$HTACCESS" "$HTACCESS.avant-https"
+      {
+        printf '%s\n' "# dbmelo-https : toujours en https" "RewriteEngine On" "RewriteCond %{HTTPS} off" \
+          "RewriteCond %{REQUEST_URI} !^/\.well-known/" "RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]" ""
+        cat "$HTACCESS.avant-https"
+      } > "$HTACCESS"
+      if [ "$(code "https://$DOMAINE/")" = 200 ]; then
+        echo "Redirection vers https activée."
+      else
+        mv "$HTACCESS.avant-https" "$HTACCESS"
+        echo "⚠️  Redirection https annulée : le site ne répondait plus normalement."
+      fi
+    fi
+    ;;
+esac
+
 # Bascule sur la nouvelle version, puis redémarrage.
 ln -sfn "$VERSION" "$APP/actuelle"
 touch "$APP/tmp/restart.txt"
