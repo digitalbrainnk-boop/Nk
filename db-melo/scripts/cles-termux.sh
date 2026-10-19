@@ -45,7 +45,7 @@ destinataire() { local e; e=$(lire ALERT_EMAIL); [ -n "$e" ] || e=$(lire MERCHAN
 b64() { printf '%s' "$1" | base64 | tr -d '\n'; }
 
 alerte_essai() {
-  local sm to host from
+  local sm to host from out code
   sm=$(lire SENDMAIL_PATH)
   sm=${sm:-/usr/sbin/sendmail}
   if [ ! -x "$sm" ]; then echo "❌ Pas de sendmail sur ce serveur : les alertes ne peuvent pas partir."; return; fi
@@ -54,7 +54,7 @@ alerte_essai() {
   from=${host:+alertes@$host}
   set -- -t -i
   [ -n "$from" ] && set -- "$@" -f "$from"
-  if {
+  out=$({
     [ -n "$from" ] && echo "From: =?UTF-8?B?$(b64 "DB.Mélo")?= <$from>"
     echo "To: $to"
     echo "Subject: =?UTF-8?B?$(b64 "✅ DB.Mélo : essai des alertes")?="
@@ -66,11 +66,17 @@ alerte_essai() {
     echo
     echo "Ceci est un essai : les alertes de DB.Mélo arrivent bien dans cette boîte."
     echo "Tu seras prévenu ici dès que ton crédit Kie passera sous $(seuil) crédits."
-  } | "$sm" "$@"; then
-    echo "✅ E-mail d'essai envoyé à $to : regarde ta boîte de réception (et le dossier Spam)."
+  } | "$sm" "$@" 2>&1)
+  code=$?
+  if [ "$code" = 0 ]; then
+    echo "✅ E-mail d'essai envoyé à $to (expéditeur ${from:-par défaut})."
+    echo "   Regarde ta boîte de réception et le dossier Spam d'ici quelques minutes."
+    echo "   Rien reçu ? cPanel > Suivre la remise > Afficher tout."
   else
-    echo "❌ L'e-mail d'essai n'a pas pu partir."
+    echo "❌ L'e-mail d'essai n'a pas pu partir (sendmail : code $code)."
   fi
+  [ -n "$out" ] && printf '   %s\n' "$out"
+  return 0
 }
 
 etat() { [ -n "$(lire "$1")" ] && echo "✅ $(masque "$(lire "$1")")" || echo "❌ manquante"; }
@@ -363,10 +369,12 @@ while true; do
         echo
         printf "Envoyer un e-mail d'essai maintenant ? Tape o puis Entrée (sinon Entrée) : "
         read -r ok || ok=""
-        case "$ok" in o | O | oui | OUI) alerte_essai ;; esac
+        case "$ok" in o | O | oui | OUI) echo; alerte_essai ;; esac
       fi
+      echo
       echo "Pense à « 0 » pour relancer DB.Mélo."
-      sleep 4
+      printf "Entrée pour revenir au menu… "
+      read -r _ || true
       ;;
     9) tester ;;
     s | S) [ -n "$SERVEUR" ] && demander PUBLIC_BASE_URL "Adresse de ton site, ex. https://dbmelo.com :" texte ;;
