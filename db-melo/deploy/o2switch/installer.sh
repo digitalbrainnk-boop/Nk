@@ -57,7 +57,7 @@ case "$SITE" in
     if [ -z "$HTACCESS" ]; then
       echo "ℹ️  Redirection https : dossier du site introuvable."
     elif grep -qs "# dbmelo-https" "$HTACCESS"; then
-      :
+      echo "Redirection vers https : déjà active."
     elif [ "$(code "https://$DOMAINE/")" != 200 ]; then
       echo "ℹ️  Redirection https reportée : https://$DOMAINE ne répond pas encore (certificat SSL ?)."
     else
