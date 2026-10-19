@@ -35,6 +35,11 @@ export const config = {
   lyricsModel: () => str("LYRICS_MODEL") || "claude-opus-5-5",
   kieChatModel: () => str("KIE_CHAT_MODEL") || "deepseek-v4-1-flash",
 
+  /** Proxys de confiance devant l'application (lecture de l'adresse du visiteur). */
+  trustedProxyHops: () => num("TRUSTED_PROXY_HOPS", 1, 1, 5),
+  /** Propositions du parolier IA par heure, tous visiteurs confondus (au-delà : modèle à personnaliser). */
+  lyricsPerHourGlobal: () => num("LYRICS_PER_HOUR_GLOBAL", 60, 1, 100000),
+
   publicBaseUrl: () => str("PUBLIC_BASE_URL").replace(/\/+$/, ""),
   /** Par défaut, le client paie avant la composition : aucun son n'existe avant le paiement. */
   flowMode: (): FlowMode => (str("FLOW_MODE") === "preview_first" ? "preview_first" : "pay_first"),

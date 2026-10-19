@@ -6,14 +6,15 @@ import { baseUrl } from "@/lib/server/env";
 import { apiError, HttpError, readJson } from "@/lib/server/http";
 import { paymentReference } from "@/lib/server/ids";
 import { momoProviderFor, resolveCardProvider } from "@/lib/server/payments";
-import { clientIp, rateLimit } from "@/lib/server/rate-limit";
+import { clientIp, globalBudget, visitorLimit } from "@/lib/server/rate-limit";
 import { requireSong } from "@/lib/server/songs";
 import { payments } from "@/lib/server/store";
 import type { Currency, PaymentProvider, PaymentRecord } from "@/lib/types";
 
 export async function POST(req: Request) {
   try {
-    if (!rateLimit(`checkout:${clientIp(req)}`, 20, 3600_000).ok) throw new HttpError(429, "Trop de tentatives : réessayez plus tard.");
+    if (!visitorLimit(req, "checkout", 20, 3600_000).ok) throw new HttpError(429, "Trop de tentatives : réessayez plus tard.");
+    if (!globalBudget("checkout", 600)) throw new HttpError(503, "Beaucoup de paiements en cours : réessayez dans quelques minutes.");
     const input = checkoutSchema.parse(await readJson(req));
     const song = await requireSong(input.songId);
     if (song.payment.status === "paid") throw new HttpError(409, "Cette chanson est déjà payée.");

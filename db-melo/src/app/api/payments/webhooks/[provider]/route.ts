@@ -1,7 +1,7 @@
 // Webhooks des passerelles : signature vérifiée, puis statut relu auprès du prestataire avant tout déblocage.
 import { NextResponse } from "next/server";
 import { baseUrl } from "@/lib/server/env";
-import { apiError, HttpError } from "@/lib/server/http";
+import { apiError, HttpError, readText } from "@/lib/server/http";
 import { PROVIDERS } from "@/lib/server/payments";
 import { applyPaymentResult } from "@/lib/server/songs";
 import { payments } from "@/lib/server/store";
@@ -14,7 +14,7 @@ export async function POST(req: Request, { params }: Ctx) {
     const { provider: id } = await params;
     const provider = PROVIDERS[id as PaymentProviderId];
     if (!provider || id === "demo" || !provider.isConfigured()) throw new HttpError(404, "Passerelle inconnue.");
-    const raw = await req.text();
+    const raw = await readText(req, 1024 * 1024);
     const event = await provider.parseWebhook(req, raw);
     if (event) {
       const payment = await payments.get(event.reference);

@@ -190,6 +190,8 @@ Voir `.env.example`. Les plus importantes :
 | `FLOW_MODE` | `pay_first` (défaut : paiement avant composition) ou `preview_first` |
 | `MAX_GENERATION_ATTEMPTS` | Compositions autorisées par chanson, relances comprises (3) |
 | `PREVIEW_SECONDS`, `GENERATIONS_PER_HOUR` | Pré-écoute et limite par adresse IP, en `preview_first` uniquement |
+| `TRUSTED_PROXY_HOPS` | Proxys de confiance devant l'application (1 : Apache/Passenger, Vercel…) pour lire l'adresse réelle du visiteur |
+| `LYRICS_PER_HOUR_GLOBAL` | Propositions du parolier IA par heure, tous visiteurs confondus (60) ; au-delà, un modèle de paroles à personnaliser |
 | `CHARIOW_*`, `FEDAPAY_*`, `CINETPAY_*`, `FLUTTERWAVE_*`, `PAYSTACK_SECRET_KEY`, `STRIPE_*`, `MERCHANT_EMAIL` | Passerelles de paiement |
 | `DATA_DIR` | Dossier de stockage persistant (défaut `.data`) |
 | `UPSTASH_REDIS_REST_URL` / `_TOKEN` | Stockage pour l'hébergement serverless |
@@ -237,7 +239,8 @@ Passenger peut lancer plusieurs processus Node : le stockage sur fichiers est pr
 ## À savoir avant la mise en ligne
 
 - **Accès** : pas de compte utilisateur. Une commande est accessible par son lien privé (identifiant aléatoire de 128 bits) ; la page cadeau a un identifiant distinct et ne donne accès qu'à l'écoute. Pour un historique multi-appareils, ajouter une authentification (Auth.js, Clerk…).
-- **Limiteur de débit** en mémoire : suffisant sur une instance ; derrière plusieurs instances, utiliser un limiteur partagé.
+- **Limiteur de débit** en mémoire : par visiteur (adresse lue depuis la fin de `X-Forwarded-For`, la partie que le navigateur ne peut pas inventer ; `TRUSTED_PROXY_HOPS` proxys de confiance) et plafonds globaux par heure (parolier IA `LYRICS_PER_HOUR_GLOBAL`, chansons, paiements, envois). Si l'hébergeur ne transmet pas l'adresse des visiteurs, seuls les plafonds globaux s'appliquent, pour ne pas bloquer les vrais clients ; `dbmelo-cles` → **9** indique le cas du serveur (`GET /api/sante`). Derrière plusieurs instances serverless, utiliser un limiteur partagé.
+- **Autres protections** : corps des requêtes bornés (256 Ko en JSON, 1 Mo pour les webhooks, taille annoncée vérifiée avant la lecture d'un fichier), type réel des fichiers vérifié par leurs premiers octets, erreurs internes gardées dans le journal (le visiteur voit un message générique), en-têtes `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`, `Content-Security-Policy` (cadres, `base-uri`, objets, formulaires) et `Strict-Transport-Security`.
 - **Enregistrement d'écran** : impossible à bloquer sur le web. La protection repose sur le paiement avant composition ; une fois payée, la chanson appartient au client.
 - **Coût par commande** : une composition Suno par chanson (≈ 12 crédits Kie, ses 2 prises font les 2 versions), et jusqu'à 2 relances gratuites en cas d'échec, en V5. Garde toujours du crédit Kie d'avance : sans crédit, un client qui a payé ne reçoit pas sa chanson.
 - **Langue** : l'interface est en français ; une version anglaise faciliterait l'usage au Nigeria, au Ghana, au Kenya…

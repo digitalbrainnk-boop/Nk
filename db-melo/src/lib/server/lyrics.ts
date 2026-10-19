@@ -149,7 +149,10 @@ async function withKie(input: LyricsInput): Promise<GeneratedLyrics> {
   return { ...tidy(resultSchema.parse(JSON.parse(json))), source: "kie" };
 }
 
-export async function generateLyrics(input: LyricsInput): Promise<GeneratedLyrics & { warning?: string }> {
+export async function generateLyrics(input: LyricsInput, opts: { ai?: boolean } = {}): Promise<GeneratedLyrics & { warning?: string }> {
+  if (opts.ai === false) {
+    return { ...templateLyrics(input.brief, input.voice), warning: "Le parolier IA est très demandé en ce moment : voici une proposition à personnaliser." };
+  }
   const attempts: [string, () => Promise<GeneratedLyrics>][] = [];
   if (config.anthropicKey()) attempts.push(["Claude", () => withClaude(input)]);
   if (config.kieKey()) attempts.push(["Kie", () => withKie(input)]);

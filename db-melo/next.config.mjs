@@ -15,6 +15,19 @@ const nextConfig = {
   async headers() {
     return [
       {
+        // Protections du navigateur sur tout le site.
+        source: "/:path*",
+        headers: [
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "X-Frame-Options", value: "DENY" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), browsing-topics=()" },
+          { key: "Content-Security-Policy", value: "frame-ancestors 'none'; base-uri 'self'; object-src 'none'; form-action 'self' https:" },
+          // Ignoré en http (Termux, essais locaux) ; impose le https une fois le site visité en https.
+          { key: "Strict-Transport-Security", value: "max-age=31536000" },
+        ],
+      },
+      {
         // Le service worker doit pouvoir contrôler tout le site.
         source: "/sw.js",
         headers: [

@@ -227,6 +227,11 @@ tester() {
     else
       r=$(curl -s -m 20 -o /dev/null -w "%{http_code}" "$k/api/payments/options")
       case "$r" in 200) echo "✅ Site en ligne : $k" ;; 000) echo "❌ Site injoignable : $k (domaine, certificat SSL ou application arrêtée ?)" ;; *) echo "❌ Site : réponse $r (voir dbmelo-journal)" ;; esac
+      r=$(curl -s -m 20 "$k/api/sante")
+      case "$(echo "$r" | json adresseVisiteur)" in
+        true) echo "✅ Protection anti-abus par visiteur active" ;;
+        false) echo "ℹ️  L'hébergeur ne transmet pas l'adresse des visiteurs : les plafonds globaux protègent le site." ;;
+      esac
       case "$k" in https://*)
         r=$(curl -s -m 20 -o /dev/null -w "%{http_code} %{redirect_url}" "http://${k#https://}/")
         case "$r" in 30[1278]\ https://*) echo "✅ Les visiteurs en http:// sont renvoyés vers https://" ;; *) echo "ℹ️  http:// ne renvoie pas vers https:// : tape dbmelo-maj" ;; esac ;;

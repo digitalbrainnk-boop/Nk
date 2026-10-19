@@ -6,7 +6,7 @@ import { z } from "zod";
 import { songConfigSchema } from "@/lib/schemas";
 import { baseUrl, config as env } from "@/lib/server/env";
 import { apiError, HttpError, readJson } from "@/lib/server/http";
-import { clientIp, rateLimit } from "@/lib/server/rate-limit";
+import { globalBudget, visitorLimit } from "@/lib/server/rate-limit";
 import { createSong, refreshSong, requireSong, startGeneration, toPublicSong } from "@/lib/server/songs";
 import type { SongConfig } from "@/lib/types";
 
@@ -19,16 +19,20 @@ export async function POST(req: Request) {
     if ("songId" in body) {
       id = (await requireSong(body.songId)).id;
     } else {
+      if (!visitorLimit(req, "songs", 30, 3600_000).ok) throw new HttpError(429, "Trop de créations : réessayez plus tard.");
+      if (!globalBudget("songs", 600)) throw new HttpError(503, "Beaucoup de créations en ce moment : réessayez dans quelques minutes.");
       id = (await createSong(songConfigSchema.parse(body.config) as SongConfig)).id;
     }
     const existing = await requireSong(id);
     const fresh = existing.generation.status === "idle" || existing.generation.status === "failed";
     // Une chanson payée peut être relancée (nombre limité par chanson) sans limite par adresse IP.
     if (fresh && !existing.demo && existing.payment.status !== "paid") {
-      const limit = rateLimit(`generate:${clientIp(req)}`, env.generationsPerHour(), 3600_000);
+      const limit = visitorLimit(req, "generate", env.generationsPerHour(), 3600_000);
       if (!limit.ok) {
         throw new HttpError(429, `Limite de créations atteinte : réessayez dans ${Math.ceil(limit.retryAfterSec / 60)} min.`);
       }
+      // Compositions non payées (pré-écoute) : plafond commun, quel que soit le nombre de visiteurs.
+      if (!globalBudget("generate", 30)) throw new HttpError(503, "Le studio est très demandé : réessayez dans quelques minutes.");
     }
     const song = await startGeneration(id, baseUrl(req));
     return NextResponse.json({ song: toPublicSong(song) }, { status: fresh ? 202 : 200 });

@@ -5,7 +5,7 @@ import { config } from "@/lib/server/env";
 import { apiError, HttpError } from "@/lib/server/http";
 import { randomId } from "@/lib/server/ids";
 import { uploadToKie } from "@/lib/server/kie";
-import { clientIp, rateLimit } from "@/lib/server/rate-limit";
+import { globalBudget, visitorLimit } from "@/lib/server/rate-limit";
 import { files, uploads } from "@/lib/server/store";
 import type { UploadRecord } from "@/lib/types";
 
@@ -23,7 +23,12 @@ function sniff(b: Uint8Array): { mime: string; ext: string } | null {
 
 export async function POST(req: Request) {
   try {
-    if (!rateLimit(`upload:${clientIp(req)}`, 20, 3600_000).ok) throw new HttpError(429, "Trop d'envois : réessayez plus tard.");
+    if (!visitorLimit(req, "upload", 20, 3600_000).ok) throw new HttpError(429, "Trop d'envois : réessayez plus tard.");
+    // Taille annoncée vérifiée avant de lire le fichier (le plus gros envoi permis + l'enveloppe du formulaire).
+    const declared = Number(req.headers.get("content-length") || 0);
+    if (!declared) throw new HttpError(411, "Taille du fichier inconnue : réessayez depuis le formulaire.");
+    if (declared > Math.max(LIMITS.photoMaxBytes, LIMITS.referenceMaxBytes) + 256 * 1024) throw new HttpError(413, "Fichier trop lourd.");
+    if (!globalBudget("uploads", 120)) throw new HttpError(503, "Beaucoup d'envois en ce moment : réessayez dans quelques minutes.");
     const form = await req.formData().catch(() => null);
     const file = form?.get("file");
     const kind = form?.get("kind") === "photo" ? "photo" : "reference";
