@@ -210,7 +210,7 @@ GitHub compile DB.Mélo à chaque modification (`.github/workflows/dbmelo-o2swit
    curl -fsSL https://raw.githubusercontent.com/digitalbrainnk-boop/Nk/claude/db-melo-saas-app-14k2yw/db-melo/deploy/o2switch/installer.sh | bash
    ```
 4. Ouvre un **nouveau** Terminal et tape `dbmelo-cles` : clé Kie (1), Chariow (3), ton entreprise (7) si besoin, test (9), puis 0 pour redémarrer.
-5. **cPanel → SSL/TLS Status** : vérifie que ton domaine a un certificat (AutoSSL, gratuit). Ouvre `https://ton-domaine` : DB.Mélo est en ligne.
+5. **cPanel → Let's Encrypt SSL** : génère le certificat de ton domaine (gratuit), puis **cPanel → Domaines** : active **Forcer la redirection HTTPS** sur ton domaine. Ouvre `https://ton-domaine` : DB.Mélo est en ligne.
 
 | Commande (Terminal cPanel) | Rôle |
 |---|---|

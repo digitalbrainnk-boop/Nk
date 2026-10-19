@@ -43,16 +43,6 @@ if [ ! -f "$APP/.env" ]; then
 fi
 chmod 600 "$APP/.env"
 
-# Redirige http:// vers https://, devant la configuration Passenger écrite par cPanel.
-HTACCESS=$(grep -lsF "PassengerAppRoot \"$APP\"" "$HOME"/*/.htaccess "$HOME"/public_html/.htaccess 2>/dev/null | head -n 1 || true)
-if [ -n "$HTACCESS" ] && ! grep -q "# dbmelo-https" "$HTACCESS"; then
-  {
-    printf '%s\n' "# dbmelo-https : toujours en https" "RewriteEngine On" "RewriteCond %{HTTPS} off" "RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]" ""
-    cat "$HTACCESS"
-  } > "$HTACCESS.dbmelo" && mv "$HTACCESS.dbmelo" "$HTACCESS"
-  echo "Redirection vers https activée."
-fi
-
 # Bascule sur la nouvelle version, puis redémarrage.
 ln -sfn "$VERSION" "$APP/actuelle"
 touch "$APP/tmp/restart.txt"
