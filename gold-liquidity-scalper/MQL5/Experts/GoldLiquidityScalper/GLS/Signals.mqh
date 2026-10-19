@@ -746,14 +746,14 @@ void DetectRangeBreak(const CMarketContext &ctx, const CBarSeries &b, const CDir
          best.detail = "cassure confirmée, attente du retest";
          return;
         }
-      int iLow = b.ArgMinLow(bi, last);
+      int kLow = b.ArgMinLow(bi, last);
       best.valid = true;
       best.stage = 2;
       best.family = GLS_FAMILY_RANGE_BREAK;
       best.dir = v.dir;
       best.level = top;
-      best.extreme = b.low[iLow];
-      best.stop = b.low[iLow] - InpSLBufferATR * atrNow;
+      best.extreme = b.low[kLow];
+      best.stop = b.low[kLow] - InpSLBufferATR * atrNow;
       best.invalidation = top;
       best.refEntry = b.close[last];
       best.anchorTime = b.time[bi];

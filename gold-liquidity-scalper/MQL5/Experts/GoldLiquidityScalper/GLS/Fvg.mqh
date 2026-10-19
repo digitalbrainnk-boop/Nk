@@ -391,7 +391,7 @@ void LinkFvgOrderBlocks(CFvgMap &fm, const COrderBlockMap &om, const double &atr
            {
             fm.fvgs[i].obConf = true;
             fm.fvgs[i].obSameDisp = same;
-            fm.fvgs[i].obKnown = MathMax(fm.fvgs[i].created, om.obs[k].created);
+            fm.fvgs[i].obKnown = (fm.fvgs[i].created > om.obs[k].created) ? fm.fvgs[i].created : om.obs[k].created;
             fm.fvgs[i].obKey = ObKey(om.obs[k]);
            }
         }

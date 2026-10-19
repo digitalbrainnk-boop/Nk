@@ -1317,7 +1317,11 @@ public:
       LogCandles(g_ctx.cdlSell);
       LogFvgs(g_ctx.fvg5);
       LogFvgs(g_ctx.fvg1);
-      LogObs((int)InpFvgTF == 1 ? g_ctx.ob1 : g_ctx.ob5);
+      //--- (MQL5 : pas d'opérateur ternaire entre deux objets de classe)
+      if(InpFvgTF == GLS_FVGTF_M1)
+         LogObs(g_ctx.ob1);
+      else
+         LogObs(g_ctx.ob5);
       CountFvgs(g_ctx.fvg5);
       CountFvgs(g_ctx.fvg1);
      }

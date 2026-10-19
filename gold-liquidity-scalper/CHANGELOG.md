@@ -6,6 +6,29 @@ peuvent pas être mélangés avec ceux d'une version précédente, et elle doit 
 retestée (développement, validation, test final, démo). Aucune version n'est
 déployée automatiquement sur un compte réel.
 
+## 1.11.1 — corrections de compatibilité MQL5 (revue sans MetaEditor)
+
+MetaEditor étant inaccessible depuis l'environnement de développement, une revue
+ciblée des constructions acceptées par C++ mais pas par MQL5 a été faite :
+
+- `Engine.mqh` : opérateur ternaire entre deux objets de classe
+  (`cond ? g_ctx.ob1 : g_ctx.ob5`), refusé par MQL5 → remplacé par `if / else`.
+- `Signals.mqh` (F3) : variable locale `iLow` masquant la fonction intégrée
+  `iLow()` (« declaration hides function ») → renommée `kLow`.
+- `Fvg.mqh` : `MathMax` entre deux `datetime` (type de retour dépendant de la
+  version du compilateur) → comparaison explicite.
+- Contrôle automatique (`tests/mql2cpp.py`) enrichi de ces deux règles (variable
+  masquant une fonction intégrée MQL5, ternaire entre objets) ; elles détectent les
+  deux erreurs dans la version précédente.
+- Vérifications complémentaires sans anomalie : aucun `input` modifié ni passé par
+  référence, aucune variable locale non initialisée, aucune fonction renvoyant une
+  structure ou une référence, aucune copie d'objet de classe, retours d'`OrderSend`,
+  `OrderCheck`, `HistorySelect` et `PositionSelect` toujours vérifiés, aucune
+  conversion de signe ou flottante implicite (`-Wsign-conversion`, `-Wfloat-conversion`).
+
+**Compilation MetaEditor toujours non vérifiée** : d'autres erreurs propres au
+compilateur MQL5 restent possibles.
+
 ## 1.11 — FVG et Order Blocks distincts, absence de repaint, étude FVG
 
 Statut : compilée en C++ strict (banc de test), tests du banc réussis ;

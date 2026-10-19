@@ -7,7 +7,7 @@
 #define GLS_DEFINES_MQH
 
 #define GLS_NAME            "Gold Liquidity Scalper"
-#define GLS_VERSION         "1.11"
+#define GLS_VERSION         "1.11.1"
 #define GLS_OBJ_PREFIX      "GLS_"
 #define GLS_COMMENT_TAG     "GLS"
 #define GLS_EPS             1e-9

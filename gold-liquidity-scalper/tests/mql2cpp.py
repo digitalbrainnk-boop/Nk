@@ -24,6 +24,17 @@ BUILTIN_STRUCTS = {
 }
 
 # Constructions C++ absentes de MQL5
+# Fonctions intégrées MQL5 qu'une variable ou un paramètre ne doit pas masquer
+MQL5_BUILTIN_FUNCTIONS = set("""
+iAC iAD iADX iADXWilder iAlligator iAMA iAO iATR iBearsPower iBands iBullsPower iCCI iChaikin iCustom iDEMA iDeMarker
+iEnvelopes iForce iFractals iFrAMA iGator iIchimoku iBWMFI iMomentum iMFI iMA iOsMA iMACD iOBV iSAR iRSI iRVI iStdDev
+iStochastic iTEMA iTriX iWPR iVIDyA iVolumes iBars iBarShift iClose iHigh iHighest iLow iLowest iOpen iTime iTickVolume
+iRealVolume iVolume iSpread Bars Point Digits Symbol Period Print Alert Comment Sleep Copy CopyRates CopyTime CopyOpen
+CopyHigh CopyLow CopyClose CopySpread CopyTickVolume CopyBuffer TimeCurrent TimeLocal TimeGMT TimeTradeServer
+fabs fmin fmax fmod floor ceil round pow sqrt log log10 exp rand srand acos asin atan cos sin tan
+MathAbs MathMax MathMin MathRound MathFloor MathCeil MathPow MathSqrt MathLog MathExp MathRand
+""".split())
+
 FORBIDDEN = [
     (re.compile(r"->"), "opérateur '->' (MQL5 utilise '.' même sur un pointeur)"),
     (re.compile(r"\bnullptr\b"), "nullptr"),
@@ -119,7 +130,7 @@ def transform_line(line):
     return "".join(parts)
 
 
-def lint_file(path, text, struct_names, errors):
+def lint_file(path, text, struct_names, errors, obj_vars=frozenset()):
     in_block = False
     stack = []  # 'class' | 'block'
     pending_class = False
@@ -161,8 +172,21 @@ def lint_file(path, text, struct_names, errors):
             elif ch == ";" and pending_class and "{" not in code:
                 pending_class = False
 
-    # structures/classes passées par valeur
     joined = "\n".join(code_lines)
+    # variable ou paramètre portant le nom d'une fonction intégrée MQL5 (« declaration hides function »)
+    decl_rx = re.compile(r"\b(?:int|double|string|bool|long|datetime|ulong|uint|ushort|uchar|char|short|float|color)\s+&?\s*([A-Za-z_]\w*)\s*(?=[=;,)\[])")
+    for m in decl_rx.finditer(joined):
+        if m.group(1) in MQL5_BUILTIN_FUNCTIONS:
+            lineno = joined[: m.start()].count("\n") + 1
+            errors.append("%s:%d: '%s' masque la fonction intégrée MQL5 du même nom" % (path, lineno, m.group(1)))
+    # opérateur ternaire entre objets (structures / classes) : refusé par MQL5
+    for m in re.finditer(r"\?\s*([A-Za-z_][\w.\[\]]*)\s*:\s*([A-Za-z_][\w.\[\]]*)\s*[);,]", joined):
+        ops = [re.sub(r"\[[^\]]*\]", "", o).split(".")[-1] for o in (m.group(1), m.group(2))]
+        if any(o in obj_vars for o in ops):
+            lineno = joined[: m.start()].count("\n") + 1
+            errors.append("%s:%d: opérateur ternaire entre objets '%s' / '%s' (interdit en MQL5)" % (path, lineno, m.group(1), m.group(2)))
+
+    # structures/classes passées par valeur
     sig_rx = re.compile(r"(?m)^[ \t]*(?:static\s+|virtual\s+)?(?:const\s+)?[A-Za-z_]\w*\s+[A-Za-z_][\w:]*\s*\(([^()]*)\)\s*(?:const)?\s*(?:\{|;|:|$)")
     for m in sig_rx.finditer(joined):
         params = m.group(1).strip()
@@ -201,10 +225,18 @@ def main():
         texts[f] = text
         for m in re.finditer(r"\b(?:class|struct)\s+([A-Za-z_]\w*)", text):
             struct_names.add(m.group(1))
+    # variables, membres et globales de type structure / classe (toutes sources confondues)
+    # (un nom aussi déclaré avec un type scalaire est ambigu par nom seul : il est ignoré)
+    obj_vars = set()
+    scalar_vars = set()
+    for f in files:
+        obj_vars |= set(re.findall(r"\b(?:%s)\s+([A-Za-z_]\w*)\s*(?:\[\s*\])?\s*;" % "|".join(sorted(struct_names)), texts[f]))
+        scalar_vars |= set(re.findall(r"\b(?:int|double|string|bool|long|datetime|ulong|uint|color|char|short|float)\s+([A-Za-z_]\w*)\b", texts[f]))
+    obj_vars -= scalar_vars
     errors = []
     for f in files:
         rel = os.path.relpath(f, src)
-        lint_file(rel, texts[f], struct_names, errors)
+        lint_file(rel, texts[f], struct_names, errors, obj_vars)
         out_path = os.path.join(dst, rel)
         os.makedirs(os.path.dirname(out_path), exist_ok=True)
         out = "\n".join(transform_line(l) for l in texts[f].split("\n"))
