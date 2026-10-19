@@ -5,6 +5,15 @@ import path from "node:path";
 import { config } from "./env";
 import type { PaymentRecord, SongRecord, UploadRecord } from "../types";
 
+export interface AlertState {
+  id: string;
+  /** Sous le seuil lors de la dernière lecture : l'alerte est envoyée au passage sous le seuil. */
+  low: boolean;
+  lastAlertAt: number;
+  credits?: number;
+  checkedAt?: number;
+}
+
 interface KV {
   get(key: string): Promise<string | null>;
   set(key: string, value: string): Promise<void>;
@@ -162,6 +171,8 @@ export const songs = collection<SongRecord>("songs", (s) => s.id);
 export const payments = collection<PaymentRecord>("payments", (p) => p.reference);
 export const uploads = collection<UploadRecord>("uploads", (u) => u.id);
 export const gifts = collection<{ slug: string; songId: string }>("gifts", (g) => g.slug);
+/** État des alertes envoyées au propriétaire (une entrée par alerte). */
+export const alerts = collection<AlertState>("alerts", (a) => a.id);
 
 /* ───────────── Fichiers binaires (archives audio, photos) : disque uniquement ───────────── */
 

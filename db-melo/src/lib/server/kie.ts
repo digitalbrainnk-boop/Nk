@@ -6,6 +6,7 @@
 //   POST /api/v1/wav/generate · GET /api/v1/wav/record-info
 //   POST /api/v1/jobs/createTask · GET /api/v1/jobs/recordInfo (images)
 //   POST https://kieai.redpandaai.co/api/file-stream-upload (fichiers publics temporaires)
+//   GET  /api/v1/chat/credit                    → data = crédit restant (gratuit)
 import { config } from "./env";
 import type { AlignedWord, KieGenerationRequest, KieRecordInfo } from "../types";
 
@@ -58,6 +59,11 @@ const NOT_MODEL_RELATED = new Set([401, 402, 429, 430, 455]);
 /** Kie a répondu, mais a refusé la création : un autre modèle Suno peut passer. */
 export function isModelRejection(e: unknown): boolean {
   return e instanceof KieError && e.code !== undefined && !NOT_MODEL_RELATED.has(e.code);
+}
+
+/** Crédit restant sur le compte Kie. */
+export async function getCredit(): Promise<number> {
+  return Number(await kie<number>("/chat/credit"));
 }
 
 /** Lance une création Suno (Custom Generation, ou upload-cover si `uploadUrl` est fourni). */

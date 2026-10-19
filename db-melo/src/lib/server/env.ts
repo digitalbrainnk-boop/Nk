@@ -20,6 +20,11 @@ export const config = {
   sunoFallbackModel: () => (str("KIE_SUNO_FALLBACK_MODEL") || "V5") as KieSunoModel,
   /** Par défaut, une seule composition Suno par chanson : ses deux prises font les deux versions. */
   versionsMode: (): VersionsMode => (str("VERSIONS_MODE") === "styles" ? "styles" : "takes"),
+  /** Alerte e-mail quand le crédit Kie passe sous ce seuil (0 = pas d'alerte). */
+  kieCreditAlert: () => {
+    const n = Number(str("KIE_CREDIT_ALERT") || 50);
+    return Number.isFinite(n) && n >= 0 ? n : 50;
+  },
   /** Sans clé Kie, les chansons sont des maquettes de démonstration synthétisées localement. */
   demoMusic: () => !str("KIE_API_KEY"),
   callbackSecret: () => str("KIE_CALLBACK_SECRET") || createHash("sha256").update(`dbmelo-callback:${str("KIE_API_KEY")}`).digest("hex"),
@@ -59,6 +64,10 @@ export const config = {
   flutterwave: () => ({ secretKey: str("FLUTTERWAVE_SECRET_KEY"), webhookHash: str("FLUTTERWAVE_WEBHOOK_HASH") }),
   /** E-mail du marchand, utilisé quand une passerelle exige un e-mail et que le client n'en donne pas. */
   merchantEmail: () => str("MERCHANT_EMAIL") || CONTACT.email,
+  /** Destinataire des alertes (crédit Kie bas…) : par défaut, l'e-mail du marchand. */
+  alertEmail: () => str("ALERT_EMAIL") || str("MERCHANT_EMAIL") || CONTACT.email,
+  /** Envoi des alertes par le sendmail du serveur (présent chez o2switch et sur cPanel). */
+  sendmailPath: () => str("SENDMAIL_PATH") || "/usr/sbin/sendmail",
   /** Identité du vendeur sur les pages légales (vérifiée par les passerelles de paiement). */
   merchant: () => ({
     name: str("MERCHANT_NAME"),

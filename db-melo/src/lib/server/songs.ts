@@ -1,6 +1,7 @@
 // Cycle de vie d'une chanson : création, lancement Suno (2 variantes), suivi, paiement.
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { type Arrangement, buildKieRequest } from "../kie-prompt";
+import { alertNoCredit, checkKieCredit } from "./alerts";
 import type {
   KieRecordInfo,
   PaymentRecord,
@@ -116,20 +117,31 @@ export async function startGeneration(id: string, base: string): Promise<SongRec
   // Mode « takes » : une seule composition, dont les deux prises deviennent les versions 1 et 2.
   const single = claimed.variants.A.mood === "take" ? start("both") : null;
   const results = await Promise.allSettled(VARIANTS.map((v) => single ?? start(v)));
+  const noCredit = results.some((r) => r.status === "rejected" && r.reason instanceof kie.KieError && r.reason.code === 402);
+  // Le client ne voit pas le message destiné au propriétaire (« recharge ton compte Kie »).
+  const errorOf = (r: PromiseRejectedResult) => (noCredit ? NO_CREDIT_MESSAGE : (r.reason as Error)?.message);
   const updated = await songs.update(id, (s) => {
     results.forEach((r, i) => {
       const v = VARIANTS[i];
       s.variants[v] =
         r.status === "fulfilled"
           ? { ...s.variants[v], taskId: r.value, status: "PENDING", startedAt: Date.now() }
-          : { ...s.variants[v], status: "CREATE_TASK_FAILED", error: (r.reason as Error).message };
+          : { ...s.variants[v], status: "CREATE_TASK_FAILED", error: errorOf(r) };
     });
     if (results.every((r) => r.status === "rejected")) {
-      s.generation = { status: "failed", startedAt: s.generation.startedAt, error: (results[0] as PromiseRejectedResult).reason?.message };
+      s.generation = { status: "failed", startedAt: s.generation.startedAt, error: errorOf(results[0] as PromiseRejectedResult) };
     }
     s.updatedAt = Date.now();
   });
+  watchCredit(noCredit ? () => alertNoCredit(updated!, base) : () => checkKieCredit());
   return updated!;
+}
+
+const NO_CREDIT_MESSAGE = "Notre studio est momentanément indisponible. Nous sommes prévenus : votre paiement est conservé et votre chanson sera relancée très vite.";
+
+/** Alertes du propriétaire en arrière-plan : elles ne retardent ni ne font échouer la chanson. */
+function watchCredit(task: () => Promise<void>) {
+  task().catch((e) => console.warn("[DB.Mélo] Alerte crédit Kie :", (e as Error).message));
 }
 
 /* ───────────── Suivi (polling + webhooks) ───────────── */
@@ -256,15 +268,21 @@ export async function refreshSong(id: string, opts: { force?: boolean; base?: st
     coverPatch = { status: "failed", error: (e as Error).message };
   }
 
-  return songs.update(id, (s) => {
+  let finished = false;
+  const updated = await songs.update(id, (s) => {
     for (const v of VARIANTS) if (patches[v]) s.variants[v] = { ...s.variants[v], ...patches[v] };
     if (coverPatch) {
       s.aiCover = coverPatch;
       if (coverPatch.status === "ready" && !s.config.coverChoice) s.config.coverChoice = "ai";
     }
-    if (s.generation.status === "generating") computeGeneration(s);
+    const before = s.generation.status;
+    if (before === "generating") computeGeneration(s);
+    finished = before === "generating" && s.generation.status === "ready" && !s.demo;
     s.updatedAt = Date.now();
   });
+  // Le crédit est débité pendant la composition : on le relit une fois la chanson livrée.
+  if (finished) watchCredit(() => checkKieCredit());
+  return updated;
 }
 
 /* ───────────── Paiement ───────────── */

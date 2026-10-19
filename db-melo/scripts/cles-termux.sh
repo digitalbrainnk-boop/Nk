@@ -39,6 +39,40 @@ masque() {
 
 modele() { local m; m=$(lire KIE_SUNO_MODEL); echo "${m:-V6}"; }
 
+# Alerte e-mail quand le crédit Kie baisse (envoyée par DB.Mélo avec le sendmail du serveur).
+seuil() { local s; s=$(lire KIE_CREDIT_ALERT); echo "${s:-50}"; }
+destinataire() { local e; e=$(lire ALERT_EMAIL); [ -n "$e" ] || e=$(lire MERCHANT_EMAIL); echo "${e:-dbmelox@gmail.com}"; }
+b64() { printf '%s' "$1" | base64 | tr -d '\n'; }
+
+alerte_essai() {
+  local sm to host from
+  sm=$(lire SENDMAIL_PATH)
+  sm=${sm:-/usr/sbin/sendmail}
+  if [ ! -x "$sm" ]; then echo "❌ Pas de sendmail sur ce serveur : les alertes ne peuvent pas partir."; return; fi
+  to=$(destinataire)
+  host=$(lire PUBLIC_BASE_URL | sed -E 's#^https?://##; s#[/:].*$##; s#^www\.##')
+  from=${host:+alertes@$host}
+  set -- -t -i
+  [ -n "$from" ] && set -- "$@" -f "$from"
+  if {
+    [ -n "$from" ] && echo "From: =?UTF-8?B?$(b64 "DB.Mélo")?= <$from>"
+    echo "To: $to"
+    echo "Subject: =?UTF-8?B?$(b64 "✅ DB.Mélo : essai des alertes")?="
+    echo "MIME-Version: 1.0"
+    echo "Content-Type: text/plain; charset=utf-8"
+    echo "Content-Transfer-Encoding: 8bit"
+    echo
+    echo "Bonjour,"
+    echo
+    echo "Ceci est un essai : les alertes de DB.Mélo arrivent bien dans cette boîte."
+    echo "Tu seras prévenu ici dès que ton crédit Kie passera sous $(seuil) crédits."
+  } | "$sm" "$@"; then
+    echo "✅ E-mail d'essai envoyé à $to : regarde ta boîte de réception (et le dossier Spam)."
+  else
+    echo "❌ L'e-mail d'essai n'a pas pu partir."
+  fi
+}
+
 etat() { [ -n "$(lire "$1")" ] && echo "✅ $(masque "$(lire "$1")")" || echo "❌ manquante"; }
 
 # Demande une valeur ; Entrée seule = garder l'actuelle, « - » = effacer.
@@ -109,7 +143,10 @@ tester() {
   if [ -n "$k" ]; then
     r=$(curl -s -m 20 -H "Authorization: Bearer $k" https://api.kie.ai/api/v1/chat/credit)
     if [ -z "$r" ]; then echo "❌ Kie.ai : $HORS_LIGNE"
-    elif [ "$(echo "$r" | json code)" = "200" ]; then echo "✅ Kie.ai : clé valide — crédit restant : $(echo "$r" | json data)"
+    elif [ "$(echo "$r" | json code)" = "200" ]; then
+      echo "✅ Kie.ai : clé valide — crédit restant : $(echo "$r" | json data)"
+      awk -v c="$(echo "$r" | json data)" -v s="$(seuil)" 'BEGIN { exit !(s > 0 && c + 0 < s + 0) }' \
+        && echo "   ⚠️  Sous ton seuil d'alerte ($(seuil)) : recharge ton compte Kie."
     else echo "❌ Kie.ai : clé refusée ($(echo "$r" | json msg))"; fi
   else echo "⚪ Kie.ai : pas de clé (mode démo : musique d'essai synthétisée)"; fi
 
@@ -221,6 +258,7 @@ menu() {
   ligne 8 "Paiement simulé" "$([ "$(lire ALLOW_DEMO_PAYMENTS)" = "true" ] && echo "ACTIVÉ" || echo "désactivé")"
   ligne v "Versions" "$([ "$(lire VERSIONS_MODE)" = "styles" ] && echo "rythmée+acoustique" || echo "économiques")"
   ligne m "Modèle Suno" "$(modele)"
+  ligne a "Alerte crédit Kie" "$([ "$(seuil)" = 0 ] && echo "désactivée" || echo "sous $(seuil)")"
   [ -n "$SERVEUR" ] && ligne s "Adresse du site" "$(u=$(lire PUBLIC_BASE_URL); echo "${u:-❌ à remplir}")"
   echo " 9) Tester mes clés"
   echo " 0) Enregistrer et relancer DB.Mélo"
@@ -305,6 +343,30 @@ while true; do
       case "$n" in 1) ecrire KIE_SUNO_MODEL V6 ;; 2) ecrire KIE_SUNO_MODEL V6_MINI ;; 3) ecrire KIE_SUNO_MODEL V6_WILD ;; 4) ecrire KIE_SUNO_MODEL V5 ;; esac
       echo "Écoute une chanson test et regarde le crédit Kie (9) avant et après. « 0 » pour relancer DB.Mélo."
       sleep 3
+      ;;
+    a | A)
+      echo
+      echo "DB.Mélo t'envoie un e-mail dès que ton crédit Kie passe sous ce seuil,"
+      echo "puis un rappel par jour tant que tu n'as pas rechargé (une chanson ≈ 12 crédits)."
+      echo
+      echo "Seuil d'alerte (actuel : $(seuil) ; 0 = pas d'alerte) :"
+      echo "   (touche Entrée seule = garder)"
+      printf "   > "
+      read -r n || n=""
+      n=$(printf '%s' "$n" | tr -d '[:space:]')
+      if [ -n "$n" ]; then
+        if printf '%s' "$n" | grep -qE '^[0-9]+$'; then ecrire KIE_CREDIT_ALERT "$n"; echo "   Enregistré."
+        else echo "   ⚠️  Tape seulement un nombre, ex. 50. Rien n'a changé."; fi
+      fi
+      demander ALERT_EMAIL "E-mail qui reçoit les alertes (vide = $(destinataire)) :" texte
+      if [ -n "$SERVEUR" ]; then
+        echo
+        printf "Envoyer un e-mail d'essai maintenant ? Tape o puis Entrée (sinon Entrée) : "
+        read -r ok || ok=""
+        case "$ok" in o | O | oui | OUI) alerte_essai ;; esac
+      fi
+      echo "Pense à « 0 » pour relancer DB.Mélo."
+      sleep 4
       ;;
     9) tester ;;
     s | S) [ -n "$SERVEUR" ] && demander PUBLIC_BASE_URL "Adresse de ton site, ex. https://dbmelo.com :" texte ;;

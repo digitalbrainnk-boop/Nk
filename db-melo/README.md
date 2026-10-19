@@ -102,6 +102,7 @@ public/sw.js              service worker (hors ligne, installation)
 - Suivi : le navigateur interroge `GET /api/generate-music?songId=` toutes les 5 s (pause en arrière-plan, ralentissement sur erreur) ; le serveur relit `GET /api/v1/generate/record-info` (au plus toutes les 3 s). Le webhook Kie (`callBackUrl` signé) accélère la mise à jour quand `PUBLIC_BASE_URL` est une adresse https publique.
 - À la réussite : `get-timestamped-lyrics` fournit les mots horodatés (karaoké exact) et la forme d'onde ; à défaut, le calage est estimé par syllabes.
 - Offre Prestige, après paiement : conversion **WAV** (`/api/v1/wav/generate`) et **pochette IA** (`/api/v1/jobs/createTask`, modèles `KIE_IMAGE_MODEL` / `KIE_IMAGE_EDIT_MODEL` avec la photo).
+- **Alerte crédit** : après chaque lancement et chaque chanson livrée, le serveur relit le crédit Kie (`GET /api/v1/chat/credit`, gratuit). Sous `KIE_CREDIT_ALERT` (50 par défaut), il envoie un e-mail au propriétaire, puis un rappel par jour jusqu'à la recharge ; si Kie refuse une chanson payée faute de crédit, un e-mail part aussitôt avec le lien pour la relancer (le client, lui, lit seulement que sa chanson sera relancée). Envoi par le `sendmail` du serveur (o2switch, cPanel) ; réglage et e-mail d'essai : `dbmelo-cles` → **a**.
 - Les URL audio Kie **ne sont jamais envoyées au navigateur avant paiement** : la pré-écoute est servie par nos routes (requête `Range`, coupée à `PREVIEW_SECONDS`). Après paiement, une copie locale est gardée (les liens Kie expirent après environ deux semaines).
 
 ### Parolier IA
@@ -183,6 +184,8 @@ Voir `.env.example`. Les plus importantes :
 | `KIE_SUNO_MODEL` | `V6` par défaut ; `V6_MINI`, `V6_WILD` ou `V5` possibles |
 | `KIE_SUNO_FALLBACK_MODEL` | `V5` : utilisé si Kie refuse le modèle principal, et pour les relances après un échec |
 | `VERSIONS_MODE` | `takes` (défaut) : 1 composition Suno, ses 2 prises font les 2 versions (≈ 12 crédits) ; `styles` : une version rythmée + une acoustique (2 compositions, ≈ 24 crédits) |
+| `KIE_CREDIT_ALERT` | E-mail d'alerte quand le crédit Kie passe sous ce seuil (50 ; `0` = pas d'alerte) |
+| `ALERT_EMAIL` | Destinataire des alertes (défaut : `MERCHANT_EMAIL`, sinon dbmelox@gmail.com) |
 | `ANTHROPIC_API_KEY` | Parolier Claude (facultatif) |
 | `FLOW_MODE` | `pay_first` (défaut : paiement avant composition) ou `preview_first` |
 | `MAX_GENERATION_ATTEMPTS` | Compositions autorisées par chanson, relances comprises (3) |
