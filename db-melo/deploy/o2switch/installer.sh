@@ -76,6 +76,7 @@ case "$SITE" in
       fi
     fi
     ;;
+  *) echo "ℹ️  Redirection https : renseigne d'abord l'adresse du site (dbmelo-cles, choix s)." ;;
 esac
 
 # Bascule sur la nouvelle version, puis redémarrage.
@@ -98,13 +99,19 @@ echo "Retour à la version $(cat "$PRECEDENTE/VERSION")."
 EOS
 chmod +x "$APP/outils/retour.sh"
 
-# Commandes du Terminal (une seule fois).
+# Commandes du Terminal (une seule fois). dbmelo-maj ajoute un numéro à l'adresse du script pour
+# passer le cache de GitHub (5 min) : la mise à jour prend toujours la dernière version.
+MAJ="alias dbmelo-maj='curl -fsSL \"$SCRIPT?\$(date +%s)\" | bash'"
+if grep -q "^alias dbmelo-maj=" "$HOME/.bashrc" 2>/dev/null; then
+  MAJ="$MAJ" awk 'index($0, "alias dbmelo-maj=") == 1 { print ENVIRON["MAJ"]; next } { print }' "$HOME/.bashrc" > "$HOME/.bashrc.dbmelo" \
+    && cat "$HOME/.bashrc.dbmelo" > "$HOME/.bashrc" && rm -f "$HOME/.bashrc.dbmelo"
+fi
 if ! grep -q "# dbmelo-o2switch" "$HOME/.bashrc" 2>/dev/null; then
   cat >> "$HOME/.bashrc" <<EOS
 
 # dbmelo-o2switch : commandes DB.Mélo
 alias dbmelo-cles='DBMELO_ENV="$APP/.env" DBMELO_REDEMARRER="$APP/tmp/restart.txt" bash "$APP/outils/cles.sh"'
-alias dbmelo-maj='curl -fsSL $SCRIPT | bash'
+$MAJ
 alias dbmelo-journal='tail -n 80 "$APP/journal.log"'
 alias dbmelo-relancer='touch "$APP/tmp/restart.txt" && echo "DB.Mélo redémarre."'
 alias dbmelo-retour='bash "$APP/outils/retour.sh"'
