@@ -142,8 +142,27 @@ function onHistory({ messages }) {
   if (added) setState({ learned: state.learned + added });
 }
 
+// Une session commencée mais jamais validée (QR non scanné, code non saisi)
+// bloque les tentatives suivantes : on repart de zéro.
+function clearUnfinishedSession() {
+  try {
+    const creds = JSON.parse(fs.readFileSync(path.join(AUTH_DIR, "creds.json"), "utf8"));
+    if (creds.registered) return false;
+  } catch {
+    // pas de session enregistrée
+  }
+  fs.rmSync(AUTH_DIR, { recursive: true, force: true });
+  return true;
+}
+
 export async function startWhatsApp({ phone } = {}) {
-  if (phone !== undefined) pairingPhone = String(phone).replace(/\D/g, "").replace(/^0+/, "") || null;
+  if (phone !== undefined) {
+    pairingPhone = String(phone || "").replace(/\D/g, "").replace(/^0+/, "") || null;
+    // Nouvelle demande de connexion (code ou QR) : on efface l'essai précédent non abouti.
+    clearUnfinishedSession();
+    // Le code d'appairage exige le navigateur par défaut de Baileys ; on garde ce choix ensuite.
+    setSettings({ wa_browser: pairingPhone ? "chrome" : "desktop" });
+  }
   stopping = false;
   const gen = ++generation;
   const old = sock;
@@ -160,7 +179,8 @@ export async function startWhatsApp({ phone } = {}) {
     version,
     auth,
     logger,
-    browser: Browsers.macOS("Desktop"),
+    // « Desktop » récupère tout l'historique (QR) ; « Chrome » est requis pour le code d'appairage.
+    browser: getSettings().wa_browser === "chrome" ? Browsers.macOS("Chrome") : Browsers.macOS("Desktop"),
     syncFullHistory: true,
     markOnlineOnConnect: false, // tu continues à recevoir les notifications sur ton téléphone
   });
@@ -174,8 +194,9 @@ export async function startWhatsApp({ phone } = {}) {
         // WhatsApp est prêt : on demande un code à 8 caractères au lieu du QR.
         if (!state.pairingCode) {
           try {
-            const code = await me.requestPairingCode(pairingPhone);
-            setState({ status: "tape le code dans WhatsApp", qr: null, pairingCode: code.match(/.{1,4}/g).join("-") });
+            const code = (await me.requestPairingCode(pairingPhone)).match(/.{1,4}/g).join("-");
+            setState({ status: "tape le code dans WhatsApp", qr: null, pairingCode: code });
+            console.log(`\n📱 CODE WHATSAPP : ${code}\n   Dans WhatsApp : Appareils connectés → Connecter un appareil → « Associer avec le numéro de téléphone »\n`);
           } catch (e) {
             setState({ status: "erreur", error: `Code impossible : ${e.message}` });
           }

@@ -39,7 +39,8 @@ Clé Claude : https://console.anthropic.com → API Keys. Elle peut aussi être 
    ```
 3. Réponds aux questions (clé Claude, mot de passe). L'agent démarre tout seul à la fin, puis à chaque ouverture de Termux (ou tape `agent`).
 4. Dans Chrome, ouvre http://localhost:3000. Menu ⋮ → *Ajouter à l'écran d'accueil* pour avoir l'icône comme une application.
-5. WhatsApp : dans Canaux, utilise **« Recevoir un code »** (pas le QR, impossible de scanner son propre écran).
+5. WhatsApp : dans Canaux, utilise **« Recevoir un code »** (pas le QR, impossible de scanner son propre écran). Le code s'affiche sur la page **et** dans Termux ; c'est toi qui le tapes dans WhatsApp → Appareils connectés → Connecter un appareil → « Associer avec le numéro de téléphone ».
+   Si ça bloque : arrête l'agent (CTRL + c) puis `npm run whatsapp` pour te connecter directement dans Termux.
 
 Limites : Termux doit rester ouvert et le téléphone allumé (idéalement en charge) ; Facebook/Instagram demandent une adresse internet publique, donc un hébergement en ligne.
 

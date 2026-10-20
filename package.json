@@ -6,7 +6,8 @@
     "test": "node --disable-warning=ExperimentalWarning --test test/*.test.js",
     "start": "node --env-file-if-exists=.env --disable-warning=ExperimentalWarning src/server.js",
     "dev": "node --env-file-if-exists=.env --disable-warning=ExperimentalWarning --watch src/server.js",
-    "diag": "node --disable-warning=ExperimentalWarning scripts/diagnostic-kie.js"
+    "diag": "node --disable-warning=ExperimentalWarning scripts/diagnostic-kie.js",
+    "whatsapp": "node --disable-warning=ExperimentalWarning scripts/connecter-whatsapp.js"
   },
   "repository": {
     "type": "git",

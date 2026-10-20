@@ -785,7 +785,8 @@ async function loadChannels() {
 $("#wa-start").addEventListener("click", () => api("/api/channels/whatsapp/start", { method: "POST" }).then(loadChannels).catch((e) => toast(e.message)));
 $("#wa-pair").addEventListener("click", () => {
   const phone = $("#wa-phone").value.replace(/\D/g, "").replace(/^0+/, "");
-  if (phone.length < 8) return toast("Entre ton numéro complet avec l'indicatif du pays");
+  if (phone.length < 10 || phone.length > 15)
+    return toast("Numéro incomplet : mets l'indicatif du pays au début (ex. 226… pour le Burkina, 225… pour la Côte d'Ivoire)");
   api("/api/channels/whatsapp/start", { method: "POST", body: { phone } })
     .then(() => toast("Patiente quelques secondes, le code va s'afficher…"))
     .then(loadChannels)
