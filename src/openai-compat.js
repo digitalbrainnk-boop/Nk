@@ -44,13 +44,59 @@ function toOpenAI(turns) {
   }));
 }
 
+// Trois formats d'échange existent selon l'adresse :
+//   …/chat/completions (OpenAI), …/messages (Anthropic), …/responses (OpenAI Responses).
+export function wireFormat(url) {
+  if (/\/messages\/?$/.test(url)) return "messages";
+  if (/\/responses\/?$/.test(url)) return "responses";
+  return "chat";
+}
+
+// Les appelants construisent toujours un corps « chat » ; on le traduit si besoin.
+function toWire(format, body) {
+  if (format === "chat") return body;
+  const system = body.messages.filter((m) => m.role === "system").map((m) => m.content).join("\n\n");
+  const rest = [];
+  for (const m of body.messages.filter((x) => x.role !== "system")) {
+    const prev = rest[rest.length - 1];
+    if (prev && prev.role === m.role) prev.content += "\n" + m.content;
+    else rest.push({ role: m.role, content: m.content });
+  }
+  if (!rest.length || rest[0].role !== "user") rest.unshift({ role: "user", content: "(début de la conversation)" });
+  if (format === "messages") return { model: body.model, max_tokens: body.max_tokens || 4000, system, messages: rest };
+  return { model: body.model, instructions: system, input: rest, max_output_tokens: body.max_tokens || 4000 };
+}
+
+function fromWire(format, data) {
+  const d = data?.data && !data.choices && !data.content && !data.output ? data.data : data;
+  if (format === "messages") {
+    const parts = Array.isArray(d?.content) ? d.content : [];
+    return parts.length ? parts.filter((p) => p.type === "text" || typeof p.text === "string").map((p) => p.text).join("") : undefined;
+  }
+  if (format === "responses") {
+    if (typeof d?.output_text === "string") return d.output_text;
+    const parts = (d?.output || []).flatMap((o) => o.content || []);
+    return parts.length ? parts.map((c) => c.text || "").join("") : undefined;
+  }
+  let text = d?.choices?.[0]?.message?.content;
+  // Certains modèles renvoient le texte en plusieurs morceaux.
+  if (Array.isArray(text)) text = text.map((p) => (typeof p === "string" ? p : p?.text || "")).join("");
+  return text;
+}
+
 async function post(cfg, body, { timeoutMs } = {}) {
+  const format = wireFormat(cfg.url);
+  const headers = { "Content-Type": "application/json", Authorization: `Bearer ${cfg.key}` };
+  if (format === "messages") {
+    headers["x-api-key"] = cfg.key;
+    headers["anthropic-version"] = "2023-06-01";
+  }
   let res;
   try {
     res = await fetch(cfg.url, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${cfg.key}` },
-      body: JSON.stringify(body),
+      headers,
+      body: JSON.stringify(toWire(format, body)),
       signal: timeoutMs ? AbortSignal.timeout(timeoutMs) : undefined,
     });
   } catch (e) {
@@ -70,9 +116,7 @@ async function post(cfg, body, { timeoutMs } = {}) {
     const status = typeof data?.code === "number" && data.code !== 200 ? data.code : res.status;
     throw new LLMError(typeof apiError === "string" ? apiError : raw.slice(0, 300) || `Erreur ${res.status}`, status);
   }
-  let text = data?.choices?.[0]?.message?.content ?? data?.data?.choices?.[0]?.message?.content;
-  // Certains modèles renvoient le texte en plusieurs morceaux.
-  if (Array.isArray(text)) text = text.map((p) => (typeof p === "string" ? p : p?.text || "")).join("");
+  const text = fromWire(format, data);
   if (typeof text !== "string") throw new LLMError(`Réponse inattendue du service : ${raw.slice(0, 300)}`);
   return text;
 }
@@ -112,7 +156,7 @@ async function chatTextOnce({ system, turns, json = false }) {
   if (!json) return post(cfg, body);
   let text = "";
   try {
-    text = await post(cfg, { ...body, response_format: { type: "json_object" } });
+    if (wireFormat(cfg.url) === "chat") text = await post(cfg, { ...body, response_format: { type: "json_object" } });
   } catch (e) {
     // Si le service n'accepte pas le mode JSON, on réessaie sans (sauf problème de clé).
     if (isKeyError(e)) throw e;
@@ -158,18 +202,24 @@ export function kieCandidates() {
   const add = (url, model) => {
     if (!list.some((c) => c.url === url && c.model === model)) list.push({ url, model });
   };
-  // 1. Ce qui a déjà marché.
-  if (s.kie_chat_url && s.kie_chat_model) add(s.kie_chat_url, s.kie_chat_model);
-  // 2. DeepSeek : le nom dans l'adresse et le nom envoyé peuvent différer selon Kie.
+  const saved = s.kie_chat_url && s.kie_chat_model ? { url: s.kie_chat_url, model: s.kie_chat_model } : null;
+  // Ce qui a déjà marché passe en premier, sauf si on cherche encore DeepSeek.
+  const wantDeepseek = (s.kie_prefer || "deepseek") === "deepseek";
+  if (saved && (!wantDeepseek || /deepseek/i.test(saved.model))) add(saved.url, saved.model);
+  // DeepSeek : le nom dans l'adresse, le nom envoyé et le format peuvent différer selon Kie.
   const slugs = ["deepseek-v4-1-flash", "deepseek-v4.1-flash", "deepseek-v4-flash", "deepseek"];
-  const names = ["deepseek-v4.1-flash", "deepseek-v4-1-flash", "deepseek-v4-flash", "deepseek-flash", "deepseek-chat", "deepseek/deepseek-v4.1-flash"];
-  for (const slug of slugs) for (const name of names) add(kieChatUrl(slug), name);
-  for (const name of names) {
-    add("https://api.kie.ai/v1/chat/completions", name);
-    add("https://api.kie.ai/api/v1/chat/completions", name);
+  const names = ["deepseek-v4-1-flash", "deepseek-v4.1-flash", "deepseek-v4-flash", "deepseek-flash", "deepseek-chat", "deepseek/deepseek-v4.1-flash"];
+  for (const slug of slugs.slice(0, 3)) for (const name of names.slice(0, 3)) {
+    add(`https://api.kie.ai/${slug}/v1/messages`, name);
+    add(`https://api.kie.ai/${slug}/v1/responses`, name);
   }
-  // 3. Repli : Gemini, aussi disponible avec la même clé Kie.
-  for (const g of ["gemini-2.5-flash", "gemini-3-flash", "gemini-2.5-pro"]) add(kieChatUrl(g), g);
+  for (const name of names.slice(0, 3)) add("https://api.kie.ai/v1/messages", name);
+  for (const slug of slugs) for (const name of names) add(kieChatUrl(slug), name);
+  for (const name of names) add("https://api.kie.ai/v1/chat/completions", name);
+  // Ce qui marchait (ex. GPT-5.2), puis les replis connus.
+  if (saved) add(saved.url, saved.model);
+  add(kieChatUrl("gpt-5-2"), "gpt-5-2");
+  for (const g of ["gemini-2.5-flash", "gemini-3-flash"]) add(kieChatUrl(g), g);
   return list;
 }
 
@@ -215,10 +265,10 @@ export async function discoverKie({ fetchText = defaultFetchText, onPage } = {})
  */
 export function parseChatDoc(md) {
   const urls = new Set(
-    [...md.matchAll(/https:\/\/api\.kie\.ai\/[^\s"'`)<>\\]*(?:chat\/completions|\/completions)/g)].map((m) => m[0]),
+    [...md.matchAll(/https:\/\/api\.kie\.ai\/[^\s"'`)<>\\]*(?:completions|\/messages|\/responses)/g)].map((m) => m[0]),
   );
   const server = md.match(/servers:\s*\n\s*-\s*url:\s*['"]?(https?:\/\/[^\s'"]+)/)?.[1]?.replace(/\/+$/, "") || "https://api.kie.ai";
-  for (const m of md.matchAll(/^\s*['"]?(\/[A-Za-z0-9._\/{}-]*completions)['"]?\s*:\s*$/gm)) urls.add(server + m[1]);
+  for (const m of md.matchAll(/^\s*['"]?(\/[A-Za-z0-9._\/{}-]*(?:completions|messages|responses))['"]?\s*:\s*$/gm)) urls.add(server + m[1]);
   const models = new Set();
   for (const m of md.matchAll(/"model"\s*:\s*"([^"]+)"/g)) models.add(m[1]);
   for (const m of md.matchAll(/^\s*model:\s*['"]?([A-Za-z0-9][\w.\/-]*)['"]?\s*$/gm)) models.add(m[1]);

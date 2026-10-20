@@ -119,3 +119,27 @@ test("GPT via Kie : mode JSON refusé -> nouvel essai sans, et réponse presque 
   assert.equal(bodies.length, 2);
   assert.ok(!bodies[1].response_format);
 });
+
+test("DeepSeek au format « messages » : préféré à GPT déjà enregistré, réponse lue correctement", async () => {
+  db.setSettings({
+    brain: "kie",
+    kie_api_key: "k",
+    kie_chat_url: "https://api.kie.ai/gpt-5-2/v1/chat/completions",
+    kie_chat_model: "gpt-5-2",
+  });
+  const okUrl = "https://api.kie.ai/deepseek-v4-1-flash/v1/messages";
+  const seen = [];
+  globalThis.fetch = async (url, init) => {
+    if (!init?.body) throw new Error("pas de doc ici");
+    const body = JSON.parse(init.body);
+    seen.push({ url: String(url), body, headers: init.headers });
+    if (String(url) === okUrl && body.model === "deepseek-v4-1-flash" && body.system !== undefined && !body.messages.some((m) => m.role === "system"))
+      return Response.json({ type: "message", content: [{ type: "text", text: "Salut, ici DeepSeek" }] });
+    return Response.json({ code: 422, msg: "The model is not supported" });
+  };
+  const r = await probeKie();
+  assert.equal(r.url, okUrl);
+  assert.equal(r.text, "Salut, ici DeepSeek");
+  assert.ok(!seen.some((x) => x.body.model === "gpt-5-2")); // DeepSeek trouvé avant de revenir à GPT
+  assert.equal(seen.at(-1).headers["x-api-key"], "k");
+});
