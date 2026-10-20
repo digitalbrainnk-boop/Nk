@@ -273,7 +273,15 @@ async function applyReply(contact, reply, mode, { clientSentVoice = false, follo
   }
   if (reply.needs_human) notifyOwner(contact, reply.reason).catch(() => {});
   if (reply.demo) maybeAutoDemo(contactId).catch((e) => console.error("Démo :", e.message));
-  if (!reply.messages.length) return;
+  if (!reply.messages.length) {
+    // Silence voulu (ex. « ok merci ») ou problème : dans ce cas on l'affiche.
+    if (reply.needs_human && reply.reason) {
+      const note = addMessage(contactId, { author: "system", kind: "note", text: `⚠️ L'agent n'a pas répondu : ${reply.reason}`, status: "note" });
+      emit("message", { contact_id: contactId, message: note });
+      emit("error", { contact_id: contactId, message: `L'agent n'a pas répondu : ${reply.reason}` });
+    }
+    return;
+  }
   if (followup) updateContact(contactId, { followups: (contact.followups || 0) + 1, last_followup_at: Date.now() });
 
   const useVoice =

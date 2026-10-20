@@ -279,6 +279,40 @@ ${instruction}`;
   }
 }
 
+// Répare une réponse presque conforme (prix en texte, étape inconnue, champ manquant...).
+function salvageReply(p) {
+  if (!p || typeof p !== "object") return null;
+  let messages = p.messages ?? p.message ?? p.reply ?? p.response;
+  if (typeof messages === "string") messages = [messages];
+  if (!Array.isArray(messages)) return null;
+  messages = messages.map((m) => (typeof m === "string" ? m : m?.text || m?.content || "")).filter((m) => typeof m === "string");
+  const o = p.order && typeof p.order === "object" ? p.order : null;
+  const num = (v) => {
+    const n = Number(String(v ?? "").replace(/[^\d.]/g, ""));
+    return Number.isFinite(n) && n > 0 ? n : null;
+  };
+  const str = (v) => (v === null || v === undefined || v === "" ? null : String(v));
+  return {
+    messages,
+    memory: typeof p.memory === "string" ? p.memory : p.memory ? JSON.stringify(p.memory) : "",
+    needs_human: p.needs_human === true || p.needs_human === "true",
+    reason: str(p.reason) || "",
+    order: o
+      ? {
+          stage: ["nouveau", "devis"].includes(o.stage) ? o.stage : null,
+          title: str(o.title),
+          occasion: str(o.occasion),
+          price: num(o.price),
+          due_date: str(o.due_date),
+        }
+      : null,
+    demo: p.demo === true,
+    actions: Array.isArray(p.actions)
+      ? p.actions.filter((a) => a?.name).map((a) => ({ name: String(a.name), input: typeof a.input === "string" ? a.input : JSON.stringify(a.input ?? "") }))
+      : [],
+  };
+}
+
 async function callModel({ s, system, turns, context, contact }) {
   if (useCompat()) {
     const r = await chatJSON({
@@ -286,6 +320,7 @@ async function callModel({ s, system, turns, context, contact }) {
       turns,
       schema: ReplySchema,
       shape: REPLY_SHAPE,
+      salvage: salvageReply,
     });
     if (!r.ok) {
       // Le modèle n'a pas respecté le format : on garde son texte comme brouillon prudent.

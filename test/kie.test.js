@@ -92,3 +92,30 @@ paths:
   const hits = parseChatDoc(md);
   assert.ok(hits.some((h) => h.url === "https://api.kie.ai/deepseek/v1/chat/completions" && h.model === "deepseek-v4.1-flash-x"));
 });
+
+test("GPT via Kie : mode JSON refusé -> nouvel essai sans, et réponse presque conforme récupérée", async () => {
+  db.setSettings({
+    brain: "kie",
+    kie_api_key: "k",
+    kie_chat_url: "https://api.kie.ai/gpt-5-2/v1/chat/completions",
+    kie_chat_model: "gpt-5-2",
+  });
+  const bodies = [];
+  globalThis.fetch = async (url, init) => {
+    const body = JSON.parse(init.body);
+    bodies.push(body);
+    if (body.response_format) return Response.json({ code: 500, msg: "This feature is currently not supported" });
+    // Prix en texte et étape inconnue : le schéma strict refuserait.
+    const content = '```json\n{"messages":"Bonsoir 🙏 c\'est 25 000","memory":"- anniv","needs_human":false,"order":{"stage":"devis envoyé","price":"25 000 FCFA"}}\n```';
+    return Response.json({ choices: [{ message: { content } }] });
+  };
+  const { generateReply } = await import("../src/agent.js");
+  const c = db.upsertContact("test", "gpt", "Awa");
+  db.addMessage(c.id, { author: "client", text: "C'est combien ?" });
+  const r = await generateReply(db.getContact(c.id));
+  assert.deepEqual(r.messages, ["Bonsoir 🙏 c'est 25 000"]);
+  assert.equal(r.order.price, 25000);
+  assert.equal(r.order.stage, null);
+  assert.equal(bodies.length, 2);
+  assert.ok(!bodies[1].response_format);
+});

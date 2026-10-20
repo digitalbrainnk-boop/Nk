@@ -70,7 +70,9 @@ async function post(cfg, body, { timeoutMs } = {}) {
     const status = typeof data?.code === "number" && data.code !== 200 ? data.code : res.status;
     throw new LLMError(typeof apiError === "string" ? apiError : raw.slice(0, 300) || `Erreur ${res.status}`, status);
   }
-  const text = data?.choices?.[0]?.message?.content ?? data?.data?.choices?.[0]?.message?.content;
+  let text = data?.choices?.[0]?.message?.content ?? data?.data?.choices?.[0]?.message?.content;
+  // Certains modèles renvoient le texte en plusieurs morceaux.
+  if (Array.isArray(text)) text = text.map((p) => (typeof p === "string" ? p : p?.text || "")).join("");
   if (typeof text !== "string") throw new LLMError(`Réponse inattendue du service : ${raw.slice(0, 300)}`);
   return text;
 }
@@ -108,17 +110,21 @@ async function chatTextOnce({ system, turns, json = false }) {
     max_tokens: 4000,
   };
   if (!json) return post(cfg, body);
+  let text = "";
   try {
-    return await post(cfg, { ...body, response_format: { type: "json_object" } });
+    text = await post(cfg, { ...body, response_format: { type: "json_object" } });
   } catch (e) {
-    // Si le service ne connaît pas response_format, on réessaie sans.
-    if (e.status === 400 || e.status === 422) return post(cfg, body);
-    throw e;
+    // Si le service n'accepte pas le mode JSON, on réessaie sans (sauf problème de clé).
+    if (isKeyError(e)) throw e;
+    console.error("Mode JSON refusé, nouvel essai sans :", e.message);
   }
+  if (!text.trim()) text = await post(cfg, body);
+  if (!text.trim()) throw new LLMError("Le modèle a renvoyé une réponse vide.");
+  return text;
 }
 
 /** Demande une réponse JSON et la valide avec un schéma zod. */
-export async function chatJSON({ system, turns, schema, shape }) {
+export async function chatJSON({ system, turns, schema, shape, salvage }) {
   const text = await chatText({
     system: `${system}\n\nRéponds UNIQUEMENT avec un objet JSON valide, sans texte autour, de cette forme :\n${shape}`,
     turns,
@@ -134,7 +140,12 @@ export async function chatJSON({ system, turns, schema, shape }) {
     return { ok: false, text };
   }
   const r = schema.safeParse(parsed);
-  return r.success ? { ok: true, data: r.data } : { ok: false, text };
+  if (r.success) return { ok: true, data: r.data };
+  // Format presque bon : on récupère ce qui est utilisable plutôt que tout perdre.
+  const rescued = salvage?.(parsed);
+  if (rescued) return { ok: true, data: rescued };
+  console.error("Réponse IA hors format :", text.slice(0, 300));
+  return { ok: false, text };
 }
 
 /**
