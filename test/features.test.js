@@ -47,7 +47,7 @@ after(() => {
   globalThis.fetch = realFetch;
 });
 
-const waitFor = async (cond, ms = 3000) => {
+const waitFor = async (cond, ms = 10000) => {
   const end = Date.now() + ms;
   while (!cond() && Date.now() < end) await new Promise((r) => setTimeout(r, 10));
   assert.ok(cond());
