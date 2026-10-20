@@ -209,6 +209,7 @@ export async function startWhatsApp({ phone } = {}) {
       retries = 0;
       pairingPhone = null;
       setState({ status: "connecté", qr: null, pairingCode: null, error: null, me: sock.user?.id?.split(":")[0] || sock.user?.id });
+      console.log("✅ WhatsApp connecté à l'agent");
     }
     if (u.connection === "close") {
       const code = u.lastDisconnect?.error?.output?.statusCode;
@@ -216,6 +217,11 @@ export async function startWhatsApp({ phone } = {}) {
         fs.rmSync(AUTH_DIR, { recursive: true, force: true });
         setState({ status: "déconnecté (session fermée sur le téléphone)", qr: null, me: null });
         if (current()) setTimeout(() => current() && startWhatsApp().catch(() => {}), 1000);
+      } else if (code === DisconnectReason.restartRequired && current()) {
+        // Normal juste après le QR ou le code : WhatsApp demande de rouvrir la connexion tout de suite.
+        setState({ status: "code accepté ✓ — finalisation de la connexion…", qr: null, pairingCode: null, error: null });
+        console.log("✓ WhatsApp a accepté l'appareil, finalisation de la connexion…");
+        setTimeout(() => current() && startWhatsApp().catch((e) => setState({ status: "erreur", error: e.message })), 500);
       } else if (current()) {
         // Nouvelle tentative avec un délai qui grandit (3 s, 6 s, 12 s… max 2 min).
         const wait = Math.min(120_000, 3000 * 2 ** retries++);
