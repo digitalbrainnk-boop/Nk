@@ -1,0 +1,1470 @@
+<title>Analyse Gold Liquidity Scalper</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Mise en page : bandeau collant (marque, source des données, onglets), puis une colonne de sections ;
+   tableaux larges et graphiques dans leurs propres conteneurs. Teinte d'accent : laiton (l'or du sujet). */
+:root{
+  --bg:#f1f2f4; --panel:#ffffff; --panel-2:#e8eaee; --ink:#14171c; --ink-2:#454b56; --ink-3:#69707c; --line:#d6d9df;
+  --gold:#86620f; --gold-ink:#ffffff; --gold-soft:#f4ead0;
+  --pos:#2a78d6; --neg:#e34948;
+  --good:#0ca30c; --warn:#fab219; --crit:#d03b3b;
+  --good-ink:#0a6a0a; --warn-ink:#7d5200; --crit-ink:#b02e2e;
+  --font-display:"Bricolage Grotesque","Segoe UI",system-ui,sans-serif;
+  --font-body:"Instrument Sans","Segoe UI",system-ui,-apple-system,sans-serif;
+  --font-data:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0e1013; --panel:#171a1f; --panel-2:#21252c; --ink:#eceef2; --ink-2:#b5bbc5; --ink-3:#8b919c; --line:#2d323b;
+    --gold:#d8b24a; --gold-ink:#17130a; --gold-soft:#372f1d;
+    --pos:#3987e5; --neg:#e66767;
+    --good-ink:#62d262; --warn-ink:#fab219; --crit-ink:#ff8d8d;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0e1013; --panel:#171a1f; --panel-2:#21252c; --ink:#eceef2; --ink-2:#b5bbc5; --ink-3:#8b919c; --line:#2d323b;
+  --gold:#d8b24a; --gold-ink:#17130a; --gold-soft:#372f1d;
+  --pos:#3987e5; --neg:#e66767;
+  --good-ink:#62d262; --warn-ink:#fab219; --crit-ink:#ff8d8d;
+  color-scheme:dark;
+}
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 var(--font-body)}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--panel)}
+table{font-size:inherit}
+h1,h2,h3{text-wrap:balance;margin:0}
+.wrap{max-width:1200px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.vh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+/* en-tête */
+.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--panel);border-bottom:1px solid var(--line)}
+.top-row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding-block:12px 8px}
+.brand{display:flex;align-items:center;gap:12px;min-width:0}
+.mark{display:grid;place-items:center;width:42px;height:42px;border:1.5px solid var(--gold);border-radius:6px;color:var(--gold);font:700 17px/1 var(--font-display);position:relative;flex:none}
+.mark small{position:absolute;top:3px;left:4px;font:500 8px/1 var(--font-data);color:var(--ink-3)}
+.b1{font:700 18px/1.15 var(--font-display);letter-spacing:-.01em}
+.b2{font-size:12.5px;color:var(--ink-3)}
+.top-act{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.tabs{display:flex;gap:2px;overflow-x:auto;scrollbar-width:none;margin-bottom:-1px}
+.tabs::-webkit-scrollbar{display:none}
+.tab{appearance:none;background:none;border:0;border-bottom:2px solid transparent;color:var(--ink-3);font:500 14px var(--font-body);padding:9px 12px 10px;cursor:pointer;white-space:nowrap}
+.tab:hover{color:var(--ink)}
+.tab[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--gold)}
+.tab:focus-visible{outline:2px solid var(--gold);outline-offset:-2px}
+
+/* contrôles */
+.btn{appearance:none;display:inline-flex;align-items:center;gap:6px;font:500 14px var(--font-body);padding:7px 14px;border-radius:8px;border:1px solid var(--line);background:var(--panel);color:var(--ink);cursor:pointer;text-decoration:none;white-space:nowrap}
+.btn:hover{border-color:var(--ink-3)}
+.btn.primary{background:var(--gold);border-color:var(--gold);color:var(--gold-ink)}
+.btn.sm{padding:3px 10px;font-size:13px}
+.btn.danger{color:var(--crit-ink)}
+.btn[disabled]{opacity:.55;cursor:default}
+.btn:focus-visible,select:focus-visible,input:focus-visible,summary:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+select,input[type="date"],input[type="number"]{font:14px var(--font-body);padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--ink);min-width:0;max-width:100%}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.seg button{appearance:none;border:0;background:var(--panel);color:var(--ink-3);font:500 13px var(--font-body);padding:4px 10px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--panel-2);color:var(--ink)}
+
+/* structure */
+main{padding-block:16px 48px}
+.stack{display:flex;flex-direction:column;gap:16px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;min-width:0}
+.card h3{font:600 15.5px/1.3 var(--font-display);margin-bottom:10px}
+.card-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.card-head h3{margin:0}
+.hint{font-size:12.5px;color:var(--ink-3)}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+@media (max-width:860px){.grid2{grid-template-columns:minmax(0,1fr)}}
+.filters{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:flex-end}
+.f{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--ink-3);flex:1 1 130px;min-width:0}
+.f.btnf{flex:0 0 auto}
+.note{padding:10px 14px;border-radius:10px;border:1px solid var(--line);background:var(--panel);font-size:14px}
+.note.err{border-color:var(--crit);color:var(--crit-ink)}
+.banner{display:flex;gap:12px;align-items:flex-start;padding:12px 14px;border-radius:10px;border:1px solid var(--gold);background:var(--gold-soft);font-size:14px}
+.banner b{font-weight:600}
+.banner.warn{border-color:var(--warn);background:color-mix(in srgb,var(--warn) 12%,var(--panel))}
+.banner .bi{font:700 13px/20px var(--font-data);flex:none}
+
+/* indicateurs */
+.tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+@media (max-width:760px){.tiles{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.tile{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:4px;min-width:0}
+.tile .l{font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3)}
+.tile .v{font:600 25px/1.1 var(--font-display);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.tile .v small{font:500 13px var(--font-body);color:var(--ink-3)}
+.tile .s{font-size:12.5px;color:var(--ink-2);font-variant-numeric:tabular-nums}
+.pill{display:inline-flex;align-items:center;gap:5px;padding:1px 9px;border-radius:999px;font-size:12px;line-height:20px;border:1px solid var(--line);background:var(--panel-2);color:var(--ink-2);white-space:nowrap;width:max-content;max-width:100%}
+.pill.good{color:var(--good-ink);border-color:color-mix(in srgb,var(--good) 50%,transparent);background:color-mix(in srgb,var(--good) 11%,var(--panel))}
+.pill.warn{color:var(--warn-ink);border-color:color-mix(in srgb,var(--warn) 60%,transparent);background:color-mix(in srgb,var(--warn) 13%,var(--panel))}
+.pill.crit{color:var(--crit-ink);border-color:color-mix(in srgb,var(--crit) 50%,transparent);background:color-mix(in srgb,var(--crit) 10%,var(--panel))}
+.pill.gold{color:var(--gold);border-color:var(--gold);background:var(--gold-soft)}
+
+/* tableaux */
+.tscroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.tbl{width:100%;border-collapse:collapse;font-size:13.5px;font-variant-numeric:tabular-nums}
+.tbl th{font-weight:600;color:var(--ink-3);font-size:12px;text-align:left;border-bottom:1px solid var(--line);padding:6px 8px;white-space:nowrap;vertical-align:bottom}
+.tbl td{padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
+.tbl tr:last-child td{border-bottom:0}
+.tbl .num{text-align:right;font-family:var(--font-data);font-size:12.5px;white-space:nowrap}
+.tbl th.num{font-family:var(--font-body);font-size:12px}
+.tbl .k{max-width:260px;overflow-wrap:anywhere}
+.tbl tr.thin td{color:var(--ink-3)}
+.tbl .posv{color:var(--pos)}
+.tbl .negv{color:var(--neg)}
+.bc{display:flex;align-items:center;gap:8px;min-width:150px}
+.db{position:relative;flex:1;height:10px;min-width:64px;background:var(--panel-2);border-radius:3px}
+.db::after{content:"";position:absolute;left:50%;top:-3px;bottom:-3px;width:1px;background:var(--ink-3)}
+.db i{position:absolute;top:0;bottom:0;border-radius:2px}
+.db i.pos{background:var(--pos)}
+.db i.neg{background:var(--neg)}
+.bc b{font:500 12.5px var(--font-data);min-width:48px;text-align:right}
+.hb{display:grid;grid-template-columns:minmax(0,1fr) minmax(90px,2fr) auto;gap:6px 10px;align-items:center;font-size:13.5px}
+.hb .lab{overflow-wrap:anywhere}
+.hb .tr{height:12px;background:var(--panel-2);border-radius:3px;position:relative}
+.hb .tr i{position:absolute;left:0;top:0;bottom:0;background:var(--pos);border-radius:0 3px 3px 0}
+.hb .val{font:500 12.5px var(--font-data);text-align:right;white-space:nowrap}
+details.crit-d{font-size:13px;margin-top:6px}
+details.crit-d summary{cursor:pointer;color:var(--ink-2)}
+.crit-l{list-style:none;margin:8px 0 0;padding:0;display:grid;gap:4px}
+.crit-l li{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
+.crit-l .ok{color:var(--good-ink);font-family:var(--font-data)}
+.crit-l .ko{color:var(--crit-ink);font-family:var(--font-data)}
+.mono{font-family:var(--font-data);font-size:12.5px}
+
+/* graphiques */
+.chart{width:100%;position:relative}
+.chart svg{display:block;max-width:100%}
+.chart .ax{fill:var(--ink-3);font:11px var(--font-data)}
+.chart .g{stroke:var(--line);stroke-width:1}
+.chart .g0{stroke:var(--ink-3);stroke-width:1}
+.chart .ln{fill:none;stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
+.chart .ln.pos{stroke:var(--pos)} .chart .ln.neg{stroke:var(--neg)}
+.chart .ar.pos{fill:var(--pos);fill-opacity:.12} .chart .ar.neg{fill:var(--neg);fill-opacity:.16}
+.chart .dot{stroke:var(--panel);stroke-width:2}
+.chart .dot.pos{fill:var(--pos)} .chart .dot.neg{fill:var(--neg)}
+.chart .xhl{stroke:var(--ink-3);stroke-width:1;stroke-dasharray:3 3}
+.chart .bar.pos{fill:var(--pos)} .chart .bar.neg{fill:var(--neg)}
+.chart .hit{fill:transparent;cursor:crosshair}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12.5px;color:var(--ink-2);margin-top:6px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:-1px}
+.legend i.pos{background:var(--pos)} .legend i.neg{background:var(--neg)}
+#tip{position:fixed;z-index:20;pointer-events:none;background:var(--ink);color:var(--bg);font:12px/1.45 var(--font-data);padding:6px 9px;border-radius:6px;max-width:260px;white-space:pre-line}
+
+/* fichiers */
+.drop{border:1.5px dashed var(--ink-3);border-radius:12px;padding:22px 16px;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center}
+.drop.over{border-color:var(--gold);background:var(--gold-soft)}
+.drop p{margin:0;max-width:60ch;color:var(--ink-2)}
+.flist{display:flex;flex-direction:column}
+.fi{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;padding:10px 0;border-bottom:1px solid var(--line);align-items:center}
+.fi:last-child{border-bottom:0}
+.fi .fn{font-weight:600;overflow-wrap:anywhere}
+.fi .fm{font-size:12.5px;color:var(--ink-3);display:flex;gap:6px 10px;flex-wrap:wrap;align-items:center}
+.fi .fa{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+@media (max-width:560px){.fi{grid-template-columns:minmax(0,1fr)}.fi .fa{justify-content:flex-start}}
+.prose{max-width:68ch;color:var(--ink-2);font-size:14px}
+.prose p{margin:0 0 8px}
+.prose code,.mono-in{font-family:var(--font-data);font-size:12.5px;background:var(--panel-2);padding:1px 5px;border-radius:4px;overflow-wrap:anywhere}
+.empty{padding:28px 16px;text-align:center;color:var(--ink-2)}
+.empty h3{font:600 17px var(--font-display);color:var(--ink);margin-bottom:6px}
+.lecture{margin:0;padding-left:18px;display:grid;gap:4px;font-size:14px;color:var(--ink-2)}
+.decision{border-left:3px solid var(--gold);padding:4px 0 4px 14px}
+@media (prefers-reduced-motion: no-preference){.btn,.tab{transition:border-color .15s,color .15s,background-color .15s}}
+</style>
+
+<header class="top">
+  <div class="wrap">
+    <div class="top-row">
+      <div class="brand">
+        <div class="mark" aria-hidden="true"><small>79</small>Au</div>
+        <div>
+          <div class="b1">Gold Liquidity Scalper</div>
+          <div class="b2">Analyse des journaux du robot · XAU/USD</div>
+        </div>
+      </div>
+      <div class="top-act">
+        <span id="srcpill" class="pill"></span>
+        <label class="btn primary" for="file-in">Ajouter des fichiers</label>
+        <input id="file-in" class="vh" type="file" multiple accept=".csv,.txt,.json,text/csv,text/plain,application/json">
+      </div>
+    </div>
+    <nav class="tabs" id="tabs" role="tablist" aria-label="Sections"></nav>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="stack">
+    <div id="note" hidden></div>
+    <div id="filters" class="card" hidden></div>
+    <div id="view" class="stack"></div>
+  </div>
+</main>
+<div id="tip" hidden></div>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ===================== constantes ===================== */
+  var CRITERIA_DEFAULT = {
+    min_trades: { dev: 100, val: 50, test: 50 },
+    min_expectancy_r: 0.05, min_profit_factor: 1.15, max_drawdown_r: 15.0,
+    min_positive_period_ratio: 0.6, period: 'quarter', min_trades_per_period: 5,
+    max_adjusted_p_value: 0.05, stress_extra_cost_price: 0.20, min_stressed_expectancy_r: 0.0,
+    mc_paths: 1000, max_mc_drawdown_r_p95: 20.0
+  };
+  var NUMERIC = ['score', 'duration_s', 'entry', 'exit', 'volume', 'risk_money', 'risk_points', 'net', 'gross',
+    'commission', 'swap', 'fee', 'r_multiple', 'slippage_pts', 'spread_pts', 'est_cost', 'mfe_r', 'mae_r', 'point'];
+  var KIND_LABEL = { trades: 'Trades', signaux: 'Signaux', fvg: 'FVG', ob: 'Order Blocks', bougies: 'Bougies', journal: 'Journal', criteres: 'Critères' };
+  var TABS = [['apercu', 'Vue d’ensemble'], ['trades', 'Trades'], ['signaux', 'Signaux'], ['zones', 'Zones FVG / OB'], ['protocole', 'Protocole'], ['fichiers', 'Fichiers']];
+  var DATA_TABS = { apercu: 1, trades: 1, signaux: 1, zones: 1 };
+  var FAMILY_NAME = { F1: 'Balayage de liquidité', F2: 'Tendance + pullback', F3: 'Cassure de range', F4: 'Compression / expansion', F5: 'Réaction sur S/R', F6: 'Retest de FVG' };
+  var SPLIT_NAME = { dev: 'Développement', val: 'Validation', test: 'Test final hors échantillon' };
+  var DAY = 864e5;
+
+  /* ===================== état ===================== */
+  var S = {
+    ver: 0,
+    files: [],
+    filters: { env: '', family: '', label: '', dir: '', from: '', to: '' },
+    tab: 'apercu',
+    eqUnit: 'R',
+    proto: { group: 'family', devFrom: '', devTo: '', valFrom: '', valTo: '', testFrom: '', testTo: '', unlock: false, variants: '', baseline: '' },
+    cloud: { state: 'connexion', db: null, assets: null, user: null, uid: null, docs: [], loading: {}, errs: {}, first: false },
+    notice: null,
+    pendingDel: null
+  };
+  var CH = {};      // spécifications des graphiques affichés
+  var seq = 0;
+  function nid() { seq += 1; return 'f' + seq + '_' + Date.now().toString(36); }
+
+  /* ===================== utilitaires ===================== */
+  function $(s, r) { return (r || document).querySelector(s); }
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function fmt(x, nd) {
+    if (nd == null) nd = 2;
+    if (x == null || (typeof x === 'number' && isNaN(x))) return 'n/d';
+    if (x === Infinity) return '∞';
+    if (x === -Infinity) return '−∞';
+    return Number(x).toLocaleString('fr-FR', { minimumFractionDigits: nd, maximumFractionDigits: nd });
+  }
+  function sgn(x, nd) { if (typeof x !== 'number' || !isFinite(x)) return fmt(x, nd); return (x > 0 ? '+' : '') + fmt(x, nd); }
+  function pct(x, nd) { return (x == null || isNaN(x)) ? 'n/d' : fmt(x, nd == null ? 1 : nd) + ' %'; }
+  function int(x) { return Number(x).toLocaleString('fr-FR'); }
+  function num(s) {
+    if (s == null) return NaN;
+    s = String(s).trim();
+    if (!s) return NaN;
+    if (s.indexOf(',') >= 0 && s.indexOf('.') < 0) s = s.replace(',', '.');
+    s = s.replace(/[\s  ]/g, '');
+    return Number(s);
+  }
+  function num0(s) { var v = num(s); return isFinite(v) ? v : 0; }
+  function p2(n) { return (n < 10 ? '0' : '') + n; }
+  function parseDate(s) {
+    if (!s) return null;
+    s = String(s).trim();
+    var m = /^(\d{4})[.\-\/](\d{1,2})[.\-\/](\d{1,2})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?/.exec(s);
+    if (m) return Date.UTC(+m[1], +m[2] - 1, +m[3], +(m[4] || 0), +(m[5] || 0), +(m[6] || 0));
+    m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?/.exec(s);
+    if (m) return Date.UTC(+m[3], +m[2] - 1, +m[1], +(m[4] || 0), +(m[5] || 0), +(m[6] || 0));
+    return null;
+  }
+  function dstr(ms) { var d = new Date(ms); return d.getUTCFullYear() + '-' + p2(d.getUTCMonth() + 1) + '-' + p2(d.getUTCDate()); }
+  function dtstr(ms) { var d = new Date(ms); return dstr(ms) + ' ' + p2(d.getUTCHours()) + ':' + p2(d.getUTCMinutes()); }
+  function dayMs(str) { var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(str || ''); return m ? Date.UTC(+m[1], +m[2] - 1, +m[3]) : null; }
+  function uniq(a) { var o = {}, r = []; for (var i = 0; i < a.length; i++) { var k = a[i]; if (k == null || k === '') continue; if (!o[k]) { o[k] = 1; r.push(k); } } return r; }
+  function sum(a) { var s = 0; for (var i = 0; i < a.length; i++) s += a[i]; return s; }
+  function median(a) { if (!a.length) return NaN; var b = a.slice().sort(function (x, y) { return x - y; }); var h = b.length >> 1; return b.length % 2 ? b[h] : (b[h - 1] + b[h]) / 2; }
+  function famLabel(f) { return FAMILY_NAME[f] ? f + ' · ' + FAMILY_NAME[f] : f; }
+
+  /* ===================== statistiques (portage de tools/analyze_trades.py) ===================== */
+  /*STATS-BEGIN*/
+  function lgamma(x) {
+    var c = [0.99999999999980993, 676.5203681218851, -1259.1392167224028, 771.32342877765313, -176.61502916214059,
+      12.507343278686905, -0.13857109526572012, 9.9843695780195716e-6, 1.5056327351493116e-7];
+    if (x < 0.5) return Math.log(Math.PI / Math.abs(Math.sin(Math.PI * x))) - lgamma(1 - x);
+    x -= 1;
+    var a = c[0], t = x + 7.5;
+    for (var i = 1; i < 9; i++) a += c[i] / (x + i);
+    return 0.5 * Math.log(2 * Math.PI) + (x + 0.5) * Math.log(t) - t + Math.log(a);
+  }
+  function betacf(a, b, x) {
+    var qab = a + b, qap = a + 1, qam = a - 1, c = 1, d = 1 - qab * x / qap;
+    d = 1 / (Math.abs(d) > 1e-300 ? d : 1e-300);
+    var h = d;
+    for (var m = 1; m < 300; m++) {
+      var m2 = 2 * m;
+      var aa = m * (b - m) * x / ((qam + m2) * (a + m2));
+      d = 1 + aa * d; d = 1 / (Math.abs(d) > 1e-300 ? d : 1e-300);
+      c = 1 + aa / c; c = Math.abs(c) > 1e-300 ? c : 1e-300;
+      h *= d * c;
+      aa = -(a + m) * (qab + m) * x / ((a + m2) * (qap + m2));
+      d = 1 + aa * d; d = 1 / (Math.abs(d) > 1e-300 ? d : 1e-300);
+      c = 1 + aa / c; c = Math.abs(c) > 1e-300 ? c : 1e-300;
+      var del = d * c;
+      h *= del;
+      if (Math.abs(del - 1) < 1e-12) break;
+    }
+    return h;
+  }
+  function betainc(a, b, x) {
+    if (x <= 0) return 0;
+    if (x >= 1) return 1;
+    var lb = lgamma(a + b) - lgamma(a) - lgamma(b) + a * Math.log(x) + b * Math.log(1 - x);
+    if (x < (a + 1) / (a + b + 2)) return Math.exp(lb) * betacf(a, b, x) / a;
+    return 1 - Math.exp(lb) * betacf(b, a, 1 - x) / b;
+  }
+  function tSf(t, df) { var x = df / (df + t * t); var p2t = betainc(df / 2, 0.5, x); return t > 0 ? p2t / 2 : 1 - p2t / 2; }
+  function rng32(seed) {
+    var a = seed >>> 0;
+    return function () {
+      a = (a + 0x6D2B79F5) | 0;
+      var t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function bootstrapCi(v, nBoot, alpha, seed) {
+    nBoot = nBoot || 2000; alpha = alpha || 0.05;
+    if (v.length < 2) return [NaN, NaN];
+    var r = rng32(seed || 12345), n = v.length, means = new Float64Array(nBoot);
+    for (var b = 0; b < nBoot; b++) { var s = 0; for (var i = 0; i < n; i++) s += v[Math.floor(r() * n)]; means[b] = s / n; }
+    means.sort();
+    return [means[Math.floor(alpha / 2 * nBoot)], means[Math.floor((1 - alpha / 2) * nBoot) - 1]];
+  }
+  function bootstrapDiffCi(a, b, nBoot, alpha, seed) {
+    nBoot = nBoot || 1000; alpha = alpha || 0.05;
+    if (a.length < 2 || b.length < 2) return [NaN, NaN];
+    var r = rng32(seed || 777), d = new Float64Array(nBoot), na = a.length, nb = b.length;
+    for (var k = 0; k < nBoot; k++) {
+      var sa = 0, sb = 0, i;
+      for (i = 0; i < na; i++) sa += a[Math.floor(r() * na)];
+      for (i = 0; i < nb; i++) sb += b[Math.floor(r() * nb)];
+      d[k] = sa / na - sb / nb;
+    }
+    d.sort();
+    return [d[Math.floor(alpha / 2 * nBoot)], d[Math.floor((1 - alpha / 2) * nBoot) - 1]];
+  }
+  function quantile(sorted, p) { return sorted[Math.min(sorted.length - 1, Math.floor(p * sorted.length))]; }
+  function monteCarlo(rs, nPaths, seed) {
+    if (rs.length < 2 || nPaths < 1) return null;
+    var r = rng32(seed || 4242), n = rs.length, dds = new Float64Array(nPaths), tot = new Float64Array(nPaths), loss = 0;
+    for (var p = 0; p < nPaths; p++) {
+      var cum = 0, peak = 0, dd = 0;
+      for (var i = 0; i < n; i++) {
+        cum += rs[Math.floor(r() * n)];
+        if (cum > peak) peak = cum; else if (peak - cum > dd) dd = peak - cum;
+      }
+      dds[p] = dd; tot[p] = cum; if (cum <= 0) loss++;
+    }
+    dds.sort(); tot.sort();
+    return { dd_p50: quantile(dds, 0.5), dd_p95: quantile(dds, 0.95), dd_p99: quantile(dds, 0.99),
+      total_p05: quantile(tot, 0.05), total_p50: quantile(tot, 0.5), p_loss: loss / nPaths, paths: nPaths };
+  }
+  function periodKey(ms, period) {
+    var d = new Date(ms), y = d.getUTCFullYear(), m = d.getUTCMonth();
+    return period === 'month' ? y + '-' + p2(m + 1) : y + '-T' + (Math.floor(m / 3) + 1);
+  }
+  function stressInR(t, C) {
+    if (t.risk_points <= 0) return 0;
+    if (C.stress_extra_cost_price != null && t.point > 0) return C.stress_extra_cost_price / (t.risk_points * t.point);
+    return (C.stress_extra_cost_points || 0) / t.risk_points;
+  }
+  function metrics(trades, C, nVariants, opts) {
+    var m = { n: trades.length };
+    if (!trades.length) return m;
+    var nets = [], rs = [], withR = [], i, t;
+    for (i = 0; i < trades.length; i++) { t = trades[i]; nets.push(t.net); if (t.risk_money > 0) { withR.push(t); rs.push(t.r_multiple); } }
+    var w = 0, l = 0, sw = 0, sl = 0;
+    for (i = 0; i < nets.length; i++) { if (nets[i] > 0) { w++; sw += nets[i]; } else if (nets[i] < 0) { l++; sl += nets[i]; } }
+    m.wins = w; m.losses = l; m.win_rate = 100 * w / trades.length;
+    m.net = sum(nets); m.expectancy = m.net / trades.length;
+    m.avg_win = w ? sw / w : 0; m.avg_loss = l ? -sl / l : 0;
+    m.profit_factor = (-sl) > 0 ? sw / (-sl) : Infinity;
+    var cum = 0, peak = 0, dd = 0, streak = 0, longest = 0;
+    for (i = 0; i < nets.length; i++) {
+      cum += nets[i]; peak = Math.max(peak, cum); dd = Math.max(dd, peak - cum);
+      if (nets[i] < 0) { streak++; longest = Math.max(longest, streak); } else if (nets[i] > 0) streak = 0;
+    }
+    m.max_dd = dd; m.longest_loss_streak = longest;
+    cum = 0; peak = 0; dd = 0;
+    for (i = 0; i < rs.length; i++) { cum += rs[i]; peak = Math.max(peak, cum); dd = Math.max(dd, peak - cum); }
+    m.max_dd_r = dd; m.n_r = rs.length;
+    if (rs.length) {
+      var mean = sum(rs) / rs.length;
+      m.expectancy_r = mean;
+      if (rs.length > 1) {
+        var v = 0; for (i = 0; i < rs.length; i++) v += (rs[i] - mean) * (rs[i] - mean);
+        var sd = Math.sqrt(v / (rs.length - 1));
+        m.sd_r = sd;
+        var ts = sd > 0 ? mean / (sd / Math.sqrt(rs.length)) : 0;
+        m.t_stat = ts;
+        m.p_value = sd > 0 ? tSf(ts, rs.length - 1) : 1;
+        m.p_adjusted = Math.min(1, m.p_value * Math.max(1, nVariants));
+        m.ci_r = bootstrapCi(rs);
+      }
+      var st = 0; for (i = 0; i < withR.length; i++) st += withR[i].r_multiple - stressInR(withR[i], C);
+      m.stressed_expectancy_r = st / withR.length;
+      var k = Math.max(1, Math.floor(0.05 * rs.length));
+      var trimmed = rs.slice().sort(function (a, b) { return a - b; }).slice(0, rs.length - k);
+      m.expectancy_r_wo_top5 = trimmed.length ? sum(trimmed) / trimmed.length : NaN;
+      if (!opts || !opts.noMc) m.mc = monteCarlo(rs, Math.floor(C.mc_paths || 1000));
+    }
+    var dur = 0, com = 0, sw2 = 0, fee = 0, est = 0, slip = 0;
+    for (i = 0; i < trades.length; i++) { t = trades[i]; dur += t.duration_s; com += t.commission; sw2 += t.swap; fee += t.fee; est += t.est_cost; slip += t.slippage_pts; }
+    m.avg_duration_min = dur / trades.length / 60; m.commission = com; m.swap = sw2; m.fee = fee; m.est_cost = est;
+    m.avg_slippage_pts = slip / trades.length;
+    var per = {};
+    for (i = 0; i < trades.length; i++) { t = trades[i]; var pk = periodKey(t.close, C.period); (per[pk] = per[pk] || []).push(t); }
+    var counted = 0, pos = 0;
+    Object.keys(per).forEach(function (key) {
+      var g = per[key];
+      if (g.length < C.min_trades_per_period) return;
+      counted++;
+      var s = 0; for (var j = 0; j < g.length; j++) s += g[j].risk_money > 0 ? g[j].r_multiple : g[j].net;
+      if (s > 0) pos++;
+    });
+    m.periods_counted = counted; m.positive_period_ratio = counted ? pos / counted : 0;
+    return m;
+  }
+  function evaluate(m, C, split) {
+    var out = [], nMin = (C.min_trades && C.min_trades[split]) || 0, n = m.n || 0;
+    out.push({ name: 'trades', v: n, thr: '≥ ' + nMin, ok: n >= nMin, isInt: true });
+    if (!n) return out;
+    var er = m.expectancy_r == null ? NaN : m.expectancy_r;
+    out.push({ name: 'espérance R', v: er, thr: '≥ ' + fmt(C.min_expectancy_r), ok: er >= C.min_expectancy_r });
+    var pf = m.profit_factor == null ? 0 : m.profit_factor;
+    out.push({ name: 'profit factor', v: pf, thr: '≥ ' + fmt(C.min_profit_factor), ok: pf >= C.min_profit_factor });
+    var dd = m.max_dd_r == null ? Infinity : m.max_dd_r;
+    out.push({ name: 'drawdown max R', v: dd, thr: '≤ ' + fmt(C.max_drawdown_r, 1), ok: dd <= C.max_drawdown_r });
+    var pr = m.positive_period_ratio || 0;
+    out.push({ name: 'périodes positives', v: pr, thr: '≥ ' + fmt(100 * C.min_positive_period_ratio, 0) + ' %', ok: pr >= C.min_positive_period_ratio && (m.periods_counted || 0) >= 2, isRatio: true });
+    var pa = m.p_adjusted == null ? 1 : m.p_adjusted;
+    out.push({ name: 'p-valeur corrigée', v: pa, thr: '≤ ' + fmt(C.max_adjusted_p_value, 3), ok: pa <= C.max_adjusted_p_value, nd: 3 });
+    var se = m.stressed_expectancy_r == null ? NaN : m.stressed_expectancy_r;
+    out.push({ name: 'espérance R sous stress', v: se, thr: '> ' + fmt(C.min_stressed_expectancy_r), ok: se > C.min_stressed_expectancy_r });
+    if (C.max_mc_drawdown_r_p95 != null) {
+      var v = m.mc ? m.mc.dd_p95 : Infinity;
+      out.push({ name: 'drawdown Monte-Carlo p95 R', v: v, thr: '≤ ' + fmt(C.max_mc_drawdown_r_p95, 1), ok: v <= C.max_mc_drawdown_r_p95 });
+    }
+    return out;
+  }
+  /*STATS-END*/
+
+  /* ===================== lecture des fichiers ===================== */
+  function decodeBytes(buf) {
+    var u8 = new Uint8Array(buf);
+    if (u8[0] === 0xFF && u8[1] === 0xFE) return new TextDecoder('utf-16le').decode(u8);
+    if (u8[0] === 0xFE && u8[1] === 0xFF) return new TextDecoder('utf-16be').decode(u8);
+    try { return new TextDecoder('utf-8', { fatal: true }).decode(u8); }
+    catch (e) { return new TextDecoder('windows-1252').decode(u8); }
+  }
+  function parseCsv(text) {
+    text = text.replace(/^﻿/, '');
+    var nl = text.indexOf('\n'), first = nl >= 0 ? text.slice(0, nl) : text, delim = ';', best = 0;
+    [';', '\t', ','].forEach(function (c) { var k = first.split(c).length; if (k > best) { best = k; delim = c; } });
+    var rows = [], i;
+    if (text.indexOf('"') < 0) {
+      var lines = text.split(/\r\n|\n|\r/);
+      for (i = 0; i < lines.length; i++) if (lines[i] !== '') rows.push(lines[i].split(delim));
+    } else {
+      var row = [], field = '', q = false;
+      for (i = 0; i < text.length; i++) {
+        var ch = text[i];
+        if (q) { if (ch === '"') { if (text[i + 1] === '"') { field += '"'; i++; } else q = false; } else field += ch; continue; }
+        if (ch === '"' && field === '') { q = true; continue; }
+        if (ch === delim) { row.push(field); field = ''; continue; }
+        if (ch === '\n' || ch === '\r') {
+          if (ch === '\r' && text[i + 1] === '\n') i++;
+          row.push(field); field = '';
+          if (!(row.length === 1 && row[0] === '')) rows.push(row);
+          row = []; continue;
+        }
+        field += ch;
+      }
+      if (field !== '' || row.length) { row.push(field); if (!(row.length === 1 && row[0] === '')) rows.push(row); }
+    }
+    if (!rows.length) return { header: [], rows: [], bad: 0 };
+    var header = rows[0].map(function (h) { return h.trim().toLowerCase(); }), out = [], bad = 0;
+    for (var r = 1; r < rows.length; r++) {
+      var a = rows[r];
+      if (a.length !== header.length) bad++;
+      var o = {};
+      for (var j = 0; j < header.length; j++) o[header[j]] = a[j] == null ? '' : a[j].trim();
+      out.push(o);
+    }
+    return { header: header, rows: out, bad: bad };
+  }
+  function detectKind(h) {
+    function has(k) { return h.indexOf(k) >= 0; }
+    if (has('position_id') && has('r_multiple')) return 'trades';
+    if (has('decision') && has('c_liq')) return 'signaux';
+    if (has('ifvg') && has('qualite')) return 'fvg';
+    if (has('bougie_ob')) return 'ob';
+    if (has('corps_ratio') && has('figure')) return 'bougies';
+    if (has('niveau') && has('message')) return 'journal';
+    return null;
+  }
+  function envFromName(name) { var m = /GLS_([A-Za-z]+)_/.exec(name || ''); return m ? m[1].toUpperCase() : '?'; }
+  function makeFile(name, text, origin, meta) {
+    var f;
+    if (/\.json$/i.test(name)) {
+      var j;
+      try { j = JSON.parse(text); } catch (e) { throw new Error('JSON illisible.'); }
+      if (!j || typeof j !== 'object' || !j.min_trades) throw new Error('JSON non reconnu : un fichier de critères (comme tools/criteria_default.json) est attendu.');
+      f = { kind: 'criteres', json: j, rows: [], bad: 0 };
+    } else {
+      var p = parseCsv(text), kind = detectKind(p.header);
+      if (!kind) throw new Error('format non reconnu (en-tête « ' + p.header.slice(0, 4).join(';') + '… »). Fichiers attendus : _trades, _signals, _fvg, _ob, _bougies ou _journal du robot.');
+      f = { kind: kind, rows: p.rows, bad: p.bad };
+    }
+    f.id = nid(); f.name = name; f.text = text; f.origin = origin; f.env = envFromName(name);
+    if (meta) Object.keys(meta).forEach(function (k) { f[k] = meta[k]; });
+    return f;
+  }
+  function filePeriod(f) {
+    var col = { trades: 'close_time', signaux: 'time', fvg: 'creation', ob: 'creation', bougies: 'heure', journal: 'heure_serveur' }[f.kind];
+    if (!col) return null;
+    var lo = Infinity, hi = -Infinity;
+    for (var i = 0; i < f.rows.length; i++) { var d = parseDate(f.rows[i][col]); if (d == null) continue; if (d < lo) lo = d; if (d > hi) hi = d; }
+    return isFinite(lo) ? [dstr(lo), dstr(hi)] : null;
+  }
+
+  /* ===================== exemple synthétique ===================== */
+  var EX = null;
+  function mtTime(ms, sec) { var d = new Date(ms); return d.getUTCFullYear() + '.' + p2(d.getUTCMonth() + 1) + '.' + p2(d.getUTCDate()) + ' ' + p2(d.getUTCHours()) + ':' + p2(d.getUTCMinutes()) + (sec ? ':' + p2(d.getUTCSeconds()) : ''); }
+  function exampleFiles() {
+    if (EX) return EX;
+    var R = rng32(79);
+    function pick(a) { return a[Math.floor(R() * a.length)]; }
+    var fams = ['F1', 'F2', 'F5', 'F6'], sess = [['Londres', 7, 11], ['Londres+NY', 12, 15], ['New York', 16, 19]];
+    var regs = ['TENDANCE', 'TENDANCE', 'RANGE', 'TRANSITION', 'VOLATIL'], cdl = ['', '', 'ENGULF', 'PINBAR', 'INSIDE'];
+    var reasons = [['score insuffisant', 30], ['rendement/risque insuffisant', 14], ['contexte M5/M15 contradictoire', 12], ['spread excessif ou anormal', 8],
+      ['régime de marché non autorisé pour cette famille', 8], ['le prix a déjà trop avancé', 7], ['stop logique trop large', 6], ['hors session autorisée', 5],
+      ['figure de bougie contraire confirmée', 4], ['zone invalidée', 3], ['coût d\'exécution trop élevé', 3]];
+    var rTot = 0; reasons.forEach(function (x) { rTot += x[1]; });
+    function reason() { var u = R() * rTot; for (var i = 0; i < reasons.length; i++) { u -= reasons[i][1]; if (u <= 0) return reasons[i][0]; } return reasons[0][0]; }
+    var tr = [], sg = [], fv = [], ob = [], pid = 5000, t0 = Date.UTC(2026, 0, 5);
+    for (var day = 0; day < 270; day++) {
+      var ms = t0 + day * DAY, wd = new Date(ms).getUTCDay();
+      if (wd === 0 || wd === 6) continue;
+      var k = R() < 0.3 ? 0 : (R() < 0.65 ? 1 : 2);
+      for (var j = 0; j < k; j++) {
+        var ss = pick(sess), open = ms + (ss[1] + Math.floor(R() * (ss[2] - ss[1]))) * 36e5 + Math.floor(R() * 60) * 6e4;
+        var dur = (3 + Math.floor(R() * 55)) * 60, u = R(), r, ex;
+        if (u < 0.40) { r = 0.6 + R() * 1.4; ex = R() < 0.6 ? 'TP' : 'TRAIL'; }
+        else if (u < 0.50) { r = -0.05 + R() * 0.1; ex = 'BE'; }
+        else { r = -(0.85 + R() * 0.25); ex = R() < 0.85 ? 'SL' : (R() < 0.5 ? 'INV' : 'NOPROG'); }
+        var f = pick(fams), zoned = (f === 'F5' || f === 'F6'), dir = R() < 0.5 ? 'BUY' : 'SELL', score = 80 + Math.floor(R() * 16);
+        var zid = zoned ? '5|' + (dir === 'BUY' ? 1 : -1) + '|' + Math.floor((open - 36e5) / 1000) : '';
+        tr.push({ env: 'EXEMPLE', account: '0', symbol: 'XAUUSD', position_id: String(pid++), family: f, dir: dir, hash: '', score: String(score),
+          retest: R() < 0.5 ? '1' : '0', session: ss[0], open_time: mtTime(open, true), close_time: mtTime(open + dur * 1000, true), duration_s: String(dur),
+          entry: '', exit: '', volume: '0.01', risk_money: '10.00', risk_points: String(250 + Math.floor(R() * 300)), net: (r * 10).toFixed(2),
+          gross: (r * 10 + 0.2).toFixed(2), commission: '-0.20', swap: '0.00', fee: '0.00', r_multiple: r.toFixed(3), exit_reason: ex, exit_plan: '0',
+          slippage_pts: (R() * 4).toFixed(1), spread_pts: (15 + R() * 15).toFixed(1), est_cost: '0.30', mfe_r: '', mae_r: '', point: '0.01',
+          regime: pick(regs), label: 'exemple', candle: pick(cdl), zone_id: zid, zone_retests: zoned ? String(1 + Math.floor(R() * 3)) : '0',
+          zone_quality: zoned ? (0.55 + R() * 0.4).toFixed(2) : '0.00' });
+        sg.push({ time: mtTime(open, false), family: f, dir: dir, score: String(score), decision: 'EXECUTE', reason: 'aucune', label: 'exemple', regime: '', candle: '', zone_id: zid });
+      }
+      var nr = 4 + Math.floor(R() * 9);
+      for (var q = 0; q < nr; q++) {
+        var tm = ms + (7 + Math.floor(R() * 12)) * 36e5 + Math.floor(R() * 60) * 6e4, v = R();
+        var dec = v < 0.12 ? 'ATTENTE' : (v < 0.14 ? 'ECHEC' : 'REFUS');
+        var rs = dec === 'ATTENTE' ? 'confirmation incomplète' : (dec === 'ECHEC' ? 'erreur d\'exécution' : reason());
+        var sc = rs === 'score insuffisant' ? 55 + Math.floor(R() * 25) : 60 + Math.floor(R() * 35);
+        sg.push({ time: mtTime(tm, false), family: pick(fams.concat(['F3', 'F4'])), dir: R() < 0.5 ? 'BUY' : 'SELL', score: String(sc), decision: dec, reason: rs, label: 'exemple', regime: '', candle: '', zone_id: '' });
+      }
+      var nf = 1 + Math.floor(R() * 3);
+      for (var z = 0; z < nf; z++) {
+        var cr = ms + (2 + Math.floor(R() * 20)) * 36e5, qual = R(), st = R(), ut = R() < 0.7 ? 'M5' : 'M1';
+        var status = st < 0.2 ? 'fraîche' : (st < 0.5 ? 'partiellement comblée' : (st < 0.8 ? 'comblée' : 'invalidée'));
+        var retours = status === 'fraîche' ? 0 : Math.floor(R() * 3) + (qual > 0.6 ? 1 : 0);
+        fv.push({ id: ut.slice(1) + '|' + (R() < 0.5 ? 1 : -1) + '|' + Math.floor(cr / 1000), creation: mtTime(cr, false), ut: ut, sens: R() < 0.5 ? 'HAUSSIER' : 'BAISSIER',
+          taille_atr: (0.2 + R() * 0.8).toFixed(2), deplacement_atr: (1 + R() * 2).toFixed(2), retours: String(retours), comblement: status === 'comblée' ? '100' : String(Math.floor(R() * 90)),
+          statut: status, qualite: qual.toFixed(2), qualifiee: qual >= 0.55 ? '1' : '0', ifvg: '0', doublon_de: R() < 0.08 ? 'x' : '',
+          ob_confluence: R() < 0.3 ? '1' : '0', ob_meme_deplacement: R() < 0.2 ? '1' : '0', label: 'exemple' });
+      }
+      if (R() < 0.55) {
+        var oc = ms + (3 + Math.floor(R() * 18)) * 36e5, os = R();
+        ob.push({ id: 'OB|5|' + (R() < 0.5 ? 1 : -1) + '|' + Math.floor(oc / 1000), creation: mtTime(oc, false), ut: 'M5', sens: R() < 0.5 ? 'HAUSSIER' : 'BAISSIER',
+          cassure: R() < 0.3 ? 'CHOCH' : 'BOS', deplacement_atr: (1.5 + R() * 1.8).toFixed(2), retours: String(Math.floor(R() * 3)),
+          statut: os < 0.35 ? 'frais' : (os < 0.75 ? 'retesté' : 'invalidé'), label: 'exemple' });
+      }
+    }
+    function mk(name, kind, rows) { return { id: 'ex-' + kind, name: name, kind: kind, rows: rows, bad: 0, origin: 'exemple', env: 'EXEMPLE' }; }
+    EX = [mk('exemple_trades.csv', 'trades', tr), mk('exemple_signals.csv', 'signaux', sg), mk('exemple_fvg.csv', 'fvg', fv), mk('exemple_ob.csv', 'ob', ob)];
+    return EX;
+  }
+  function isExample() { return S.files.filter(function (f) { return f.kind !== 'criteres'; }).length === 0; }
+
+  /* ===================== données dérivées ===================== */
+  var D = null, Dver = -1;
+  function normTrade(r) {
+    if (!r.close_time) return null;
+    var close = parseDate(r.close_time);
+    if (close == null) return null;
+    var t = {};
+    for (var i = 0; i < NUMERIC.length; i++) t[NUMERIC[i]] = num0(r[NUMERIC[i]]);
+    t.open = parseDate(r.open_time); t.close = close;
+    t.env = r.env || '?'; t.family = r.family || 'F?'; t.dir = r.dir || '?'; t.session = r.session || '?';
+    t.exit = r.exit_reason || '?'; t.retest = r.retest === '1' ? 'oui' : (r.retest === '0' ? 'non' : '?');
+    t.regime = r.regime || '?'; t.label = r.label || 'sans_libelle'; t.candle = r.candle || 'aucune';
+    t.zone_id = r.zone_id || ''; t.zone_retests = Math.trunc(num0(r.zone_retests)); t.zone_quality = num0(r.zone_quality);
+    t.key = [t.env, r.account, r.position_id, r.close_time, t.label].join('|');
+    return t;
+  }
+  function derive() {
+    if (D && Dver === S.ver) return D;
+    var src = isExample() ? exampleFiles().concat(S.files) : S.files;
+    var trades = [], seen = {}, sig = [], fvgMap = {}, obMap = {}, cdl = [], jr = [], crit = null, critName = '';
+    src.forEach(function (f) {
+      var rows = f.rows, i, r;
+      if (f.kind === 'trades') {
+        for (i = 0; i < rows.length; i++) { var t = normTrade(rows[i]); if (!t || seen[t.key]) continue; seen[t.key] = 1; trades.push(t); }
+      } else if (f.kind === 'signaux') {
+        for (i = 0; i < rows.length; i++) {
+          r = rows[i];
+          sig.push({ time: parseDate(r.time), family: r.family || 'F?', dir: r.dir || '?', decision: (r.decision || '').toUpperCase(), reason: r.reason || '',
+            score: num(r.score), label: r.label || 'sans_libelle', env: f.env, zone_id: r.zone_id || '' });
+        }
+      } else if (f.kind === 'fvg') {
+        for (i = 0; i < rows.length; i++) {
+          r = rows[i];
+          var kf = f.env + '#' + (r.label || '') + '#' + r.id;
+          fvgMap[kf] = { id: r.id, created: parseDate(r.creation), ut: r.ut || '?', sens: r.sens || '?', quality: num(r.qualite), qualified: r.qualifiee === '1',
+            retests: num0(r.retours), fill: num0(r.comblement), status: r.statut || '?', ifvg: r.ifvg === '1', dup: !!r.doublon_de, obConf: r.ob_confluence === '1',
+            obSame: r.ob_meme_deplacement === '1', label: r.label || 'sans_libelle', env: f.env };
+        }
+      } else if (f.kind === 'ob') {
+        for (i = 0; i < rows.length; i++) {
+          r = rows[i];
+          obMap[f.env + '#' + (r.label || '') + '#' + r.id] = { id: r.id, created: parseDate(r.creation), ut: r.ut || '?', sens: r.sens || '?', cassure: r.cassure || '?',
+            dispAtr: num(r.deplacement_atr), retests: num0(r.retours), status: r.statut || '?', label: r.label || 'sans_libelle', env: f.env };
+        }
+      } else if (f.kind === 'bougies') {
+        for (i = 0; i < rows.length; i++) { r = rows[i]; cdl.push({ time: parseDate(r.heure), figure: r.figure || r.code || '?', statut: r.statut || '?', label: r.label || 'sans_libelle', env: f.env }); }
+      } else if (f.kind === 'journal') {
+        for (i = 0; i < rows.length; i++) { r = rows[i]; jr.push({ time: parseDate(r.heure_serveur), raw: r.heure_serveur, niveau: (r.niveau || '?').toUpperCase(), cat: r.categorie || '', msg: r.message || '', env: f.env }); }
+      } else if (f.kind === 'criteres') { crit = f.json; critName = f.name; }
+    });
+    trades.sort(function (a, b) { return a.close - b.close; });
+    var fvg = Object.keys(fvgMap).map(function (k) { return fvgMap[k]; });
+    var obs = Object.keys(obMap).map(function (k) { return obMap[k]; });
+    D = { trades: trades, sig: sig, fvg: fvg, ob: obs, cdl: cdl, jr: jr, crit: crit, critName: critName,
+      envs: uniq(trades.map(function (t) { return t.env; }).concat(sig.map(function (s) { return s.env; }), fvg.map(function (s) { return s.env; }))).filter(function (e) { return e !== '?'; }).sort(),
+      families: uniq(trades.map(function (t) { return t.family; }).concat(sig.map(function (s) { return s.family; }))).sort(),
+      labels: uniq(trades.map(function (t) { return t.label; }).concat(sig.map(function (s) { return s.label; }), fvg.map(function (s) { return s.label; }))).sort() };
+    Dver = S.ver;
+    return D;
+  }
+  function criteria(d) {
+    var C = JSON.parse(JSON.stringify(CRITERIA_DEFAULT));
+    if (d.crit) Object.keys(d.crit).forEach(function (k) {
+      if (k.charAt(0) === '_') return;
+      if (k === 'min_trades' && typeof d.crit.min_trades === 'object') Object.keys(d.crit.min_trades).forEach(function (s) { C.min_trades[s] = d.crit.min_trades[s]; });
+      else C[k] = d.crit[k];
+    });
+    return C;
+  }
+  function inDates(ms) {
+    var f = S.filters, a = dayMs(f.from), b = dayMs(f.to);
+    if (ms == null) return !(a != null || b != null);
+    if (a != null && ms < a) return false;
+    if (b != null && ms >= b + DAY) return false;
+    return true;
+  }
+  function envOk(e) { return !S.filters.env || e === S.filters.env || e === '?'; }
+  function filtTrades(d, useDates) {
+    var f = S.filters;
+    return d.trades.filter(function (t) {
+      return (!f.env || t.env === f.env) && (!f.family || t.family === f.family) && (!f.label || t.label === f.label) && (!f.dir || t.dir === f.dir) && (!useDates || inDates(t.close));
+    });
+  }
+  function filtSig(d) {
+    var f = S.filters;
+    return d.sig.filter(function (s) { return envOk(s.env) && (!f.family || s.family === f.family) && (!f.label || s.label === f.label) && (!f.dir || s.dir === f.dir) && inDates(s.time); });
+  }
+  function dirOfSens(s) { return s === 'HAUSSIER' ? 'BUY' : (s === 'BAISSIER' ? 'SELL' : '?'); }
+  function filtZones(list) {
+    var f = S.filters;
+    return list.filter(function (z) { return envOk(z.env) && (!f.label || z.label === f.label) && (!f.dir || dirOfSens(z.sens) === f.dir) && inDates(z.created); });
+  }
+
+  /* ===================== répartitions ===================== */
+  function breakdown(T, keyFn, sortFn) {
+    var g = {};
+    T.forEach(function (t) { var k = keyFn(t); (g[k] = g[k] || []).push(t); });
+    var keys = Object.keys(g).sort(sortFn);
+    return keys.map(function (k) {
+      var a = g[k], w = 0, sw = 0, sl = 0, rr = [];
+      a.forEach(function (t) { if (t.net > 0) { w++; sw += t.net; } else if (t.net < 0) sl += t.net; if (t.risk_money > 0) rr.push(t.r_multiple); });
+      return { k: k, n: a.length, wr: 100 * w / a.length, net: sw + sl, pf: (-sl) > 0 ? sw / (-sl) : Infinity, er: rr.length ? sum(rr) / rr.length : NaN, sr: sum(rr) };
+    });
+  }
+  function scoreBand(t) { var b = Math.floor(t.score / 10) * 10; return p2(b) + '–' + p2(b + 9); }
+  function zoneFresh(t) { if (!t.zone_id) return 'sans zone suivie'; return t.zone_retests <= 1 ? 'zone fraîche (1er retour)' : 'zone déjà revisitée'; }
+  var Q_ORDER = ['< 0,55 (sous le seuil F6)', '0,55 – 0,70', '0,70 – 0,85', '≥ 0,85', 'n/d'];
+  function qSort(a, b) { return Q_ORDER.indexOf(a) - Q_ORDER.indexOf(b); }
+  function qBand(q) { if (!isFinite(q)) return 'n/d'; if (q < 0.55) return '< 0,55 (sous le seuil F6)'; if (q < 0.70) return '0,55 – 0,70'; if (q < 0.85) return '0,70 – 0,85'; return '≥ 0,85'; }
+  var WEEK = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
+
+  /* ===================== composants ===================== */
+  function tile(label, value, sub, pill) {
+    return '<div class="tile"><span class="l">' + esc(label) + '</span><span class="v">' + value + '</span>' + (sub ? '<span class="s">' + sub + '</span>' : '') + (pill || '') + '</div>';
+  }
+  function pill(text, cls, icon) { return '<span class="pill ' + (cls || '') + '">' + (icon ? '<span aria-hidden="true">' + icon + '</span>' : '') + esc(text) + '</span>'; }
+  function emptyState(title, body) { return '<div class="card empty"><h3>' + esc(title) + '</h3><p class="prose" style="margin:0 auto">' + body + '</p></div>'; }
+  function barCell(v, max) {
+    if (!isFinite(v)) return '<td><div class="bc"><span class="db"></span><b>n/d</b></div></td>';
+    var w = max > 0 ? Math.min(50, Math.abs(v) / max * 50) : 0, left = v >= 0 ? 50 : 50 - w;
+    return '<td><div class="bc"><span class="db"><i class="' + (v >= 0 ? 'pos' : 'neg') + '" style="left:' + left.toFixed(2) + '%;width:' + w.toFixed(2) + '%"></i></span><b>' + sgn(v) + '</b></div></td>';
+  }
+  function bdTable(title, rows, opts) {
+    opts = opts || {};
+    if (!rows.length) return '';
+    var max = 0; rows.forEach(function (r) { if (isFinite(r.er)) max = Math.max(max, Math.abs(r.er)); });
+    var h = '<section class="card"><div class="card-head"><h3>' + esc(title) + '</h3>' + (opts.hint ? '<span class="hint">' + opts.hint + '</span>' : '') + '</div><div class="tscroll"><table class="tbl"><thead><tr>' +
+      '<th>' + esc(opts.col || 'Catégorie') + '</th><th class="num">Trades</th><th class="num">Réussite</th><th class="num">Net</th><th class="num">PF</th><th>Espérance R</th></tr></thead><tbody>';
+    rows.forEach(function (r) {
+      h += '<tr class="' + (r.n < 20 ? 'thin' : '') + '"><td class="k">' + esc(opts.lab ? opts.lab(r.k) : r.k) + '</td><td class="num">' + int(r.n) + '</td><td class="num">' + pct(r.wr) +
+        '</td><td class="num ' + (r.net > 0 ? 'posv' : (r.net < 0 ? 'negv' : '')) + '">' + sgn(r.net) + '</td><td class="num">' + fmt(r.pf) + '</td>' + barCell(r.er, max) + '</tr>';
+    });
+    return h + '</tbody></table></div></section>';
+  }
+  function hbars(items, total) {
+    if (!items.length) return '<p class="hint">Aucune donnée.</p>';
+    var max = 0; items.forEach(function (x) { max = Math.max(max, x[1]); });
+    var h = '<div class="hb">';
+    items.forEach(function (x) {
+      h += '<span class="lab">' + esc(x[0]) + '</span><span class="tr"><i style="width:' + (max ? (x[1] / max * 100).toFixed(1) : 0) + '%"></i></span><span class="val">' + int(x[1]) +
+        (total ? ' · ' + fmt(100 * x[1] / total, 0) + ' %' : '') + '</span>';
+    });
+    return h + '</div>';
+  }
+  function niceTicks(lo, hi, count) {
+    var span = hi - lo, step0 = span / Math.max(1, count), mag = Math.pow(10, Math.floor(Math.log10(step0))), e = step0 / mag;
+    var step = (e >= 7.5 ? 10 : e >= 3.5 ? 5 : e >= 1.5 ? 2 : 1) * mag, a = Math.floor(lo / step) * step, b = Math.ceil(hi / step) * step, out = [];
+    for (var v = a; v <= b + step * 1e-9; v += step) out.push(Math.round(v / step) * step);
+    return out;
+  }
+  function tickTxt(v) { var a = Math.abs(v); return a >= 1000 ? int(Math.round(v)) : (Math.round(v) === v ? int(v) : fmt(v, a < 1 ? 2 : 1)); }
+
+  /* ===================== graphiques SVG ===================== */
+  function chartHost(id, spec, h) { CH[id] = spec; return '<div class="chart" data-chart="' + id + '" style="height:' + (h || spec.h || 220) + 'px" role="img" aria-label="' + esc(spec.title || '') + '"></div>'; }
+  function lineSvg(s, W) {
+    var H = s.h || 220, m = { l: 54, r: 16, t: 14, b: 28 }, n = s.ys.length, iw = W - m.l - m.r, ih = H - m.t - m.b, lo = 0, hi = 0, i;
+    for (i = 0; i < n; i++) { if (s.ys[i] < lo) lo = s.ys[i]; if (s.ys[i] > hi) hi = s.ys[i]; }
+    if (hi - lo < 1e-9) { hi += 1; lo -= 1; }
+    var tk = niceTicks(lo, hi, 4), y0 = tk[0], y1 = tk[tk.length - 1];
+    function X(k) { return m.l + (n <= 1 ? iw / 2 : k * iw / (n - 1)); }
+    function Y(v) { return m.t + (y1 - v) / (y1 - y0) * ih; }
+    var d = '';
+    for (i = 0; i < n; i++) d += (i ? 'L' : 'M') + X(i).toFixed(1) + ',' + Y(s.ys[i]).toFixed(1);
+    var area = d + 'L' + X(n - 1).toFixed(1) + ',' + Y(0).toFixed(1) + 'L' + X(0).toFixed(1) + ',' + Y(0).toFixed(1) + 'Z';
+    var g = '';
+    tk.forEach(function (v) { g += '<line class="' + (v === 0 ? 'g0' : 'g') + '" x1="' + m.l + '" x2="' + (W - m.r) + '" y1="' + Y(v).toFixed(1) + '" y2="' + Y(v).toFixed(1) + '"/><text class="ax" x="' + (m.l - 8) + '" y="' + (Y(v) + 4).toFixed(1) + '" text-anchor="end">' + esc(tickTxt(v)) + '</text>'; });
+    var nx = iw < 380 ? 2 : (iw < 640 ? 3 : 4), xs = [0];
+    if (n > 1) { xs = []; for (i = 0; i < nx; i++) xs.push(Math.round(i * (n - 1) / (nx - 1))); xs = uniq(xs.map(String)).map(Number); }
+    xs.forEach(function (k, j) { var anc = j === 0 ? 'start' : (j === xs.length - 1 ? 'end' : 'middle'); g += '<text class="ax" x="' + X(k).toFixed(1) + '" y="' + (H - 8) + '" text-anchor="' + anc + '">' + esc(s.xl(k)) + '</text>'; });
+    var ex = X(n - 1), ey = Y(s.ys[n - 1]);
+    s._g = { m: m, iw: iw, n: n, X: X, Y: Y, H: H };
+    return '<svg width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '">' + g +
+      '<path class="ar ' + s.cls + '" d="' + area + '"/><path class="ln ' + s.cls + '" d="' + d + '"/>' +
+      '<circle class="dot ' + s.cls + '" cx="' + ex.toFixed(1) + '" cy="' + ey.toFixed(1) + '" r="4"/>' +
+      '<g class="xh" visibility="hidden"><line class="xhl" y1="' + m.t + '" y2="' + (H - m.b) + '"/><circle class="dot ' + s.cls + '" r="4.5"/></g>' +
+      '<rect class="hit" x="' + m.l + '" y="' + m.t + '" width="' + iw + '" height="' + ih + '"/></svg>';
+  }
+  function histSvg(s, W) {
+    var H = s.h || 200, m = { l: 44, r: 12, t: 12, b: 28 }, n = s.bins.length, iw = W - m.l - m.r, ih = H - m.t - m.b, max = 1;
+    s.bins.forEach(function (b) { max = Math.max(max, b.c); });
+    var tk = niceTicks(0, max, 4), y1 = tk[tk.length - 1], bw = iw / n, g = '';
+    function Y(v) { return m.t + (y1 - v) / y1 * ih; }
+    tk.forEach(function (v) { g += '<line class="' + (v === 0 ? 'g0' : 'g') + '" x1="' + m.l + '" x2="' + (W - m.r) + '" y1="' + Y(v).toFixed(1) + '" y2="' + Y(v).toFixed(1) + '"/><text class="ax" x="' + (m.l - 8) + '" y="' + (Y(v) + 4).toFixed(1) + '" text-anchor="end">' + int(v) + '</text>'; });
+    s.bins.forEach(function (b, i) {
+      var x = m.l + i * bw, h = Y(0) - Y(b.c);
+      if (b.c > 0) g += '<rect class="bar ' + (b.mid < 0 ? 'neg' : 'pos') + '" x="' + (x + 1).toFixed(1) + '" y="' + Y(b.c).toFixed(1) + '" width="' + Math.max(1, bw - 2).toFixed(1) + '" height="' + h.toFixed(1) + '" rx="2"/>';
+      if (b.tick != null) g += '<text class="ax" x="' + (x + (b.tickAtEnd ? bw : 0)).toFixed(1) + '" y="' + (H - 8) + '" text-anchor="middle">' + esc(b.tick) + '</text>';
+      g += '<rect class="hit" data-i="' + i + '" x="' + x.toFixed(1) + '" y="' + m.t + '" width="' + bw.toFixed(1) + '" height="' + ih + '"/>';
+    });
+    return '<svg width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '">' + g + '</svg>';
+  }
+  function mountCharts(root) {
+    root.querySelectorAll('[data-chart]').forEach(function (el) {
+      var s = CH[el.getAttribute('data-chart')];
+      if (!s) return;
+      var W = Math.max(240, Math.floor(el.clientWidth));
+      el.innerHTML = s.type === 'line' ? lineSvg(s, W) : histSvg(s, W);
+    });
+  }
+  function showTip(text, x, y) {
+    var t = $('#tip');
+    t.textContent = text; t.hidden = false;
+    var w = t.offsetWidth, h = t.offsetHeight, vw = document.documentElement.clientWidth;
+    var left = x + 14; if (left + w > vw - 8) left = x - w - 14; if (left < 8) left = 8;
+    var top = y - h - 12; if (top < 8) top = y + 16;
+    t.style.left = left + 'px'; t.style.top = top + 'px';
+  }
+  function hideTip() { $('#tip').hidden = true; document.querySelectorAll('.chart .xh').forEach(function (g) { g.setAttribute('visibility', 'hidden'); }); }
+  function onChartMove(ev) {
+    var host = ev.target.closest && ev.target.closest('[data-chart]');
+    if (!host) { hideTip(); return; }
+    var s = CH[host.getAttribute('data-chart')];
+    if (!s) return;
+    if (s.type === 'line') {
+      var G = s._g, svg = host.querySelector('svg');
+      if (!G || !svg) return;
+      var rc = svg.getBoundingClientRect(), x = ev.clientX - rc.left;
+      var i = G.n <= 1 ? 0 : Math.round((x - G.m.l) / G.iw * (G.n - 1));
+      i = Math.max(0, Math.min(G.n - 1, i));
+      var xh = svg.querySelector('.xh'), cx = G.X(i), cy = G.Y(s.ys[i]);
+      xh.setAttribute('visibility', 'visible');
+      var ln = xh.querySelector('line'); ln.setAttribute('x1', cx); ln.setAttribute('x2', cx);
+      var c = xh.querySelector('circle'); c.setAttribute('cx', cx); c.setAttribute('cy', cy);
+      showTip(s.tip(i), ev.clientX, rc.top + cy);
+    } else {
+      var hit = ev.target.closest('[data-i]');
+      if (!hit) { hideTip(); return; }
+      var b = s.bins[+hit.getAttribute('data-i')];
+      showTip(b.label + '\n' + int(b.c) + ' trade' + (b.c > 1 ? 's' : ''), ev.clientX, ev.clientY);
+    }
+  }
+
+  /* ===================== bandeaux ===================== */
+  function banners(d) {
+    var h = '';
+    if (isExample()) {
+      var loading = Object.keys(S.cloud.loading).length > 0;
+      h += '<div class="banner"><span class="bi" aria-hidden="true">EX</span><div><b>' + (loading ? 'Chargement de vos fichiers enregistrés…' : 'Exemple synthétique') + '</b> · ' +
+        'ces chiffres sont générés pour montrer l’outil ; ils ne viennent pas du robot et ne disent rien de sa performance. ' +
+        'Ajoutez vos fichiers <span class="mono-in">_trades.csv</span>, <span class="mono-in">_signals.csv</span>, <span class="mono-in">_fvg.csv</span>… pour voir vos résultats réels.</div></div>';
+    } else if (!S.filters.env && d && d.envs.length > 1) {
+      h += '<div class="banner warn"><span class="bi" aria-hidden="true">!</span><div><b>Plusieurs environnements mélangés</b> (' + esc(d.envs.join(', ')) + '). ' +
+        'Les résultats de test, de démo et de compte réel s’évaluent séparément : choisissez un environnement dans les filtres.</div></div>';
+    }
+    return h;
+  }
+
+  /* ===================== vue d'ensemble ===================== */
+  function viewApercu() {
+    var d = derive(), C = criteria(d), T = filtTrades(d, true), h = banners(d);
+    if (!T.length) return h + emptyState('Aucun trade clôturé', 'Aucun trade ne correspond à ces filtres. Ajoutez un fichier <span class="mono-in">_trades.csv</span> du robot ou élargissez les filtres.');
+    var m = metrics(T, C, 1, { noMc: true }), ci = m.ci_r || [NaN, NaN];
+    var envs = uniq(T.map(function (t) { return t.env; }));
+    var nPill = m.n < 30 ? pill('échantillon trop petit', 'crit', '✕') : (m.n < 100 ? pill('échantillon insuffisant', 'warn', '!') : pill('≥ 100 trades', 'good', '✓'));
+    var ciPill = !isFinite(ci[0]) ? pill('intervalle indisponible', '', '–') : (ci[0] > 0 ? pill('IC95 au-dessus de 0', 'good', '✓') : (ci[1] < 0 ? pill('IC95 sous 0', 'crit', '✕') : pill('IC95 contient 0', 'warn', '!')));
+    h += '<div class="tiles">' +
+      tile('Trades clôturés', int(m.n), int(m.wins) + ' gagnants · ' + int(m.losses) + ' perdants', nPill) +
+      tile('Taux de réussite', pct(m.win_rate), 'gagnants / trades clôturés') +
+      tile('Espérance par trade', sgn(m.expectancy_r) + ' <small>R</small>', 'IC95 [' + fmt(ci[0]) + ' ; ' + fmt(ci[1]) + ']', ciPill) +
+      tile('Profit factor', fmt(m.profit_factor), 'gains bruts / pertes brutes') +
+      tile('Résultat net', sgn(m.net), 'devise du compte · ' + sgn(m.expectancy) + ' par trade') +
+      tile('Drawdown max', fmt(m.max_dd_r) + ' <small>R</small>', fmt(m.max_dd) + ' en devise') +
+      tile('Pertes consécutives', int(m.longest_loss_streak), 'plus longue série') +
+      tile('Durée moyenne', fmt(m.avg_duration_min, 1) + ' <small>min</small>', 'glissement moyen ' + fmt(m.avg_slippage_pts, 1) + ' pts') +
+      '</div>';
+    // courbe
+    var withR = T.filter(function (t) { return t.risk_money > 0; });
+    var useR = S.eqUnit === 'R' && withR.length > 0, base = useR ? withR : T, cum = 0, peak = 0, ys = [], dds = [];
+    base.forEach(function (t) { cum += useR ? t.r_multiple : t.net; peak = Math.max(peak, cum); ys.push(cum); dds.push(cum - peak); });
+    var unit = useR ? 'R' : 'devise';
+    function xl(i) { return dstr(base[i].close); }
+    CH.eq = { type: 'line', ys: ys, cls: 'pos', h: 240, title: 'Résultat cumulé en ' + unit, xl: xl,
+      tip: function (i) { var t = base[i]; return dtstr(t.close) + ' · trade ' + (i + 1) + '\n' + t.family + ' ' + t.dir + ' : ' + sgn(useR ? t.r_multiple : t.net) + (useR ? ' R' : '') + '\nCumul : ' + sgn(ys[i]) + (useR ? ' R' : ''); } };
+    CH.dd = { type: 'line', ys: dds, cls: 'neg', h: 130, title: 'Drawdown en ' + unit, xl: xl,
+      tip: function (i) { return dtstr(base[i].close) + '\nRecul depuis le sommet : ' + fmt(dds[i]) + (useR ? ' R' : ''); } };
+    h += '<section class="card"><div class="card-head"><h3>Résultat cumulé <span class="hint mono">' + sgn(ys[ys.length - 1]) + (useR ? ' R' : '') + ' · recul actuel ' + fmt(dds[dds.length - 1]) + (useR ? ' R' : '') + '</span></h3><div class="seg" role="group" aria-label="Unité">' +
+      '<button type="button" data-act="unit" data-v="R" aria-pressed="' + (S.eqUnit === 'R') + '">R</button><button type="button" data-act="unit" data-v="D" aria-pressed="' + (S.eqUnit !== 'R') + '">Devise</button></div></div>' +
+      chartHost('eq', CH.eq) + '<h3 style="margin:14px 0 4px;font-size:13.5px">Drawdown (recul depuis le plus haut cumulé)</h3>' + chartHost('dd', CH.dd) +
+      '<p class="hint" style="margin:8px 0 0">Axe horizontal : trades dans l’ordre de clôture (' + int(base.length) + (useR ? ' trades avec un risque défini' : ' trades') + '). Heures du serveur du courtier.</p></section>';
+    // distribution des R
+    var rs = withR.map(function (t) { return t.r_multiple; });
+    var grid = '';
+    if (rs.length) {
+      var w = 0.25, lo = -3, hi = 6, mn = Math.min.apply(null, rs), mx = Math.max.apply(null, rs);
+      var a = Math.max(lo, Math.floor(mn / w) * w), b = Math.min(hi, Math.ceil(mx / w + 1e-9) * w);
+      if (b - a > 6) w = 0.5;
+      a = Math.max(lo, Math.floor(mn / w) * w); b = Math.min(hi, Math.ceil(mx / w + 1e-9) * w); if (b <= a) b = a + w;
+      var nb = Math.round((b - a) / w), bins = [];
+      for (var i = 0; i < nb; i++) {
+        var bl = a + i * w, bh = bl + w;
+        bins.push({ lo: bl, hi: bh, mid: bl + w / 2, c: 0, label: (i === 0 && mn < a ? '≤ ' + fmt(bh) : '[' + fmt(bl) + ' ; ' + fmt(bh) + '[') + ' R', tick: Math.abs(bl - Math.round(bl)) < 1e-9 ? sgn(Math.round(bl), 0) : null });
+      }
+      if (mx >= b) bins[nb - 1].label = '≥ ' + fmt(bins[nb - 1].lo) + ' R';
+      rs.forEach(function (r) { var k = Math.floor((r - a) / w); bins[Math.max(0, Math.min(nb - 1, k))].c++; });
+      CH.hist = { type: 'hist', bins: bins, h: 200, title: 'Distribution des résultats en R' };
+      grid += '<section class="card"><div class="card-head"><h3>Distribution des résultats</h3><span class="hint">en R, par tranche de ' + fmt(w) + ' R</span></div>' + chartHost('hist', CH.hist) +
+        '<div class="legend"><span><i class="neg"></i>pertes</span><span><i class="pos"></i>gains ou nul</span></div></section>';
+    }
+    var lec = [];
+    if (m.n < 30) lec.push('Moins de 30 trades : pourcentages et espérance ne sont pas interprétables.');
+    else if (m.n < 100) lec.push('Moins de 100 trades : insuffisant pour le protocole (100 en développement, 50 en validation).');
+    if (isFinite(ci[0])) {
+      if (ci[0] > 0) lec.push('L’intervalle de confiance à 95 % de l’espérance est au-dessus de 0 sur ces données. Cela ne valide rien à lui seul : il faut le protocole développement / validation / test (onglet Protocole), puis la démo.');
+      else if (ci[1] < 0) lec.push('L’espérance est négative et son intervalle à 95 % est entièrement sous 0 : résultat défavorable sur ces données.');
+      else lec.push('L’intervalle de confiance de l’espérance contient 0 : aucun avantage n’est démontré sur ces données.');
+    }
+    if (envs.indexOf('BACKTEST') >= 0) lec.push('Données de test ou de rejeu : l’exécution est simulée (spread, glissement, rejets).');
+    lec.push('Résultats passés : aucune garantie pour la suite. Le score du robot n’est pas une probabilité de gain.');
+    grid += '<section class="card"><h3>Lecture</h3><ul class="lecture">' + lec.map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ul></section>';
+    h += '<div class="grid2">' + grid + '</div>';
+    h += '<div class="grid2">' + bdTable('Par famille', breakdown(T, function (t) { return t.family; }), { lab: famLabel, col: 'Famille' }) +
+      bdTable('Par session', breakdown(T, function (t) { return t.session; }), { col: 'Session' }) + '</div>';
+    h += '<p class="hint">Lignes grisées : moins de 20 trades, à ne pas interpréter. Espérance R calculée sur les trades avec un risque défini.</p>';
+    return h;
+  }
+
+  /* ===================== trades ===================== */
+  function viewTrades() {
+    var d = derive(), T = filtTrades(d, true), h = banners(d);
+    if (!T.length) return h + emptyState('Aucun trade clôturé', 'Ajoutez un fichier <span class="mono-in">_trades.csv</span> ou élargissez les filtres.');
+    var specs = [
+      ['Par famille', function (t) { return t.family; }, { lab: famLabel, col: 'Famille' }],
+      ['Par libellé d’essai', function (t) { return t.label; }, { col: 'Libellé (InpRunLabel)' }],
+      ['Par session', function (t) { return t.session; }, { col: 'Session' }],
+      ['Par sens', function (t) { return t.dir === 'BUY' ? 'achat' : (t.dir === 'SELL' ? 'vente' : t.dir); }, { col: 'Sens' }],
+      ['Par méthode de sortie', function (t) { return t.exit; }, { col: 'Sortie' }],
+      ['Par tranche de score', scoreBand, { col: 'Score', hint: 'contrôle de calibration' }],
+      ['Entrée sur retest', function (t) { return t.retest; }, { col: 'Retest' }],
+      ['Par régime à l’entrée', function (t) { return t.regime; }, { col: 'Régime' }],
+      ['Par figure de bougie retenue', function (t) { return t.candle; }, { col: 'Figure' }],
+      ['Par fraîcheur de la zone', zoneFresh, { col: 'Zone', hint: 'F5 / F6' }],
+      ['Par heure d’ouverture', function (t) { return t.open != null ? p2(new Date(t.open).getUTCHours()) + ' h' : '?'; }, { col: 'Heure (serveur)' }],
+      ['Par jour de la semaine', function (t) { return t.open != null ? new Date(t.open).getUTCDay() + ' ' + WEEK[new Date(t.open).getUTCDay()] : '?'; }, { col: 'Jour', lab: function (k) { return k.replace(/^\d /, ''); } }]
+    ];
+    h += '<div class="grid2">';
+    specs.forEach(function (s) { h += bdTable(s[0], breakdown(T, s[1]), s[2]); });
+    h += '</div><p class="hint">Lignes grisées : moins de 20 trades. Les répartitions sont descriptives : choisir un filtre sur ces tableaux sans passer par le protocole surajuste les règles au passé.</p>';
+    var last = T.slice(-60).reverse();
+    h += '<section class="card"><div class="card-head"><h3>Derniers trades</h3><span class="hint">' + int(last.length) + ' sur ' + int(T.length) + '</span></div><div class="tscroll"><table class="tbl"><thead><tr>' +
+      '<th>Clôture</th><th>Famille</th><th>Sens</th><th class="num">Score</th><th>Session</th><th>Sortie</th><th class="num">R</th><th class="num">Net</th><th class="num">Durée</th><th>Libellé</th></tr></thead><tbody>';
+    last.forEach(function (t) {
+      h += '<tr><td class="mono">' + esc(dtstr(t.close)) + '</td><td>' + esc(t.family) + '</td><td>' + esc(t.dir) + '</td><td class="num">' + fmt(t.score, 0) + '</td><td>' + esc(t.session) + '</td><td>' + esc(t.exit) +
+        '</td><td class="num ' + (t.r_multiple > 0 ? 'posv' : (t.r_multiple < 0 ? 'negv' : '')) + '">' + (t.risk_money > 0 ? sgn(t.r_multiple) : 'n/d') + '</td><td class="num">' + sgn(t.net) + '</td><td class="num">' + fmt(t.duration_s / 60, 0) + ' min</td><td>' + esc(t.label) + '</td></tr>';
+    });
+    return h + '</tbody></table></div></section>';
+  }
+
+  /* ===================== signaux ===================== */
+  function viewSignaux() {
+    var d = derive(), h = banners(d);
+    if (!d.sig.length && !d.cdl.length) return h + emptyState('Aucun journal de signaux', 'Ajoutez le fichier <span class="mono-in">_signals.csv</span> (décisions du robot : exécutés, refusés, en attente, échecs) et, si vous l’avez activé, <span class="mono-in">_bougies.csv</span>.');
+    var Sg = filtSig(d), cnt = { EXECUTE: 0, REFUS: 0, ATTENTE: 0, ECHEC: 0 }, other = 0;
+    Sg.forEach(function (s) { if (cnt[s.decision] != null) cnt[s.decision]++; else other++; });
+    if (d.sig.length) {
+      var decided = cnt.EXECUTE + cnt.REFUS + cnt.ECHEC;
+      h += '<div class="tiles">' +
+        tile('Signaux journalisés', int(Sg.length), other ? int(other) + ' autres décisions' : 'toutes décisions') +
+        tile('Exécutés', int(cnt.EXECUTE), decided ? pct(100 * cnt.EXECUTE / decided) + ' des décisions' : '') +
+        tile('Refusés', int(cnt.REFUS), 'contrôle ou score non satisfait') +
+        tile('En attente / échecs', int(cnt.ATTENTE) + ' <small>/</small> ' + int(cnt.ECHEC), 'confirmation incomplète / exécution') + '</div>';
+      var reasons = {}; Sg.forEach(function (s) { if (s.decision === 'REFUS') reasons[s.reason || '?'] = (reasons[s.reason || '?'] || 0) + 1; });
+      var top = Object.keys(reasons).map(function (k) { return [k, reasons[k]]; }).sort(function (a, b) { return b[1] - a[1]; }).slice(0, 14);
+      h += '<div class="grid2"><section class="card"><div class="card-head"><h3>Motifs de refus</h3><span class="hint">' + int(cnt.REFUS) + ' refus</span></div>' + hbars(top, cnt.REFUS) + '</section>';
+      var fam = {}; Sg.forEach(function (s) { var f = fam[s.family] = fam[s.family] || { E: 0, R: 0, A: 0, F: 0, sc: [] }; if (s.decision === 'EXECUTE') { f.E++; if (isFinite(s.score)) f.sc.push(s.score); } else if (s.decision === 'REFUS') f.R++; else if (s.decision === 'ATTENTE') f.A++; else if (s.decision === 'ECHEC') f.F++; });
+      h += '<section class="card"><h3>Décisions par famille</h3><div class="tscroll"><table class="tbl"><thead><tr><th>Famille</th><th class="num">Exécutés</th><th class="num">Refusés</th><th class="num">Attente</th><th class="num">Échecs</th><th class="num">Score moyen exécutés</th></tr></thead><tbody>';
+      Object.keys(fam).sort().forEach(function (k) { var f = fam[k]; h += '<tr><td class="k">' + esc(famLabel(k)) + '</td><td class="num">' + int(f.E) + '</td><td class="num">' + int(f.R) + '</td><td class="num">' + int(f.A) + '</td><td class="num">' + int(f.F) + '</td><td class="num">' + (f.sc.length ? fmt(sum(f.sc) / f.sc.length, 1) : 'n/d') + '</td></tr>'; });
+      h += '</tbody></table></div></section></div>';
+      var band = {}; Sg.forEach(function (s) { if (!isFinite(s.score)) return; var b = Math.floor(s.score / 10) * 10; var o = band[b] = band[b] || { E: 0, R: 0, A: 0 }; if (s.decision === 'EXECUTE') o.E++; else if (s.decision === 'REFUS') o.R++; else if (s.decision === 'ATTENTE') o.A++; });
+      h += '<section class="card"><div class="card-head"><h3>Décisions par tranche de score</h3><span class="hint">le seuil d’exécution reste celui des paramètres (80 par défaut)</span></div><div class="tscroll"><table class="tbl"><thead><tr><th>Score</th><th class="num">Exécutés</th><th class="num">Refusés</th><th class="num">Attente</th></tr></thead><tbody>';
+      Object.keys(band).map(Number).sort(function (a, b) { return a - b; }).forEach(function (b) { var o = band[b]; h += '<tr><td class="mono">' + p2(b) + '–' + p2(b + 9) + '</td><td class="num">' + int(o.E) + '</td><td class="num">' + int(o.R) + '</td><td class="num">' + int(o.A) + '</td></tr>'; });
+      h += '</tbody></table></div></section>';
+    }
+    if (d.cdl.length) {
+      var C2 = d.cdl.filter(function (c) { return envOk(c.env) && (!S.filters.label || c.label === S.filters.label) && inDates(c.time); });
+      var sts = uniq(C2.map(function (c) { return c.statut; })), fig = {};
+      C2.forEach(function (c) { var f = fig[c.figure] = fig[c.figure] || {}; f[c.statut] = (f[c.statut] || 0) + 1; });
+      h += '<section class="card"><div class="card-head"><h3>Figures de bougies</h3><span class="hint">changements d’état journalisés (M1)</span></div><div class="tscroll"><table class="tbl"><thead><tr><th>Figure</th>' +
+        sts.map(function (s) { return '<th class="num">' + esc(s) + '</th>'; }).join('') + '<th class="num">Confirmées / issues connues</th></tr></thead><tbody>';
+      Object.keys(fig).sort().forEach(function (k) {
+        var f = fig[k], conf = f['confirmée'] || 0, fin = conf + (f['invalidée'] || 0) + (f['expirée'] || 0);
+        h += '<tr><td class="k">' + esc(k) + '</td>' + sts.map(function (s) { return '<td class="num">' + int(f[s] || 0) + '</td>'; }).join('') + '<td class="num">' + (fin ? pct(100 * conf / fin) : 'n/d') + '</td></tr>';
+      });
+      h += '</tbody></table></div></section>';
+    }
+    return h;
+  }
+
+  /* ===================== zones ===================== */
+  function viewZones() {
+    var d = derive(), h = banners(d), T = filtTrades(d, true).filter(function (t) { return t.zone_id; });
+    if (!d.fvg.length && !d.ob.length && !T.length) return h + emptyState('Aucune zone journalisée', 'Ajoutez <span class="mono-in">_fvg.csv</span> et <span class="mono-in">_ob.csv</span> (paramètre de journal FVG activé), ou des trades F5 / F6 avec leur zone.');
+    h += '<div class="banner warn"><span class="bi" aria-hidden="true">!</span><div>Ces chiffres décrivent les zones détectées. Une zone détectée n’est pas une opportunité rentable : seul le résultat des trades, évalué par le protocole, renseigne sur ce point.</div></div>';
+    if (d.fvg.length) {
+      var F = filtZones(d.fvg), main = F.filter(function (z) { return !z.dup; }), n = main.length;
+      function share(fn) { var k = 0; main.forEach(function (z) { if (fn(z)) k++; }); return n ? 100 * k / n : NaN; }
+      h += '<div class="tiles">' +
+        tile('FVG suivies', int(n), int(F.length - n) + ' doublons ignorés (contenus dans une FVG de l’unité supérieure)') +
+        tile('Qualifiées', pct(share(function (z) { return z.qualified; })), 'qualité ≥ seuil F6') +
+        tile('Retestées', pct(share(function (z) { return z.retests >= 1; })), 'au moins un retour') +
+        tile('Invalidées', pct(share(function (z) { return z.status === 'invalidée'; })), 'comblées : ' + pct(share(function (z) { return z.status === 'comblée'; }))) + '</div>';
+      var byUt = {};
+      main.forEach(function (z) { var o = byUt[z.ut] = byUt[z.ut] || { n: 0, q: 0, r: 0, c: 0, i: 0, ob: 0, ql: [] }; o.n++; if (z.qualified) o.q++; if (z.retests >= 1) o.r++; if (z.status === 'comblée') o.c++; if (z.status === 'invalidée') o.i++; if (z.obConf) o.ob++; if (isFinite(z.quality)) o.ql.push(z.quality); });
+      h += '<section class="card"><h3>FVG par unité de temps</h3><div class="tscroll"><table class="tbl"><thead><tr><th>UT</th><th class="num">FVG</th><th class="num">Qualifiées</th><th class="num">Retestées</th><th class="num">Comblées</th><th class="num">Invalidées</th><th class="num">Confluence OB</th><th class="num">Qualité médiane</th></tr></thead><tbody>';
+      Object.keys(byUt).sort().forEach(function (k) { var o = byUt[k]; h += '<tr><td>' + esc(k) + '</td><td class="num">' + int(o.n) + '</td><td class="num">' + pct(100 * o.q / o.n, 0) + '</td><td class="num">' + pct(100 * o.r / o.n, 0) + '</td><td class="num">' + pct(100 * o.c / o.n, 0) + '</td><td class="num">' + pct(100 * o.i / o.n, 0) + '</td><td class="num">' + pct(100 * o.ob / o.n, 0) + '</td><td class="num">' + fmt(median(o.ql)) + '</td></tr>'; });
+      h += '</tbody></table></div></section><div class="grid2">';
+      var byQ = {};
+      main.forEach(function (z) { var k = qBand(z.quality), o = byQ[k] = byQ[k] || { n: 0, r: 0, c: 0, i: 0 }; o.n++; if (z.retests >= 1) o.r++; if (z.status === 'comblée') o.c++; if (z.status === 'invalidée') o.i++; });
+      h += '<section class="card"><div class="card-head"><h3>Qualité et devenir des FVG</h3><span class="hint">état le plus récent de chaque FVG</span></div><div class="tscroll"><table class="tbl"><thead><tr><th>Qualité</th><th class="num">FVG</th><th class="num">Retestées</th><th class="num">Comblées</th><th class="num">Invalidées</th></tr></thead><tbody>';
+      Object.keys(byQ).sort(qSort).forEach(function (k) { var o = byQ[k]; h += '<tr class="' + (o.n < 20 ? 'thin' : '') + '"><td>' + esc(k) + '</td><td class="num">' + int(o.n) + '</td><td class="num">' + pct(100 * o.r / o.n, 0) + '</td><td class="num">' + pct(100 * o.c / o.n, 0) + '</td><td class="num">' + pct(100 * o.i / o.n, 0) + '</td></tr>'; });
+      h += '</tbody></table></div></section>';
+    }
+    if (!d.fvg.length) h += '<div class="grid2">';
+    if (d.ob.length) {
+      var O = filtZones(d.ob), bc = {};
+      O.forEach(function (z) { var o = bc[z.cassure] = bc[z.cassure] || { n: 0, r: 0, i: 0, da: [] }; o.n++; if (z.retests >= 1 || z.status === 'retesté') o.r++; if (z.status === 'invalidé') o.i++; if (isFinite(z.dispAtr)) o.da.push(z.dispAtr); });
+      h += '<section class="card"><div class="card-head"><h3>Order Blocks</h3><span class="hint">' + int(O.length) + ' OB · module distinct des FVG</span></div><div class="tscroll"><table class="tbl"><thead><tr><th>Cassure d’origine</th><th class="num">OB</th><th class="num">Retestés</th><th class="num">Invalidés</th><th class="num">Déplacement médian (ATR)</th></tr></thead><tbody>';
+      Object.keys(bc).sort().forEach(function (k) { var o = bc[k]; h += '<tr><td>' + esc(k) + '</td><td class="num">' + int(o.n) + '</td><td class="num">' + pct(100 * o.r / o.n, 0) + '</td><td class="num">' + pct(100 * o.i / o.n, 0) + '</td><td class="num">' + fmt(median(o.da)) + '</td></tr>'; });
+      h += '</tbody></table></div></section>';
+    }
+    h += '</div>';
+    if (T.length) {
+      h += '<div class="grid2">' + bdTable('Trades par fraîcheur de zone', breakdown(T, zoneFresh), { col: 'Zone' }) +
+        bdTable('Trades par qualité de zone', breakdown(T, function (t) { return qBand(t.zone_quality); }, qSort), { col: 'Qualité' }) +
+        bdTable('Trades par unité de la zone', breakdown(T, function (t) { return 'M' + t.zone_id.split('|')[0]; }), { col: 'UT' }) +
+        bdTable('Trades par famille (avec zone)', breakdown(T, function (t) { return t.family; }), { col: 'Famille', lab: famLabel }) + '</div>';
+    }
+    return h;
+  }
+
+  /* ===================== protocole ===================== */
+  function autoSplits(T) {
+    var a = new Date(dstr(T[0].close) + 'T00:00:00Z').getTime(), b = new Date(dstr(T[T.length - 1].close) + 'T00:00:00Z').getTime();
+    var span = Math.round((b - a) / DAY), c1 = a + Math.floor(span * 0.6) * DAY, c2 = a + Math.floor(span * 0.8) * DAY;
+    return { devFrom: dstr(a), devTo: dstr(c1), valFrom: dstr(c1 + DAY), valTo: dstr(c2), testFrom: dstr(c2 + DAY), testTo: dstr(b) };
+  }
+  function filterVerdicts(res, groups, base, order, C) {
+    return groups.filter(function (g) { return g !== base; }).map(function (g) {
+      var reasons = [], deltas = [];
+      order.forEach(function (s) {
+        var m = (res[g + '@' + s] || {}).m || {}, r = (res[base + '@' + s] || {}).m || {}, n = m.n || 0, mn = C.min_trades[s] || 0;
+        if (n < mn) reasons.push(s + ' : ' + n + ' trades < ' + mn);
+        if (m.expectancy_r == null || r.expectancy_r == null) { reasons.push(s + ' : espérance indisponible'); deltas.push(NaN); return; }
+        var dl = m.expectancy_r - r.expectancy_r; deltas.push(dl);
+        if (!(dl > 0)) reasons.push(s + ' : écart d’espérance ' + fmt(dl) + ' R');
+      });
+      var mv = (res[g + '@val'] || {}).m || {};
+      if (!(mv.stressed_expectancy_r > C.min_stressed_expectancy_r)) reasons.push('val : espérance sous stress ' + fmt(mv.stressed_expectancy_r == null ? NaN : mv.stressed_expectancy_r) + ' R');
+      return { g: g, keep: !reasons.length, deltas: deltas, reasons: reasons };
+    });
+  }
+  function viewProtocole() {
+    var d = derive(), C = criteria(d), T = filtTrades(d, false), P = S.proto, h = banners(d);
+    if (!T.length) return h + emptyState('Aucun trade pour le protocole', 'Ajoutez un ou plusieurs fichiers <span class="mono-in">_trades.csv</span>. Pour comparer des variantes, donnez à chaque passage un libellé distinct (paramètre <span class="mono-in">InpRunLabel</span>).');
+    var auto = autoSplits(T), R = {};
+    ['devFrom', 'devTo', 'valFrom', 'valTo', 'testFrom', 'testTo'].forEach(function (k) { R[k] = P[k] || auto[k]; });
+    var gk = P.group === 'label' ? function (t) { return t.family + '|' + t.label; } : function (t) { return t.family; };
+    var groups = uniq(T.map(gk)).sort(), nVar = P.variants ? Math.max(1, parseInt(P.variants, 10) || 1) : groups.length;
+    var base = groups.indexOf(P.baseline) >= 0 ? P.baseline : '';
+    function rangeIn(id, lab, a, b) {
+      return '<div class="f"><span>' + lab + '</span><span style="display:flex;gap:6px;flex-wrap:wrap"><input type="date" id="p-' + id + 'From" value="' + esc(a) + '" aria-label="' + lab + ' : début"><input type="date" id="p-' + id + 'To" value="' + esc(b) + '" aria-label="' + lab + ' : fin"></span></div>';
+    }
+    h += '<section class="card"><div class="card-head"><h3>Réglages de l’étude</h3><span class="hint">à fixer avant de regarder les résultats</span></div><div class="filters">' +
+      '<div class="f"><label for="p-group">Regroupement</label><select id="p-group"><option value="family"' + (P.group !== 'label' ? ' selected' : '') + '>par famille</option><option value="label"' + (P.group === 'label' ? ' selected' : '') + '>par famille et libellé (A/B)</option></select></div>' +
+      rangeIn('dev', 'Développement', R.devFrom, R.devTo) + rangeIn('val', 'Validation', R.valFrom, R.valTo) + rangeIn('test', 'Test final', R.testFrom, R.testTo) +
+      '<div class="f"><label for="p-variants">Variantes testées</label><input type="number" id="p-variants" min="1" step="1" value="' + esc(P.variants || '') + '" placeholder="' + groups.length + '"></div>' +
+      '<div class="f"><label for="p-baseline">Référence (A/B)</label><select id="p-baseline"><option value="">aucune</option>' + groups.map(function (g) { return '<option' + (g === base ? ' selected' : '') + '>' + esc(g) + '</option>'; }).join('') + '</select></div>' +
+      '</div><label style="display:flex;gap:8px;align-items:flex-start;margin-top:12px;font-size:14px"><input type="checkbox" id="p-unlock"' + (P.unlock ? ' checked' : '') + ' style="margin-top:3px"> <span>Évaluer le test final hors échantillon. <span class="hint">Une seule fois, quand la sélection et les paramètres sont figés ; ensuite, toute modification devient une nouvelle variante.</span></span></label>' +
+      '<p class="hint" style="margin:10px 0 0">Périodes par défaut : 60 % / 20 % / 20 % des dates des trades. « Variantes testées » = nombre total de versions essayées pendant l’étude (correction de Bonferroni de la p-valeur), pas seulement celles affichées. Critères : ' +
+      (d.critName ? 'fichier « ' + esc(d.critName) + ' »' : 'valeurs par défaut de <span class="mono-in">tools/criteria_default.json</span>') + ' · stress des coûts +' + fmt(C.stress_extra_cost_price) + ' en prix par trade · Monte-Carlo ' + int(C.mc_paths) + ' tirages.</p></section>';
+    var splits = { dev: [dayMs(R.devFrom), dayMs(R.devTo)], val: [dayMs(R.valFrom), dayMs(R.valTo)], test: [dayMs(R.testFrom), dayMs(R.testTo)] };
+    var bad = Object.keys(splits).filter(function (s) { var x = splits[s]; return x[0] == null || x[1] == null || x[1] < x[0]; });
+    if (bad.length) return h + '<div class="note err">Période invalide : ' + esc(bad.map(function (s) { return SPLIT_NAME[s]; }).join(', ')) + ' (date de fin avant la date de début, ou date manquante).</div>';
+    if (splits.val[0] <= splits.dev[1] || splits.test[0] <= splits.val[1]) h += '<div class="banner warn"><span class="bi" aria-hidden="true">!</span><div>Les périodes se chevauchent : les échantillons ne sont plus indépendants.</div></div>';
+    var order = P.unlock ? ['dev', 'val', 'test'] : ['dev', 'val'], res = {};
+    order.forEach(function (s) {
+      var a = splits[s][0], b = splits[s][1] + DAY;
+      groups.forEach(function (g) {
+        var sub = T.filter(function (t) { return gk(t) === g && t.close >= a && t.close < b; });
+        var m = metrics(sub, C, nVar);
+        res[g + '@' + s] = { m: m, ev: evaluate(m, C, s), sub: sub };
+      });
+    });
+    order.forEach(function (s) {
+      h += '<section class="card"><div class="card-head"><h3>' + SPLIT_NAME[s] + '</h3><span class="hint mono">' + esc(R[s + 'From']) + ' → ' + esc(R[s + 'To']) + '</span></div><div class="tscroll"><table class="tbl"><thead><tr>' +
+        '<th>Groupe</th><th class="num">Trades</th><th class="num">Réussite</th><th class="num">PF</th><th class="num">Net</th><th class="num">Esp. R</th><th class="num">IC95 R</th><th class="num">p corr.</th><th class="num">DD R</th><th class="num">Série pertes</th><th class="num">Pér. +</th><th class="num">Esp. R stress</th><th>Critères</th></tr></thead><tbody>';
+      groups.forEach(function (g) {
+        var x = res[g + '@' + s], m = x.m, ok = x.ev.filter(function (e) { return e.ok; }).length, all = x.ev.length;
+        var cp = ok === all ? pill(ok + '/' + all + ' atteints', 'good', '✓') : pill(ok + '/' + all, 'crit', '✕');
+        if (!m.n) { h += '<tr class="thin"><td class="k">' + esc(g) + '</td><td class="num">0</td><td colspan="10"></td><td>' + cp + '</td></tr>'; return; }
+        var ci = m.ci_r || [NaN, NaN];
+        h += '<tr><td class="k">' + esc(g) + '</td><td class="num">' + int(m.n) + '</td><td class="num">' + pct(m.win_rate) + '</td><td class="num">' + fmt(m.profit_factor) + '</td><td class="num">' + sgn(m.net) +
+          '</td><td class="num">' + sgn(m.expectancy_r) + '</td><td class="num">[' + fmt(ci[0]) + ' ; ' + fmt(ci[1]) + ']</td><td class="num">' + fmt(m.p_adjusted, 3) + '</td><td class="num">' + fmt(m.max_dd_r) +
+          '</td><td class="num">' + int(m.longest_loss_streak) + '</td><td class="num">' + pct(100 * m.positive_period_ratio, 0) + '</td><td class="num">' + sgn(m.stressed_expectancy_r) + '</td><td>' + cp + '</td></tr>';
+      });
+      h += '</tbody></table></div>';
+      groups.forEach(function (g) {
+        var x = res[g + '@' + s];
+        h += '<details class="crit-d"><summary>' + esc(g) + ' : détail des critères</summary><ul class="crit-l">' + x.ev.map(function (e) {
+          var v = e.isInt ? int(e.v) : (e.isRatio ? pct(100 * e.v, 0) : fmt(e.v, e.nd || 2));
+          return '<li><span class="' + (e.ok ? 'ok' : 'ko') + '">' + (e.ok ? '✓ atteint' : '✕ non atteint') + '</span><span>' + esc(e.name) + ' : <b class="mono">' + esc(v) + '</b> (seuil ' + esc(e.thr) + ')</span></li>';
+        }).join('') + '</ul></details>';
+      });
+      h += '<h3 style="margin:16px 0 6px;font-size:14px">Robustesse (Monte-Carlo, tirages avec remise des résultats en R ; trades supposés indépendants)</h3><div class="tscroll"><table class="tbl"><thead><tr><th>Groupe</th><th class="num">DD médian R</th><th class="num">DD p95 R</th><th class="num">DD p99 R</th><th class="num">Total p05 R</th><th class="num">Total médian R</th><th class="num">P(total ≤ 0)</th><th class="num">Esp. R sans 5 % meilleurs</th></tr></thead><tbody>';
+      groups.forEach(function (g) {
+        var m = res[g + '@' + s].m, mc = m.mc;
+        if (!mc) return;
+        h += '<tr><td class="k">' + esc(g) + '</td><td class="num">' + fmt(mc.dd_p50) + '</td><td class="num">' + fmt(mc.dd_p95) + '</td><td class="num">' + fmt(mc.dd_p99) + '</td><td class="num">' + sgn(mc.total_p05) + '</td><td class="num">' + sgn(mc.total_p50) + '</td><td class="num">' + pct(100 * mc.p_loss) + '</td><td class="num">' + sgn(m.expectancy_r_wo_top5) + '</td></tr>';
+      });
+      h += '</tbody></table></div>';
+      if (base) {
+        var ref = res[base + '@' + s].sub.filter(function (t) { return t.risk_money > 0; }).map(function (t) { return t.r_multiple; });
+        h += '<h3 style="margin:16px 0 6px;font-size:14px">Comparaison avec la référence ' + esc(base) + ' (' + int(ref.length) + ' trades)</h3>';
+        if (!ref.length) h += '<p class="hint">Référence absente de cette période : aucune comparaison.</p>';
+        else {
+          var rm = sum(ref) / ref.length;
+          h += '<div class="tscroll"><table class="tbl"><thead><tr><th>Variante</th><th class="num">Trades</th><th class="num">Esp. R</th><th class="num">Écart</th><th class="num">IC95 de l’écart</th><th class="num">Trades vs réf.</th></tr></thead><tbody>';
+          groups.forEach(function (g) {
+            if (g === base) return;
+            var v = res[g + '@' + s].sub.filter(function (t) { return t.risk_money > 0; }).map(function (t) { return t.r_multiple; });
+            if (!v.length) { h += '<tr class="thin"><td class="k">' + esc(g) + '</td><td class="num">0</td><td colspan="4"></td></tr>'; return; }
+            var ci2 = bootstrapDiffCi(v, ref), vm = sum(v) / v.length;
+            h += '<tr><td class="k">' + esc(g) + '</td><td class="num">' + int(v.length) + '</td><td class="num">' + sgn(vm) + '</td><td class="num">' + sgn(vm - rm) + '</td><td class="num">[' + fmt(ci2[0]) + ' ; ' + fmt(ci2[1]) + ']</td><td class="num">' + pct(100 * v.length / ref.length, 0) + '</td></tr>';
+          });
+          h += '</tbody></table></div><p class="hint">Variantes rejouées sur les mêmes données de marché : échantillons non indépendants, intervalle indicatif.</p>';
+        }
+      }
+      h += '</section>';
+    });
+    if (base) {
+      var vd = filterVerdicts(res, groups, base, order, C);
+      h += '<section class="card"><div class="card-head"><h3>Verdict des filtres</h3><span class="hint">référence : ' + esc(base) + '</span></div><div class="tscroll"><table class="tbl"><thead><tr><th>Variante</th><th>Verdict</th>' +
+        order.map(function (s) { return '<th class="num">Écart R (' + s + ')</th>'; }).join('') + '<th>Motifs</th></tr></thead><tbody>';
+      vd.forEach(function (v) {
+        h += '<tr><td class="k">' + esc(v.g) + '</td><td>' + (v.keep ? pill('CONSERVER (candidat)', 'good', '✓') : pill('DÉSACTIVER', 'crit', '✕')) + '</td>' + v.deltas.map(function (x) { return '<td class="num">' + sgn(x) + '</td>'; }).join('') +
+          '<td>' + esc(v.reasons.length ? v.reasons.join(' ; ') : '—') + '</td></tr>';
+      });
+      h += '</tbody></table></div><p class="hint">Règle pré-enregistrée : un filtre n’est conservé que s’il améliore l’espérance R de la référence en développement ET en validation (et au test final s’il est évalué), avec assez de trades et une espérance sous stress positive en validation. Un filtre conservé reste un candidat : test final puis démo.</p></section>';
+    }
+    var elig = [];
+    groups.forEach(function (g) {
+      var okD = res[g + '@dev'].ev.every(function (e) { return e.ok; }), okV = res[g + '@val'].ev.every(function (e) { return e.ok; });
+      if (okD && okV) { var ci = res[g + '@val'].m.ci_r || [-Infinity, 0]; elig.push([ci[0], g]); }
+    });
+    h += '<section class="card"><h3>Décision selon les critères pré-enregistrés</h3><div class="decision prose">';
+    if (!elig.length) {
+      h += '<p><b>Aucun groupe ne satisfait les critères en développement ET en validation.</b> Aucune stratégie n’est retenue : le robot reste en recherche ou en démo. Toute modification devient une nouvelle version à retester (et compte dans le nombre de variantes).</p>';
+    } else {
+      elig.sort(function (a, b) { return b[0] - a[0]; });
+      var best = elig[0][1];
+      h += '<p>Groupes satisfaisant les critères (classés par borne basse de l’IC95 en validation) : ' + esc(elig.map(function (e) { return e[1] + ' (' + fmt(e[0]) + ')'; }).join(', ')) + '.</p><p><b>Candidat : ' + esc(best) + '.</b> Ce n’est pas une validation pour le compte réel.</p>';
+      if (P.unlock) {
+        var tok = res[best + '@test'].ev.every(function (e) { return e.ok; });
+        h += tok ? '<p>Test final hors échantillon : critères atteints. Étape suivante : période de démo (spreads, glissement et rejets réels du courtier), puis examen des risques résiduels avant toute utilisation réelle, au risque minimal.</p>'
+          : '<p>Test final hors échantillon : <b>critères non atteints</b>. Ne pas utiliser ce candidat en réel ; retour en recherche.</p>';
+      } else h += '<p>Étape suivante : figer le candidat et ses paramètres, puis évaluer une seule fois le test final (case ci-dessus).</p>';
+    }
+    h += '<p class="hint">Résultats passés : aucune garantie pour la suite. Le score de signal n’est pas une probabilité. Intervalles bootstrap et Monte-Carlo avec des tirages pseudo-aléatoires fixes : ils peuvent différer légèrement de ceux de <span class="mono-in">tools/analyze_trades.py</span>.</p></div></section>';
+    return h;
+  }
+
+  /* ===================== fichiers ===================== */
+  function cloudLine() {
+    var c = S.cloud;
+    if (c.state === 'absent') return pill('Hors de claude.ai', '', '·') + ' <span class="hint">Les fichiers restent sur cet appareil ; ils ne sont envoyés nulle part.</span>';
+    if (c.state === 'connexion') return pill('Connexion au stockage…', '', '…');
+    if (c.state === 'indisponible') return pill('Stockage indisponible', 'warn', '!') + ' <span class="hint">Les fichiers restent sur cet appareil pour cette visite.</span>';
+    if (c.state === 'erreur') return pill('Stockage interrompu', 'crit', '✕') + ' <span class="hint">Rechargez la page pour retrouver vos fichiers enregistrés.</span>';
+    if (!c.assets) return pill('Lecture seule', 'warn', '!') + ' <span class="hint">Vous voyez vos fichiers enregistrés mais cette vue ne permet pas d’en ajouter.</span>';
+    return pill('Synchronisé', 'good', '✓') + ' <span class="hint">Les fichiers enregistrés s’ouvrent automatiquement sur votre ordinateur et votre téléphone.</span>';
+  }
+  function canSave() { var c = S.cloud; return c.state === 'pret' && c.assets && c.db && c.uid; }
+  function viewFichiers() {
+    var d = derive(), c = S.cloud, h = '';
+    h += '<section class="card"><div class="drop" id="drop"><h3 style="margin:0">Fichiers du robot</h3><p>Déposez ici les fichiers CSV écrits par le robot, ou choisissez-les. Ils sont lus dans le navigateur : rien n’est calculé ailleurs.</p>' +
+      '<label class="btn primary" for="file-in2">Choisir des fichiers</label><input id="file-in2" class="vh" type="file" multiple accept=".csv,.txt,.json,text/csv,text/plain,application/json">' +
+      '<div>' + cloudLine() + '</div></div></section>';
+    var local = S.files;
+    h += '<section class="card"><div class="card-head"><h3>Fichiers analysés</h3>' +
+      (canSave() && local.some(function (f) { return f.origin === 'local'; }) ? '<button type="button" class="btn sm primary" data-act="saveall">Enregistrer tout pour mes autres appareils</button>' : '') + '</div>';
+    if (!local.length) h += '<p class="hint" style="margin:0">Aucun fichier : les autres onglets affichent un exemple synthétique.</p>';
+    else {
+      h += '<div class="flist">';
+      local.forEach(function (f) {
+        var per = f.kind === 'criteres' ? null : filePeriod(f);
+        h += '<div class="fi"><div style="min-width:0"><div class="fn">' + esc(f.name) + '</div><div class="fm">' + pill(KIND_LABEL[f.kind] || f.kind, 'gold') +
+          (f.kind !== 'criteres' ? '<span>' + int(f.rows.length) + ' lignes</span>' : '') + (per ? '<span class="mono">' + esc(per[0]) + ' → ' + esc(per[1]) + '</span>' : '') +
+          (f.env !== '?' ? '<span>' + esc(f.env) + '</span>' : '') +
+          (f.bad ? pill(int(f.bad) + ' lignes mal formées', 'warn', '!') : '') +
+          (f.origin === 'saved' ? pill('enregistré', 'good', '✓') : pill('cet appareil', '', '·')) + '</div></div><div class="fa">' +
+          (f.origin === 'local' && canSave() ? '<button type="button" class="btn sm" data-act="save" data-id="' + f.id + '"' + (f.saving ? ' disabled' : '') + '>' + (f.saving ? 'Enregistrement…' : 'Enregistrer') + '</button>' : '') +
+          '<button type="button" class="btn sm" data-act="remove" data-id="' + f.id + '">Retirer de l’analyse</button></div></div>';
+      });
+      h += '</div>';
+    }
+    h += '</section>';
+    if (c.state === 'pret') {
+      h += '<section class="card"><div class="card-head"><h3>Fichiers enregistrés</h3><span class="hint">' + int(c.docs.length) + ' fichier' + (c.docs.length > 1 ? 's' : '') + ' · privés : vous seul voyez cette liste</span></div>';
+      if (!c.docs.length) h += '<p class="hint" style="margin:0">Aucun fichier enregistré. Ajoutez vos fichiers sur l’ordinateur puis « Enregistrer » : ils s’ouvriront aussi sur votre téléphone.</p>';
+      else {
+        h += '<div class="flist">';
+        c.docs.forEach(function (x) {
+          var err = c.errs[x.assetId], ld = !!c.loading[x.assetId], del = S.pendingDel === x.id;
+          h += '<div class="fi"><div style="min-width:0"><div class="fn">' + esc(x.nom) + '</div><div class="fm">' + pill(KIND_LABEL[x.genre] || x.genre || '?', 'gold') +
+            (x.lignes != null ? '<span>' + int(x.lignes) + ' lignes</span>' : '') + (x.debut ? '<span class="mono">' + esc(x.debut) + ' → ' + esc(x.fin) + '</span>' : '') +
+            '<span>ajouté le ' + esc(String(x.ajoute || '').slice(0, 10)) + '</span>' + (ld ? pill('chargement…', '', '…') : '') + (err ? pill(err, 'crit', '✕') : '') + '</div></div><div class="fa">' +
+            '<label style="display:flex;gap:6px;align-items:center;font-size:13px"><input type="checkbox" data-act="toggle" data-doc="' + esc(x.id) + '"' + (x.actif ? ' checked' : '') + '> inclus dans l’analyse</label>' +
+            (c.assets ? '<button type="button" class="btn sm danger" data-act="del" data-doc="' + esc(x.id) + '">' + (del ? 'Confirmer la suppression' : 'Supprimer') + '</button>' : '') + '</div></div>';
+        });
+        h += '</div>';
+      }
+      h += '</section>';
+    }
+    h += '<section class="card"><h3>Où trouver les fichiers</h3><div class="prose">' +
+      '<p>Le robot écrit ses journaux dans le dossier commun des terminaux MetaTrader 5 : dans MT5, <b>Fichier → Ouvrir le dossier des données</b>, puis remonter jusqu’à <code>Terminal\\Common\\Files\\GLS\\</code>.</p>' +
+      '<p>Noms : <code>GLS_&lt;environnement&gt;_&lt;compte&gt;_&lt;symbole&gt;_trades.csv</code>, puis <code>_signals.csv</code>, <code>_fvg.csv</code>, <code>_ob.csv</code>, <code>_bougies.csv</code>, <code>_journal.csv</code>. Les rejeux de <code>tests/run_validation.sh</code> sont dans <code>validation/&lt;horodatage&gt;/</code>. Un fichier de critères JSON (comme <code>tools/criteria_default.json</code>) remplace les critères par défaut du protocole.</p>' +
+      '<p>Sur téléphone : ouvrez cette page avec le même compte ; les fichiers enregistrés depuis l’ordinateur se chargent seuls. Aucun identifiant de compte de trading ni mot de passe n’est demandé ni stocké.</p></div></section>';
+    if (d.jr.length) {
+      var J = d.jr.filter(function (j) { return envOk(j.env); }), lv = {};
+      J.forEach(function (j) { lv[j.niveau] = (lv[j.niveau] || 0) + 1; });
+      var errs = J.filter(function (j) { return /ERR|AVERT|WARN|CRIT/.test(j.niveau); }).slice(-20).reverse();
+      h += '<section class="card"><div class="card-head"><h3>Journal du robot</h3><span class="hint">' + int(J.length) + ' lignes</span></div>' + hbars(Object.keys(lv).sort().map(function (k) { return [k, lv[k]]; }), J.length);
+      if (errs.length) {
+        h += '<h3 style="margin:14px 0 6px;font-size:14px">Dernières erreurs</h3><div class="tscroll"><table class="tbl"><thead><tr><th>Heure (serveur)</th><th>Niveau</th><th>Catégorie</th><th>Message</th></tr></thead><tbody>';
+        errs.forEach(function (j) { h += '<tr><td class="mono">' + esc(j.raw) + '</td><td>' + esc(j.niveau) + '</td><td>' + esc(j.cat) + '</td><td>' + esc(j.msg) + '</td></tr>'; });
+        h += '</tbody></table></div>';
+      }
+      h += '</section>';
+    }
+    return h;
+  }
+
+  /* ===================== rendu ===================== */
+  var VIEWS = { apercu: viewApercu, trades: viewTrades, signaux: viewSignaux, zones: viewZones, protocole: viewProtocole, fichiers: viewFichiers };
+  function renderHead() {
+    var d = derive(), sp = $('#srcpill');
+    if (isExample()) { sp.className = 'pill gold'; sp.textContent = Object.keys(S.cloud.loading).length ? 'Chargement…' : 'Exemple synthétique'; }
+    else {
+      var nf = S.files.filter(function (f) { return f.kind !== 'criteres'; }).length;
+      sp.className = 'pill'; sp.textContent = nf + ' fichier' + (nf > 1 ? 's' : '') + ' · ' + int(d.trades.length) + ' trades';
+    }
+    $('#tabs').innerHTML = TABS.map(function (t) { return '<button type="button" class="tab" role="tab" data-act="tab" data-v="' + t[0] + '" aria-selected="' + (S.tab === t[0]) + '">' + t[1] + '</button>'; }).join('');
+    var n = $('#note');
+    if (S.notice) { n.hidden = false; n.className = 'note' + (S.notice.err ? ' err' : ''); n.textContent = S.notice.msg; } else n.hidden = true;
+  }
+  function opt(v, cur, lab) { return '<option value="' + esc(v) + '"' + (v === cur ? ' selected' : '') + '>' + esc(lab == null ? v : lab) + '</option>'; }
+  function renderFilters() {
+    var box = $('#filters');
+    if (!DATA_TABS[S.tab] && S.tab !== 'protocole') { box.hidden = true; return; }
+    var d = derive(), f = S.filters, proto = S.tab === 'protocole';
+    box.hidden = false;
+    box.innerHTML = '<div class="filters">' +
+      '<div class="f"><label for="f-env">Environnement</label><select id="f-env">' + opt('', f.env, 'tous') + d.envs.map(function (e) { return opt(e, f.env); }).join('') + '</select></div>' +
+      '<div class="f"><label for="f-family">Famille</label><select id="f-family">' + opt('', f.family, 'toutes') + d.families.map(function (e) { return opt(e, f.family, famLabel(e)); }).join('') + '</select></div>' +
+      '<div class="f"><label for="f-label">Libellé d’essai</label><select id="f-label">' + opt('', f.label, 'tous') + d.labels.map(function (e) { return opt(e, f.label); }).join('') + '</select></div>' +
+      '<div class="f"><label for="f-dir">Sens</label><select id="f-dir">' + opt('', f.dir, 'les deux') + opt('BUY', f.dir, 'achat') + opt('SELL', f.dir, 'vente') + '</select></div>' +
+      (proto ? '' : '<div class="f"><label for="f-from">Du</label><input type="date" id="f-from" value="' + esc(f.from) + '"></div><div class="f"><label for="f-to">Au</label><input type="date" id="f-to" value="' + esc(f.to) + '"></div>') +
+      '<div class="f btnf"><button type="button" class="btn sm" data-act="resetf">Réinitialiser</button></div></div>' +
+      (proto ? '<p class="hint" style="margin:8px 0 0">Le protocole applique ces filtres mais découpe lui-même les dates en périodes.</p>' : '');
+  }
+  function render() {
+    renderHead(); renderFilters();
+    CH = {};
+    var v = $('#view');
+    try { v.innerHTML = VIEWS[S.tab](); }
+    catch (e) { v.innerHTML = '<div class="note err">Erreur d’affichage : ' + esc(e && e.message) + '. Vérifiez le fichier chargé.</div>'; }
+    mountCharts(v); hideTip();
+  }
+  function note(msg, err) {
+    S.notice = { msg: msg, err: !!err };
+    var stamp = S.notice;
+    setTimeout(function () { if (S.notice === stamp) { S.notice = null; renderHead(); } }, err ? 12000 : 7000);
+    renderHead();
+  }
+  function setTab(t) {
+    if (!VIEWS[t]) return;
+    S.tab = t;
+    try { localStorage.setItem('gls-tab', t); } catch (e) { /* stockage local indisponible */ }
+    try { history.replaceState(null, '', '#' + t); } catch (e) { /* cadre sans historique */ }
+    render();
+    window.scrollTo(0, 0);
+  }
+
+  /* ===================== import ===================== */
+  function readFile(file) {
+    return new Promise(function (ok, ko) { var r = new FileReader(); r.onload = function () { ok(r.result); }; r.onerror = function () { ko(r.error); }; r.readAsArrayBuffer(file); });
+  }
+  function handleFiles(list) {
+    var files = Array.prototype.slice.call(list || []);
+    if (!files.length) return;
+    var okNames = [], errs = [];
+    Promise.all(files.map(function (file) {
+      return readFile(file).then(function (buf) {
+        var f = makeFile(file.name, decodeBytes(buf), 'local');
+        var dup = S.files.filter(function (x) { return x.name === f.name && x.text && x.text.length === f.text.length; })[0];
+        if (dup) S.files.splice(S.files.indexOf(dup), 1, Object.assign(f, { origin: dup.origin, assetId: dup.assetId, docId: dup.docId }));
+        else S.files.push(f);
+        okNames.push(f.name);
+      }).catch(function (e) { errs.push(file.name + ' : ' + (e && e.message ? e.message : 'lecture impossible')); });
+    })).then(function () {
+      S.ver++;
+      if (errs.length) note(errs.join(' · '), true);
+      else if (okNames.length) note(okNames.length + ' fichier' + (okNames.length > 1 ? 's' : '') + ' analysé' + (okNames.length > 1 ? 's' : '') + (canSave() ? ' sur cet appareil. Onglet Fichiers : « Enregistrer » pour les retrouver sur vos autres appareils.' : '.'));
+      if (S.tab === 'fichiers' && okNames.length && !errs.length) S.tab = 'apercu';
+      render();
+    });
+  }
+
+  /* ===================== stockage (claude.ai) ===================== */
+  function errText(e) {
+    var code = (e && e.code) || '';
+    var t = {
+      too_large: 'Fichier trop volumineux pour l’enregistrement (20 Mo au maximum). Il reste analysé sur cet appareil.',
+      quota_or_state: 'Espace de stockage plein : supprimez d’anciens fichiers enregistrés.',
+      quota_exceeded: 'Espace de stockage plein : supprimez d’anciens fichiers enregistrés.',
+      rate_limited: 'Trop de demandes rapprochées : réessayez dans un instant.',
+      resource_exhausted: 'Trop de demandes rapprochées : réessayez dans un instant.',
+      not_granted: 'Enregistrement non autorisé dans cette vue.',
+      capability_disabled: 'Enregistrement indisponible dans cette vue.',
+      capability_removed: 'Enregistrement indisponible dans cette vue.',
+      invalid_argument: 'Écriture refusée : droits insuffisants sur cette page.',
+      unsupported_type: 'Type de fichier refusé par le stockage.',
+      invalid_request: 'Fichier refusé par le stockage (encodage).',
+      store_unavailable: 'Stockage momentanément indisponible : réessayez.',
+      unavailable: 'Stockage momentanément indisponible : réessayez.',
+      upstream_auth: 'Session expirée : rechargez la page.'
+    }[code];
+    return t || ('Échec de l’enregistrement' + (code ? ' (' + code + ')' : '') + '.');
+  }
+  function saveFile(f) {
+    var c = S.cloud;
+    if (!canSave() || f.origin !== 'local' || f.saving) return Promise.resolve();
+    f.saving = true; render();
+    var type = f.kind === 'criteres' ? 'application/json' : 'text/csv', blob = new Blob([f.text], { type: type }), up = null;
+    if (blob.size > 20 * 1024 * 1024) { f.saving = false; note(f.name + ' : ' + errText({ code: 'too_large' }), true); render(); return Promise.resolve(); }
+    var per = f.kind === 'criteres' ? null : filePeriod(f);
+    return c.assets.upload(blob, { type: type }).then(function (res) {
+      up = res;
+      var ref = c.db.collection('data/users/' + c.uid).doc();
+      f.docId = ref.id;
+      return ref.set({ type: 'fichier', nom: f.name, genre: f.kind, lignes: f.rows.length, octets: res.sizeBytes, assetId: res.id,
+        ajoute: new Date().toISOString(), debut: per ? per[0] : '', fin: per ? per[1] : '', actif: true });
+    }).then(function () {
+      f.origin = 'saved'; f.assetId = up.id;
+      note('« ' + f.name + ' » enregistré : il s’ouvrira aussi sur vos autres appareils.');
+    }).catch(function (e) {
+      if (up) c.assets.delete(up.id).catch(function () { /* fichier orphelin : rien d'autre à faire */ });
+      f.docId = null;
+      note(f.name + ' : ' + errText(e), true);
+    }).then(function () { f.saving = false; render(); });
+  }
+  function syncSaved() {
+    var c = S.cloud, changed = false;
+    S.files.slice().forEach(function (f) {
+      if (f.origin !== 'saved') return;
+      var doc = c.docs.filter(function (x) { return x.assetId === f.assetId; })[0];
+      if (!doc || !doc.actif) { S.files.splice(S.files.indexOf(f), 1); changed = true; }
+    });
+    c.docs.forEach(function (x) {
+      if (!x.actif || c.loading[x.assetId] || c.errs[x.assetId]) return;
+      if (S.files.some(function (f) { return f.assetId === x.assetId; })) return;
+      c.loading[x.assetId] = 1;
+      fetch('/_blob/' + x.assetId).then(function (r) {
+        if (!r.ok) throw new Error(r.status === 404 ? 'fichier introuvable' : 'erreur ' + r.status);
+        return r.arrayBuffer();
+      }).then(function (buf) {
+        if (!S.files.some(function (f) { return f.assetId === x.assetId; })) S.files.push(makeFile(x.nom, decodeBytes(buf), 'saved', { assetId: x.assetId, docId: x.id }));
+        S.ver++;
+      }).catch(function (e) { c.errs[x.assetId] = 'lecture impossible : ' + (e && e.message ? e.message : '?'); })
+        .then(function () { delete c.loading[x.assetId]; render(); });
+    });
+    if (changed) S.ver++;
+  }
+  function docRef(id) { return S.cloud.db.doc('data/users/' + S.cloud.uid + '/' + id); }
+  function toggleDoc(id, on) {
+    var x = S.cloud.docs.filter(function (d) { return d.id === id; })[0];
+    if (!x) return;
+    docRef(id).update({ actif: on }).catch(function (e) { note(errText(e), true); render(); });
+  }
+  function deleteDoc(id) {
+    var c = S.cloud, x = c.docs.filter(function (d) { return d.id === id; })[0];
+    if (!x || !c.assets) return;
+    if (S.pendingDel !== id) {
+      S.pendingDel = id; render();
+      setTimeout(function () { if (S.pendingDel === id) { S.pendingDel = null; render(); } }, 5000);
+      return;
+    }
+    S.pendingDel = null;
+    c.assets.delete(x.assetId).then(function () { return docRef(id).delete(); }).then(function () {
+      S.files = S.files.filter(function (f) { return f.assetId !== x.assetId; });
+      S.ver++; note('« ' + x.nom + ' » supprimé.'); render();
+    }).catch(function (e) { note(errText(e), true); render(); });
+  }
+  function initCloud() {
+    var cl = window.claude;
+    if (!cl || typeof cl.use !== 'function') { S.cloud.state = 'absent'; render(); return; }
+    function use(n) { return cl.use(n).catch(function () { return null; }); }
+    Promise.all([use('db'), use('user'), use('assets')]).then(function (r) {
+      var c = S.cloud;
+      c.db = r[0]; c.user = r[1]; c.assets = r[2];
+      return c.user ? c.user.id().catch(function () { return null; }) : null;
+    }).then(function (uid) {
+      var c = S.cloud;
+      c.uid = uid;
+      if (!c.db || !uid) { c.state = 'indisponible'; render(); return; }
+      c.state = 'pret';
+      c.db.collection('data/users/' + uid).onSnapshot(function (snap) {
+        c.docs = snap.docs.filter(function (x) { return x.exists; }).map(function (x) { return Object.assign({ id: x.id }, x.data()); })
+          .filter(function (x) { return x.type === 'fichier' && x.assetId; })
+          .sort(function (a, b) { return String(b.ajoute).localeCompare(String(a.ajoute)); });
+        c.first = true;
+        syncSaved(); render();
+      }, function (e) { c.state = 'erreur'; c.err = e && e.code; render(); });
+      render();
+    });
+  }
+
+  /* ===================== événements ===================== */
+  document.addEventListener('click', function (ev) {
+    var b = ev.target.closest('[data-act]');
+    if (!b || b.tagName === 'INPUT') return;
+    var a = b.getAttribute('data-act');
+    if (a === 'tab') setTab(b.getAttribute('data-v'));
+    else if (a === 'unit') { S.eqUnit = b.getAttribute('data-v'); render(); }
+    else if (a === 'resetf') { S.filters = { env: '', family: '', label: '', dir: '', from: '', to: '' }; render(); }
+    else if (a === 'save') { var f = S.files.filter(function (x) { return x.id === b.getAttribute('data-id'); })[0]; if (f) saveFile(f); }
+    else if (a === 'saveall') { S.files.filter(function (x) { return x.origin === 'local'; }).reduce(function (p, f) { return p.then(function () { return saveFile(f); }); }, Promise.resolve()); }
+    else if (a === 'remove') {
+      var id = b.getAttribute('data-id'), g = S.files.filter(function (x) { return x.id === id; })[0];
+      if (!g) return;
+      if (g.origin === 'saved' && g.docId && S.cloud.state === 'pret') toggleDoc(g.docId, false);
+      else { S.files.splice(S.files.indexOf(g), 1); S.ver++; render(); }
+    }
+    else if (a === 'del') deleteDoc(b.getAttribute('data-doc'));
+  });
+  document.addEventListener('change', function (ev) {
+    var t = ev.target, id = t.id || '';
+    if (id === 'file-in' || id === 'file-in2') { handleFiles(t.files); t.value = ''; return; }
+    if (t.getAttribute('data-act') === 'toggle') { toggleDoc(t.getAttribute('data-doc'), t.checked); return; }
+    if (id.indexOf('f-') === 0) { S.filters[id.slice(2)] = t.value; render(); return; }
+    if (id.indexOf('p-') === 0) {
+      var k = id.slice(2);
+      S.proto[k] = t.type === 'checkbox' ? t.checked : t.value;
+      render();
+    }
+  });
+  document.addEventListener('dragover', function (ev) { ev.preventDefault(); var z = $('#drop'); if (z) z.classList.add('over'); });
+  document.addEventListener('dragleave', function (ev) { if (ev.target === document.documentElement || ev.target.id === 'drop') { var z = $('#drop'); if (z) z.classList.remove('over'); } });
+  document.addEventListener('drop', function (ev) { ev.preventDefault(); var z = $('#drop'); if (z) z.classList.remove('over'); if (ev.dataTransfer && ev.dataTransfer.files) handleFiles(ev.dataTransfer.files); });
+  var view = $('#view');
+  view.addEventListener('pointermove', onChartMove);
+  view.addEventListener('pointerleave', hideTip);
+  document.addEventListener('scroll', hideTip, { passive: true });
+  var lastW = 0, rT = null;
+  if (window.ResizeObserver) new ResizeObserver(function () {
+    var w = view.clientWidth;
+    if (Math.abs(w - lastW) < 4) return;
+    lastW = w; clearTimeout(rT); rT = setTimeout(function () { mountCharts(view); }, 120);
+  }).observe(view);
+
+  /* ===================== démarrage ===================== */
+  var h0 = (location.hash || '').slice(1), saved = null;
+  try { saved = localStorage.getItem('gls-tab'); } catch (e) { saved = null; }
+  S.tab = VIEWS[h0] ? h0 : (VIEWS[saved] ? saved : 'apercu');
+  render();
+  initCloud();
+})();
+</script>

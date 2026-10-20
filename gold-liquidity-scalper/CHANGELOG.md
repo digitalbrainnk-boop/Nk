@@ -6,6 +6,20 @@ peuvent pas être mélangés avec ceux d'une version précédente, et elle doit 
 retestée (développement, validation, test final, démo). Aucune version n'est
 déployée automatiquement sur un compte réel.
 
+## Application d'analyse (outillage, sans changement de règles de l'EA)
+
+- `app/analyse.html` : analyse des journaux réels du robot dans un navigateur
+  (ordinateur et téléphone) : vue d'ensemble, répartitions des trades, signaux et
+  motifs de refus, figures de bougies, FVG / Order Blocks, protocole de validation
+  (mêmes critères et même règle de décision que `tools/analyze_trades.py`),
+  journal des erreurs. Exemple synthétique clairement signalé tant qu'aucun fichier
+  n'est chargé. Enregistrement facultatif des fichiers dans l'espace privé de
+  l'application pour les retrouver sur un autre appareil.
+- `tests/check_app_stats.py` (appelé par `tests/run_checks.sh`) : les indicateurs
+  calculés par la page sont identiques à ceux de l'outil Python sur un même fichier.
+
+L'EA reste en version 1.11.1 ; aucune règle de décision n'est modifiée.
+
 ## 1.11.1 — corrections de compatibilité MQL5 (revue sans MetaEditor)
 
 MetaEditor étant inaccessible depuis l'environnement de développement, une revue

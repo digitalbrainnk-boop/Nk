@@ -76,6 +76,7 @@ gold-liquidity-scalper/
 ├── CHANGELOG.md                     historique des versions
 ├── tester/sets/*.set                paramètres du testeur (une famille par fichier, comparaisons A/B)
 ├── tester/ini/*.ini                 modèle de lancement du testeur en ligne de commande
+├── app/analyse.html                application d'analyse des journaux (navigateur, ordinateur et téléphone)
 ├── tools/analyze_trades.py          analyse statistique et décision (Python 3, sans dépendance)
 ├── tests/compile_metaeditor.sh      compilation réelle par MetaEditor sous Wine (accès MetaQuotes requis)
 ├── tests/run_validation.sh          rejeu sur barres M1 réelles exportées de MT5 + protocole statistique
@@ -386,6 +387,29 @@ régime, test final verrouillé, puis démo. L'outil `tools/analyze_trades.py`
 produit le rapport et applique la règle de décision ; si aucune famille ne
 satisfait les critères, **aucune n'est retenue**. Aucun paramètre n'est jamais
 modifié automatiquement.
+
+### Application d'analyse (ordinateur et téléphone)
+
+`app/analyse.html` lit les fichiers CSV du robot (`_trades`, `_signals`, `_fvg`, `_ob`,
+`_bougies`, `_journal`) et affiche : indicateurs (réussite, espérance en R avec
+intervalle de confiance, profit factor, drawdown, série de pertes), résultat cumulé
+et drawdown, distribution des résultats, répartitions (famille, libellé, session,
+sortie, tranche de score, régime, figure, fraîcheur de zone, heure, jour), décisions
+et motifs de refus, devenir des FVG et des Order Blocks, et le protocole complet
+(développement / validation / test verrouillé, critères pré-enregistrés,
+Monte-Carlo, comparaison A/B, verdict des filtres).
+
+- **Version en ligne** (claude.ai, privée) : les fichiers ajoutés sur l'ordinateur
+  peuvent être enregistrés avec l'application et se rouvrent seuls sur le téléphone.
+- **Version locale** : ouvrir `app/analyse.html` dans un navigateur ; les fichiers
+  restent sur l'appareil.
+
+Sans fichier, l'application affiche un **exemple synthétique** signalé comme tel :
+aucun chiffre affiché n'est inventé ni présenté comme un résultat du robot. Les
+calculs reprennent ceux de `tools/analyze_trades.py` (vérifié par
+`tests/check_app_stats.py` ; seuls les tirages bootstrap et Monte-Carlo diffèrent
+légèrement). L'application ne se connecte ni au terminal ni au compte et ne demande
+aucun identifiant.
 
 ## 12. Vérifications réalisées
 
