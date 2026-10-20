@@ -61,6 +61,16 @@ Dans une conversation, bouton **🎵 Créer la chanson** : l'IA écrit titre, st
 - Réglages → **Répondre en vocal** : jamais, quand le client envoie un vocal, ou toujours. Voix ElevenLabs via ta clé Kie.ai (bouton « Écouter cette voix »). Avec ffmpeg installé, c'est une vraie note vocale.
 - **Démo automatique** : quand un client hésite, l'agent prépare un extrait avec Suno (une fois par client) ; tu l'écoutes avant de l'envoyer.
 
+### Composition guidée des chansons (texte → validation → Suno)
+
+1. L'agent rassemble les infos (pour qui, prénoms, occasion, anecdotes, style, langue).
+2. Il **écrit le texte** et l'envoie au client pour validation (en Brouillon, tu le relis d'abord).
+3. Le client demande un changement → **nouvelle version** corrigée.
+4. Le client valide → **Suno compose** avec le texte validé (option : seulement après paiement enregistré).
+5. Tu écoutes les versions et cliques **Envoyer au client** (option : envoi automatique).
+
+Tout est visible et modifiable dans le panneau 📦 Commande → « Texte de la chanson » (Écrire / Envoyer / Composer maintenant).
+
 ### Numéros ignorés, vocaux et crédits
 
 - **Ne jamais répondre** : Réglages → liste de numéros (avec ou sans indicatif, ou @pseudo Telegram), ou bouton « 🚫 Ne jamais répondre » dans une conversation. Les messages sont gardés, l'agent ne répond pas.

@@ -12,6 +12,7 @@ import {
   deleteContact,
   deleteKnowledge,
   exampleStats,
+  activeOrder,
   contactKey,
   creditStats,
   deleteOrder,
@@ -33,7 +34,17 @@ import {
   upsertContact,
 } from "./db.js";
 import { bus } from "./events.js";
-import { approveDraft, createSong, handleIncoming, rejectDraft, runFollowups, schedule, sendManual } from "./router.js";
+import {
+  approveDraft,
+  createSong,
+  handleIncoming,
+  proposeLyrics,
+  rejectDraft,
+  runFollowups,
+  schedule,
+  sendManual,
+  startComposition,
+} from "./router.js";
 import { TTS_VOICES } from "./tts.js";
 import { HOOK_EVENTS, deliveryLog, emitHook, runAction, testHook } from "./integrations.js";
 import { buildStyleProfile, friendlyError, songBrief } from "./agent.js";
@@ -179,7 +190,13 @@ app.post("/api/orders", wrap(async (req, res) => {
   const c = getContact(saved.contact_id);
   const contact = { id: c.id, name: c.name, channel: c.channel, phone: c.meta?.phone || null };
   emitHook("order.updated", { contact, order: saved });
-  if (saved.paid > (before?.paid || 0)) emitHook("order.paid", { contact, order: saved, amount: saved.paid - (before?.paid || 0) });
+  if (saved.paid > (before?.paid || 0)) {
+    emitHook("order.paid", { contact, order: saved, amount: saved.paid - (before?.paid || 0) });
+    // Texte déjà validé, on attendait le paiement : la composition démarre.
+    if (saved.lyrics_status === "validated" && getSettings().compose_requires_payment) {
+      startComposition(saved.contact_id).catch((e) => console.error("Composition :", e.message));
+    }
+  }
   res.json(saved);
 }));
 app.delete("/api/orders/:id", (req, res) => {
@@ -260,6 +277,26 @@ app.post("/api/tts/preview", wrap(async (req, res) => {
   res.json({ url: audio.url });
 }));
 
+// Processus chanson : écrire / corriger le texte et l'envoyer, ou composer tout de suite.
+app.post("/api/contacts/:id/lyrics", wrap(async (req, res) => {
+  try {
+    res.json(await proposeLyrics(Number(req.params.id), { revise: !!req.body?.revise, notes: String(req.body?.notes || "") }));
+  } catch (e) {
+    res.status(400).json({ error: friendlyError(e) });
+  }
+}));
+app.post("/api/contacts/:id/lyrics/send", wrap(async (req, res) => {
+  // Envoie au client le texte tel que tu l'as corrigé dans le panneau Commande.
+  const id = Number(req.params.id);
+  const order = activeOrder(id);
+  if (!order?.lyrics) throw new Error("Aucun texte à envoyer.");
+  saveOrder({ id: order.id, lyrics_status: "proposed" });
+  await sendManual(id, `🎵 ${order.song_title || order.title || "Ta chanson"}\n\n${order.lyrics}\n\nDis-moi si ce texte te plaît, ou ce que tu veux changer 😊`);
+  res.json({ ok: true });
+}));
+app.post("/api/contacts/:id/compose", wrap(async (req, res) => {
+  res.json(await startComposition(Number(req.params.id)));
+}));
 app.post("/api/contacts/:id/song/brief", wrap(async (req, res) => {
   try {
     res.json(await songBrief(getContact(Number(req.params.id))));

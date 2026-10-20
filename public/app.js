@@ -295,6 +295,13 @@ const STAGES = {
   livree: "Livrée",
   annulee: "Annulée",
 };
+const LYRICS_STATUS = {
+  "": "Pas encore de texte.",
+  proposed: "📤 Texte envoyé au client, en attente de sa réponse.",
+  validated: "✅ Texte validé par le client.",
+  composing: "🎵 Composition en cours avec Suno…",
+  composed: "🎧 Chanson composée : écoute-la dans la conversation.",
+};
 const credits = (n) => `${(Math.round(Number(n || 0) * 10) / 10).toLocaleString("fr-FR")} crédits`;
 const money = (n) => `${Math.round(Number(n) || 0).toLocaleString("fr-FR")} ${settings.currency || "FCFA"}`;
 
@@ -313,20 +320,60 @@ async function loadOrderBox(contactId) {
     ${field("title", "Chanson")}${field("occasion", "Occasion")}
     <div class="pair">${field("price", `Prix (${esc(settings.currency || "FCFA")})`, "number")}${field("paid", "Déjà payé", "number")}</div>
     ${field("due_date", "Pour quand")}${field("notes", "Notes")}
+    <h3>📝 Texte de la chanson</h3>
+    <p class="muted">${LYRICS_STATUS[o?.lyrics_status || ""]}${o?.lyrics_version ? ` · version ${o.lyrics_version}` : ""}</p>
+    <div class="row"><label>Titre</label><input data-k="song_title" value="${esc(o?.song_title || "")}" /></div>
+    <div class="row"><label>Style musical (pour Suno, en anglais)</label><input data-k="song_style" value="${esc(o?.song_style || "")}" placeholder="afro pop, joyful, male vocals" /></div>
+    <div class="row"><label>Paroles</label><textarea data-k="lyrics" rows="8" placeholder="L'agent écrit le texte quand il a assez d'infos, ou clique « Écrire le texte »">${esc(o?.lyrics || "")}</textarea></div>
+    <div class="btns">
+      <button class="small" id="lyrics-write">✍️ ${o?.lyrics ? "Réécrire" : "Écrire"} le texte avec l'IA</button>
+      ${o?.lyrics ? '<button class="small" id="lyrics-send">📤 Envoyer ce texte au client</button><button class="small primary" id="compose-now">🎵 Composer maintenant</button>' : ""}
+    </div>
     <div class="btns"><button class="small primary" id="order-save">${o ? "Enregistrer" : "Créer la commande"}</button>
     ${orders.length > 1 ? `<span class="muted">${orders.length} commandes au total</span>` : ""}</div>
     <p class="muted">Seul toi peux marquer un paiement : l'agent ne le fait jamais.</p><hr />`;
-  $("#order-save").onclick = async () => {
+  const saveOrderForm = async () => {
     const body = { id: o?.id, contact_id: contactId };
     for (const el of $$("#order-box [data-k]")) body[el.dataset.k] = el.type === "number" ? Number(el.value) || 0 : el.value;
+    return api("/api/orders", { method: "POST", body });
+  };
+  $("#order-save").onclick = async () => {
     try {
-      await api("/api/orders", { method: "POST", body });
+      await saveOrderForm();
       toast("Commande enregistrée");
       loadOrderBox(contactId);
     } catch (err) {
       toast(err.message);
     }
   };
+  const run = (btn, busyText, fn, okText) => async () => {
+    const label = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = busyText;
+    try {
+      await fn();
+      toast(okText);
+      loadOrderBox(contactId);
+    } catch (err) {
+      toast(err.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = label;
+    }
+  };
+  $("#lyrics-write").onclick = run($("#lyrics-write"), "L'IA écrit…", async () => {
+    if (o?.lyrics) await saveOrderForm();
+    const notes = o?.lyrics ? prompt("Ce qu'il faut changer (laisse vide pour une nouvelle version) :") ?? "" : "";
+    await api(`/api/contacts/${contactId}/lyrics`, { method: "POST", body: { revise: !!o?.lyrics, notes } });
+  }, "Texte écrit et envoyé au client (ou en brouillon si le canal est en mode Brouillon)");
+  $("#lyrics-send")?.addEventListener("click", run($("#lyrics-send"), "Envoi…", async () => {
+    await saveOrderForm();
+    await api(`/api/contacts/${contactId}/lyrics/send`, { method: "POST" });
+  }, "Texte envoyé au client"));
+  $("#compose-now")?.addEventListener("click", run($("#compose-now"), "Lancement…", async () => {
+    await saveOrderForm();
+    await api(`/api/contacts/${contactId}/compose`, { method: "POST" });
+  }, "Suno compose la chanson… elle apparaîtra dans la conversation (1 à 5 min)"));
 }
 
 // ---------- Ventes ----------

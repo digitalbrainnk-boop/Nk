@@ -13,13 +13,15 @@ import { actionsPrompt, enabledActions, runAction } from "./integrations.js";
 const useCompat = () => ["openai", "kie"].includes(getSettings().brain);
 
 const REPLY_SHAPE = `{"messages": ["bulle 1", "bulle 2"], "memory": "mémoire à jour sur ce client", "needs_human": false, "reason": "",
- "order": {"stage": null, "title": null, "occasion": null, "price": null, "due_date": null}, "demo": false, "actions": []}
+ "order": {"stage": null, "title": null, "occasion": null, "price": null, "due_date": null}, "demo": false, "actions": [],
+ "song_step": "none", "revision_notes": ""}
 - messages : 1 à 4 messages courts à envoyer (tableau vide si aucune réponse n'est nécessaire)
 - memory : prénom, occasion, chanson demandée, budget, délais, étape de la commande, préférences (concis)
 - needs_human : true si le propriétaire doit intervenir ; reason : pourquoi (vide sinon)
 - order : ce que tu sais de la commande (null si inconnu) ; stage = "nouveau" (demande en cours) ou "devis" (prix annoncé au client)
 - demo : true seulement si le client hésite et qu'un extrait de chanson pourrait le convaincre
-- actions : actions à lancer avant de répondre (tableau vide sinon), ex : [{"name": "Disponibilités", "input": "samedi"}]`;
+- actions : actions à lancer avant de répondre (tableau vide sinon), ex : [{"name": "Disponibilités", "input": "samedi"}]
+- song_step : "none", "propose_lyrics" (écrire et envoyer le texte), "revise_lyrics" (changements demandés, détaillés dans revision_notes) ou "client_validated" (le client approuve le texte)`;
 
 let client = null;
 let clientKey = null;
@@ -63,6 +65,13 @@ const ReplySchema = z.object({
     .boolean()
     .optional()
     .describe("true si le client hésite et qu'un court extrait de chanson pourrait le convaincre."),
+  song_step: z
+    .enum(["none", "propose_lyrics", "revise_lyrics", "client_validated"])
+    .optional()
+    .describe(
+      "Étape de la chanson : propose_lyrics = assez d'infos, écrire et envoyer le texte ; revise_lyrics = le client veut des changements ; client_validated = le client approuve le texte proposé.",
+    ),
+  revision_notes: z.string().optional().describe("Changements demandés par le client sur le texte (si revise_lyrics)."),
   actions: z
     .array(
       z.object({
@@ -235,6 +244,21 @@ export async function generateReply(contact, { followup = false, onAction } = {}
   const instruction = followup
     ? `Le client n'a pas répondu depuis un moment (relance n°${(contact.followups || 0) + 1}). Écris UNE relance courte, chaleureuse et naturelle, dans le style de ${s.owner_name || "le propriétaire"}, adaptée à l'étape de la commande (ex : rappeler l'offre, demander s'il a pu réfléchir, rappeler l'acompte). Jamais insistant. Si une relance n'a pas de sens ici (conversation close, client a dit non), renvoie messages vide.`
     : "Écris maintenant la prochaine réponse au client.";
+  const lyricsState = order?.lyrics
+    ? {
+        proposed: `un texte (version ${order.lyrics_version}) a été envoyé au client et attend sa réponse`,
+        validated: s.compose_requires_payment && !(order.paid > 0)
+          ? "le client a validé le texte ; la composition démarrera dès que le paiement sera reçu"
+          : "le client a validé le texte",
+        composing: "la chanson est en cours de composition",
+        composed: "la chanson est composée (elle sera envoyée après écoute)",
+      }[order.lyrics_status] || "un texte existe"
+    : "aucun texte écrit pour l'instant";
+  const songHint = s.song_flow
+    ? `
+- Chanson personnalisée (processus) : 1) rassemble l'essentiel au fil de la discussion (pour qui, prénoms, occasion, 2 ou 3 anecdotes ou qualités, ambiance/style musical, langue) ; 2) dès que tu as assez d'infos et que le client est d'accord pour avancer, mets song_step à "propose_lyrics" : le texte sera écrit et envoyé automatiquement juste après ton message — dans messages, annonce-le simplement (ex : « Je t'envoie une proposition de texte, dis-moi si ça te plaît 😊 »), n'écris jamais les paroles toi-même ; 3) si le client veut changer quelque chose dans le texte proposé : song_step = "revise_lyrics" et revision_notes = ses demandes précises ; 4) s'il approuve clairement le texte : song_step = "client_validated" et annonce que la composition démarre${s.compose_requires_payment ? " (si la commande n'est pas encore payée, rappelle que la composition démarre dès réception du paiement)" : ""}. Sinon song_step = "none".
+- État du texte de la chanson : ${lyricsState}${order?.lyrics && order.lyrics_status === "proposed" ? `\nTexte proposé (version ${order.lyrics_version}) :\n${order.lyrics.slice(0, 3000)}` : ""}`
+    : "";
   const demoHint = s.auto_demo
     ? `\n- Démo : si le client hésite, mets demo à true ; tu peux lui dire que tu vas lui préparer un petit extrait (${s.owner_name || "le propriétaire"} le validera avant envoi).`
     : "";
@@ -251,7 +275,7 @@ Exemples réels de la façon dont ${s.owner_name || "le propriétaire"} répond 
 ${formatExamples(examples)}
 
 Rappels :
-- Remplis « order » avec ce que tu sais de la commande. Ne marque jamais un paiement comme reçu : si le client dit avoir payé, mets needs_human à true pour que ${s.owner_name || "le propriétaire"} vérifie.${demoHint}
+- Remplis « order » avec ce que tu sais de la commande. Ne marque jamais un paiement comme reçu : si le client dit avoir payé, mets needs_human à true pour que ${s.owner_name || "le propriétaire"} vérifie.${demoHint}${songHint}
 
 ${instruction}`;
 
@@ -307,6 +331,8 @@ function salvageReply(p) {
         }
       : null,
     demo: p.demo === true,
+    song_step: ["propose_lyrics", "revise_lyrics", "client_validated"].includes(p.song_step) ? p.song_step : "none",
+    revision_notes: str(p.revision_notes) || "",
     actions: Array.isArray(p.actions)
       ? p.actions.filter((a) => a?.name).map((a) => ({ name: String(a.name), input: typeof a.input === "string" ? a.input : JSON.stringify(a.input ?? "") }))
       : [],
@@ -439,7 +465,7 @@ const SongBrief = z.object({
 });
 
 /** Prépare titre, style et paroles d'une chanson à partir de la conversation et de la mémoire du client. */
-export async function songBrief(contact) {
+export async function songBrief(contact, { previous, notes } = {}) {
   const s = getSettings();
   const history = listMessages(contact.id, 60)
     .filter((m) => m.status === "sent" || m.status === "received")
@@ -453,7 +479,17 @@ Mémoire du client :
 ${contact.memory || "(vide)"}
 
 Conversation :
-${history || "(vide)"}`;
+${history || "(vide)"}${
+    previous
+      ? `
+
+Version précédente du texte (à corriger, garde ce qui plaît) :
+${previous}
+
+Changements demandés par le client :
+${notes || "(voir la conversation)"}`
+      : ""
+  }`;
 
   if (useCompat()) {
     const r = await chatJSON({

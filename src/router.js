@@ -232,6 +232,13 @@ async function runAgent(contactId) {
 
   const lastPending = pending[pending.length - 1];
   await applyReply(contact, reply, mode, { clientSentVoice: lastPending.kind === "audio" });
+  if (reply.song_step && reply.song_step !== "none") {
+    await handleSongStep(contactId, reply, mode).catch((e) => {
+      console.error("Chanson :", e.message);
+      const note = addMessage(contactId, { author: "system", kind: "note", text: `⚠️ Chanson : ${friendlyError(e)}`, status: "note" });
+      emit("message", { contact_id: contactId, message: note });
+    });
+  }
 }
 
 // Trace visible (pour toi seulement) des actions lancées par l'agent.
@@ -439,7 +446,7 @@ async function sendSong(contact, m) {
  * Lance Suno en arrière-plan. Chaque version créée apparaît comme un brouillon
  * audio que le propriétaire écoute puis envoie (ou rejette).
  */
-export async function createSong(contactId, brief) {
+export async function createSong(contactId, brief, { orderId, autoSend = false } = {}) {
   const { startSong, waitSong } = await import("./suno.js");
   const { downloadToMedia } = await import("./media.js");
   const title = brief.title || "Chanson";
@@ -481,13 +488,102 @@ export async function createSong(contactId, brief) {
         title,
         tracks: tracks.map((t) => ({ title: t.title, url: t.audioUrl })),
       });
+      if (orderId) {
+        saveOrder({ id: orderId, lyrics_status: "composed" });
+        emit("order", { contact_id: contactId });
+        if (autoSend) {
+          await sendSong(getContact(contactId), getMessage(placeholder.id));
+        } else {
+          updateContact(contactId, {
+            needs_human: 1,
+            needs_human_reason: "🎵 La chanson est prête : écoute les versions et clique « Envoyer au client ».",
+          });
+          notifyOwner(getContact(contactId), "chanson prête à écouter").catch(() => {});
+        }
+      }
     } catch (e) {
       updateMessage(placeholder.id, { text: `❌ Chanson « ${title} » : ${e.message}`, status: "rejected" });
+      if (orderId) {
+        saveOrder({ id: orderId, lyrics_status: "validated" });
+        updateContact(contactId, { needs_human: 1, needs_human_reason: `La composition a échoué : ${e.message}` });
+      }
     }
     emit("message", { contact_id: contactId, message: getMessage(placeholder.id) });
     emit("contact", { contact_id: contactId });
   })();
   return { taskId, message_id: placeholder.id };
+}
+
+// ---------- Processus chanson : texte -> validation du client -> composition ----------
+
+/** Écrit (ou corrige) le texte de la chanson et l'envoie au client pour validation. */
+export async function proposeLyrics(contactId, { revise = false, notes = "", mode } = {}) {
+  const contact = getContact(contactId);
+  let order = activeOrder(contactId) || saveOrder({ contact_id: contactId, stage: "nouveau" });
+  const isRevision = revise && !!order.lyrics;
+  const brief = await withCredits({ contactId, kind: "lyrics" }, () =>
+    songBrief(contact, isRevision ? { previous: order.lyrics, notes } : {}),
+  );
+  order = saveOrder({
+    id: order.id,
+    lyrics: brief.lyrics,
+    song_title: brief.title,
+    song_style: brief.style,
+    lyrics_status: "proposed",
+    lyrics_version: (order.lyrics_version || 0) + 1,
+    title: order.title || brief.title,
+  });
+  emit("order", { contact_id: contactId });
+  const text = `🎵 ${brief.title}${isRevision ? " (version corrigée)" : ""}\n\n${brief.lyrics}\n\nDis-moi si ce texte te plaît, ou ce que tu veux changer 😊`;
+  if ((mode || channelMode(contact.channel)) === "draft") {
+    const msg = addMessage(contactId, { author: "agent", text, status: "draft" });
+    emit("message", { contact_id: contactId, message: msg });
+  } else {
+    await deliver(contact, text, "agent");
+  }
+  return order;
+}
+
+/** Lance la composition avec Suno à partir du texte validé. */
+export async function startComposition(contactId) {
+  const order = activeOrder(contactId);
+  if (!order?.lyrics) throw new Error("Aucun texte validé pour ce client.");
+  const s = getSettings();
+  saveOrder({
+    id: order.id,
+    lyrics_status: "composing",
+    stage: ["nouveau", "devis", "acompte"].includes(order.stage) ? "creation" : order.stage,
+  });
+  emit("order", { contact_id: contactId });
+  return createSong(
+    contactId,
+    { title: order.song_title || order.title || "Chanson", style: order.song_style, lyrics: order.lyrics },
+    { orderId: order.id, autoSend: !!s.song_auto_send },
+  );
+}
+
+async function handleSongStep(contactId, reply, mode) {
+  const s = getSettings();
+  if (!s.song_flow) return;
+  if (reply.song_step === "propose_lyrics" || reply.song_step === "revise_lyrics") {
+    await proposeLyrics(contactId, { revise: reply.song_step === "revise_lyrics", notes: reply.revision_notes, mode });
+    return;
+  }
+  if (reply.song_step === "client_validated") {
+    const order = activeOrder(contactId);
+    if (!order?.lyrics || !["proposed", "validated"].includes(order.lyrics_status)) return;
+    if (s.compose_requires_payment && !(order.paid > 0)) {
+      saveOrder({ id: order.id, lyrics_status: "validated" });
+      updateContact(contactId, {
+        needs_human: 1,
+        needs_human_reason: "Le client a validé le texte. La composition démarrera dès que tu enregistres son paiement.",
+      });
+      emit("order", { contact_id: contactId });
+      emit("contact", { contact_id: contactId });
+      return;
+    }
+    await startComposition(contactId);
+  }
 }
 
 /** Démo automatique : une seule fois par client, toujours en brouillon à valider. */

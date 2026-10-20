@@ -102,6 +102,18 @@ CREATE TABLE IF NOT EXISTS orders (
 );
 CREATE INDEX IF NOT EXISTS idx_orders_contact ON orders(contact_id);
 `);
+// Texte de la chanson : statut '' | proposed (envoyé au client) | validated | composing | composed
+for (const sql of [
+  "ALTER TABLE orders ADD COLUMN lyrics TEXT NOT NULL DEFAULT ''",
+  "ALTER TABLE orders ADD COLUMN song_title TEXT NOT NULL DEFAULT ''",
+  "ALTER TABLE orders ADD COLUMN song_style TEXT NOT NULL DEFAULT ''",
+  "ALTER TABLE orders ADD COLUMN lyrics_status TEXT NOT NULL DEFAULT ''",
+  "ALTER TABLE orders ADD COLUMN lyrics_version INTEGER NOT NULL DEFAULT 0",
+]) {
+  try {
+    db.exec(sql);
+  } catch {}
+}
 
 const now = () => Date.now();
 
@@ -128,6 +140,9 @@ export const DEFAULT_SETTINGS = {
   voice_replies: "off", // off | mirror (vocal quand le client envoie un vocal) | always
   tts_voice: "Brian",
   auto_demo: false,
+  song_flow: true, // l'agent propose le texte, le client valide, puis Suno compose
+  compose_requires_payment: false, // composer seulement après un paiement enregistré
+  song_auto_send: false, // envoyer la chanson au client sans que tu l'écoutes d'abord
   history_messages: 40,
   whatsapp_learning_only: false,
   whatsapp_enabled: false,
@@ -414,7 +429,7 @@ export function listOrders({ contactId } = {}) {
 }
 
 export function saveOrder(o) {
-  const fields = ["stage", "title", "occasion", "price", "paid", "due_date", "notes"];
+  const fields = ["stage", "title", "occasion", "price", "paid", "due_date", "notes", "lyrics", "song_title", "song_style", "lyrics_status", "lyrics_version"];
   if (o.stage && !STAGES.includes(o.stage)) throw new Error(`Étape inconnue : ${o.stage}`);
   if (o.id) {
     const cur = getOrder(o.id);
@@ -423,14 +438,32 @@ export function saveOrder(o) {
     for (const f of fields) if (o[f] !== undefined && o[f] !== null) next[f] = o[f];
     const delivered = next.stage === "livree" && cur.stage !== "livree" ? now() : cur.delivered_at;
     db.prepare(
-      `UPDATE orders SET stage=?, title=?, occasion=?, price=?, paid=?, due_date=?, notes=?, updated_at=?, delivered_at=? WHERE id=?`,
-    ).run(next.stage, next.title, next.occasion, Number(next.price) || 0, Number(next.paid) || 0, next.due_date, next.notes, now(), delivered, o.id);
+      `UPDATE orders SET stage=?, title=?, occasion=?, price=?, paid=?, due_date=?, notes=?, lyrics=?, song_title=?, song_style=?,
+       lyrics_status=?, lyrics_version=?, updated_at=?, delivered_at=? WHERE id=?`,
+    ).run(
+      next.stage,
+      next.title,
+      next.occasion,
+      Number(next.price) || 0,
+      Number(next.paid) || 0,
+      next.due_date,
+      next.notes,
+      next.lyrics || "",
+      next.song_title || "",
+      next.song_style || "",
+      next.lyrics_status || "",
+      Number(next.lyrics_version) || 0,
+      now(),
+      delivered,
+      o.id,
+    );
     return getOrder(o.id);
   }
   const r = db
     .prepare(
-      `INSERT INTO orders(contact_id, stage, title, occasion, price, paid, due_date, notes, created_at, updated_at, delivered_at)
-       VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
+      `INSERT INTO orders(contact_id, stage, title, occasion, price, paid, due_date, notes, lyrics, song_title, song_style,
+         lyrics_status, lyrics_version, created_at, updated_at, delivered_at)
+       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     )
     .run(
       o.contact_id,
@@ -441,6 +474,11 @@ export function saveOrder(o) {
       Number(o.paid) || 0,
       o.due_date || "",
       o.notes || "",
+      o.lyrics || "",
+      o.song_title || "",
+      o.song_style || "",
+      o.lyrics_status || "",
+      Number(o.lyrics_version) || 0,
       now(),
       now(),
       o.stage === "livree" ? now() : null,
