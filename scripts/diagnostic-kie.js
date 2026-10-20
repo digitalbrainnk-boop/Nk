@@ -1,7 +1,7 @@
 // Diagnostic de la connexion Kie.ai (ne montre jamais la clé en entier).
 // Utilisation dans Termux :  cd ~/Nk && node scripts/diagnostic-kie.js
 import { getSettings, setSettings } from "../src/db.js";
-import { kieCandidates, kieKey } from "../src/openai-compat.js";
+import { discoverKie, kieKey, probeKie } from "../src/openai-compat.js";
 
 const key = kieKey();
 const s = getSettings();
@@ -29,23 +29,25 @@ console.log("\n1) Crédit du compte Kie");
 const credit = await call("https://api.kie.ai/api/v1/chat/credit", { method: "GET" });
 console.log(`   ${credit.status} → ${credit.body}`);
 
-console.log("\n2) Cerveau (chat DeepSeek)");
-let found = null;
-for (const c of kieCandidates()) {
-  const r = await call(c.url, {
-    method: "POST",
-    body: JSON.stringify({ model: c.model, messages: [{ role: "user", content: "Dis bonjour." }], max_tokens: 50 }),
-  });
-  const ok = r.status === 200 && /"choices"/.test(r.body);
-  console.log(`   ${ok ? "✅" : "❌"} ${c.url}  (modèle ${c.model})\n      ${r.status} → ${r.body}`);
-  if (ok) {
-    found = c;
-    break;
-  }
+console.log("\n2) Documentation officielle de Kie (lue depuis ton téléphone)");
+let docs = [];
+try {
+  docs = await discoverKie();
+  if (!docs.length) console.log("   (rien trouvé dans la documentation)");
+  for (const d of docs.slice(0, 8)) console.log(`   • ${d.model}  →  ${d.url.replace("https://api.kie.ai", "")}`);
+} catch (e) {
+  console.log(`   Impossible de lire docs.kie.ai : ${e.message}`);
 }
-if (found) {
+
+console.log("\n3) Recherche d'un cerveau qui répond");
+const short = (t) => String(t).replace(/\s+/g, " ").slice(0, 70);
+try {
+  const found = await probeKie({
+    onTry: (c, e) => console.log(`   ${e ? "❌" : "✅"} ${c.model} @ ${c.url.replace("https://api.kie.ai", "")}${e ? `  → ${short(show(e.message))}` : ""}`),
+  });
   setSettings({ brain: "kie", kie_chat_model: found.model, kie_chat_url: found.url });
-  console.log(`\n✅ Connexion trouvée et enregistrée. Relance l'agent avec : agent`);
-} else {
-  console.log("\n❌ Aucune adresse n'a marché. Fais une capture de cet écran et envoie-la.");
+  console.log(`\n✅ Trouvé et enregistré : ${found.model}\n   Réponse : « ${short(found.text)} »\n   Relance l'agent avec : agent\n`);
+} catch (e) {
+  console.log(`\n❌ Aucun ne marche. Dernière erreur : ${short(show(e.message))}`);
+  console.log("   Fais une capture de cet écran et envoie-la.\n");
 }

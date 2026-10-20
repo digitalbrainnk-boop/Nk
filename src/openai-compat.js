@@ -162,11 +162,68 @@ export function kieCandidates() {
   return list;
 }
 
-export async function probeKie({ onTry } = {}) {
+/**
+ * Lit la documentation officielle de Kie (depuis l'appareil de l'utilisateur)
+ * pour trouver l'adresse et le nom exacts des modèles de chat, DeepSeek d'abord.
+ * docs.kie.ai/llms.txt liste les pages ; chaque page .md montre un exemple
+ * avec l'adresse « https://api.kie.ai/…/chat/completions » et "model": "…".
+ */
+export async function discoverKie({ fetchText = defaultFetchText } = {}) {
+  const index = await fetchText("https://docs.kie.ai/llms.txt");
+  const pageRe = /\((https:\/\/docs\.kie\.ai\/[^)\s]+?\.md)\)/g;
+  const pagesFor = (test) => {
+    const out = [];
+    for (const line of index.split("\n")) {
+      if (!test(line) || line.includes("/cn/")) continue;
+      for (const m of line.matchAll(pageRe)) if (!out.includes(m[1])) out.push(m[1]);
+    }
+    return out;
+  };
+  const deepseek = pagesFor((l) => /deepseek/i.test(l));
+  const otherChat = pagesFor((l) => /chat/i.test(l) && !/deepseek/i.test(l));
+  const pages = [...deepseek.slice(0, 4), ...otherChat.slice(0, 3)];
+  const found = [];
+  for (const page of pages) {
+    let md;
+    try {
+      md = await fetchText(page);
+    } catch {
+      continue;
+    }
+    const urls = [...new Set([...md.matchAll(/https:\/\/api\.kie\.ai\/[^\s"'`)<>\\]*chat\/completions/g)].map((m) => m[0]))];
+    if (!urls.length) continue;
+    const models = new Set();
+    for (const m of md.matchAll(/"model"\s*:\s*"([^"]+)"/g)) models.add(m[1]);
+    for (const m of md.matchAll(/^\s*model:\s*([A-Za-z0-9][\w.\/-]*)\s*$/gm)) models.add(m[1]);
+    for (const url of urls) {
+      const slug = url.match(/api\.kie\.ai\/([^/]+)\/v1\//)?.[1];
+      const names = models.size ? [...models] : [];
+      if (slug && !names.includes(slug)) names.push(slug);
+      for (const model of names) if (!found.some((c) => c.url === url && c.model === model)) found.push({ url, model, doc: page });
+    }
+  }
+  return found;
+}
+
+async function defaultFetchText(url) {
+  const res = await fetch(url, { signal: AbortSignal.timeout(15_000) });
+  if (!res.ok) throw new Error(`${url} : ${res.status}`);
+  return res.text();
+}
+
+export async function probeKie({ onTry, discover = true } = {}) {
   const key = kieKey();
   if (!key) throw new LLMError("Clé Kie.ai manquante : colle-la dans Réglages → Kie.ai.");
-  let lastError;
-  for (const c of kieCandidates()) {
+  let firstError;
+  let tries = 0;
+  // D'abord ce que dit la documentation officielle, puis nos variantes connues.
+  const fromDocs = discover ? await discoverKie().catch(() => []) : [];
+  const seen = new Set();
+  const all = [...fromDocs, ...kieCandidates()].filter((c) => {
+    const k = `${c.url}|${c.model}`;
+    return seen.has(k) ? false : seen.add(k);
+  });
+  for (const c of all) {
     try {
       const text = await post(
         { ...c, key },
@@ -177,10 +234,16 @@ export async function probeKie({ onTry } = {}) {
       return { ...c, text };
     } catch (e) {
       onTry?.(c, e);
-      lastError = e;
+      tries++;
+      firstError ??= e;
       // Clé refusée ou crédit épuisé : inutile d'essayer d'autres adresses.
       if (isKeyError(e)) throw e;
+      // Pas d'internet : inutile d'insister.
+      if (tries === 1 && !e.status && /Impossible de joindre/.test(e.message)) throw e;
     }
   }
-  throw lastError;
+  throw new LLMError(
+    `Aucun modèle de chat Kie n'a répondu (${tries} essais${fromDocs.length ? `, dont ${fromDocs.length} trouvés dans la documentation` : ", documentation Kie illisible"}). Première réponse de Kie : ${firstError?.message}`,
+    firstError?.status,
+  );
 }
