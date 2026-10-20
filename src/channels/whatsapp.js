@@ -94,7 +94,9 @@ function onReaction({ chatJid, targetId, emoji, fromMe, reactionId }) {
   // dans la discussion où l'agent te prévient) ; celle d'un client est toujours ignorée.
   const fromOwnerNumber = !!getSettings().owner_whatsapp && bare(chatJid) === ownerJid();
   if (!(fromMe || fromOwnerNumber) || !emoji) return;
-  handleOwnerReaction({ channel: "whatsapp", chatJid, targetId, emoji, ownerChat: isOwnerChat(chatJid) });
+  handleOwnerReaction({ channel: "whatsapp", chatJid, targetId, emoji, ownerChat: isOwnerChat(chatJid) }).catch((e) =>
+    console.error("Confirmation du paiement :", e.message),
+  );
 }
 
 async function onUpsert({ messages, type }) {

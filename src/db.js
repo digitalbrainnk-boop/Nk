@@ -113,11 +113,29 @@ for (const sql of [
   "ALTER TABLE orders ADD COLUMN lyrics_version INTEGER NOT NULL DEFAULT 0",
   "ALTER TABLE orders ADD COLUMN lyrics_due_at INTEGER NOT NULL DEFAULT 0",
   "ALTER TABLE orders ADD COLUMN lyrics_notes TEXT NOT NULL DEFAULT ''",
+  // Demande spéciale que TU traites toi-même (ex : chanson + vidéo lyrics, montage).
+  "ALTER TABLE orders ADD COLUMN special TEXT NOT NULL DEFAULT ''",
 ]) {
   try {
     db.exec(sql);
   } catch {}
 }
+
+// Problèmes repérés par la surveillance automatique (une ligne par problème).
+db.exec(`
+CREATE TABLE IF NOT EXISTS incidents (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  key TEXT NOT NULL UNIQUE,
+  contact_id INTEGER,
+  kind TEXT NOT NULL,
+  text TEXT NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'open', -- open | resolved
+  notified INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+`);
 
 const now = () => Date.now();
 
@@ -151,6 +169,9 @@ export const DEFAULT_SETTINGS = {
   lyrics_delay_max: 10,
   owner_whatsapp: "", // numéro où l'agent te laisse ses messages (vide = ton propre WhatsApp)
   payment_confirm_emoji: "✅", // ta réaction pour confirmer un paiement
+  watchdog_enabled: true, // vérification automatique toutes les minutes (blocages, erreurs)
+  daily_report_enabled: true, // bilan de la journée sur ton WhatsApp
+  daily_report_hour: 21, // heure du bilan (heure du téléphone)
   voice_provider: "kie", // kie (voix toute faite) | elevenlabs (TA voix clonée)
   elevenlabs_api_key: "",
   elevenlabs_voice_id: "",
@@ -442,7 +463,7 @@ export function listOrders({ contactId } = {}) {
 export function saveOrder(o) {
   const fields = [
     "stage", "title", "occasion", "price", "paid", "due_date", "notes",
-    "lyrics", "song_title", "song_style", "lyrics_status", "lyrics_version", "lyrics_due_at", "lyrics_notes",
+    "lyrics", "song_title", "song_style", "lyrics_status", "lyrics_version", "lyrics_due_at", "lyrics_notes", "special",
   ];
   if (o.stage && !STAGES.includes(o.stage)) throw new Error(`Étape inconnue : ${o.stage}`);
   if (o.id) {
@@ -453,7 +474,7 @@ export function saveOrder(o) {
     const delivered = next.stage === "livree" && cur.stage !== "livree" ? now() : cur.delivered_at;
     db.prepare(
       `UPDATE orders SET stage=?, title=?, occasion=?, price=?, paid=?, due_date=?, notes=?, lyrics=?, song_title=?, song_style=?,
-       lyrics_status=?, lyrics_version=?, lyrics_due_at=?, lyrics_notes=?, updated_at=?, delivered_at=? WHERE id=?`,
+       lyrics_status=?, lyrics_version=?, lyrics_due_at=?, lyrics_notes=?, special=?, updated_at=?, delivered_at=? WHERE id=?`,
     ).run(
       next.stage,
       next.title,
@@ -469,6 +490,7 @@ export function saveOrder(o) {
       Number(next.lyrics_version) || 0,
       Number(next.lyrics_due_at) || 0,
       next.lyrics_notes || "",
+      next.special || "",
       now(),
       delivered,
       o.id,
@@ -478,8 +500,8 @@ export function saveOrder(o) {
   const r = db
     .prepare(
       `INSERT INTO orders(contact_id, stage, title, occasion, price, paid, due_date, notes, lyrics, song_title, song_style,
-         lyrics_status, lyrics_version, created_at, updated_at, delivered_at)
-       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+         lyrics_status, lyrics_version, special, created_at, updated_at, delivered_at)
+       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     )
     .run(
       o.contact_id,
@@ -495,6 +517,7 @@ export function saveOrder(o) {
       o.song_style || "",
       o.lyrics_status || "",
       Number(o.lyrics_version) || 0,
+      o.special || "",
       now(),
       now(),
       o.stage === "livree" ? now() : null,
@@ -625,4 +648,39 @@ export function rememberOwnerNote(msgId, data) {
   const keys = Object.keys(map).sort((a, b) => map[a].at - map[b].at);
   for (const k of keys.slice(0, Math.max(0, keys.length - 200))) delete map[k];
   setSettings({ owner_notes: map });
+}
+
+// ---------- Surveillance : problèmes repérés ----------
+
+/** Signale (ou re-signale) un problème ; renvoie la ligne avec le nombre de tentatives. */
+export function reportIncident({ key, contactId = null, kind, text }) {
+  const cur = db.prepare("SELECT * FROM incidents WHERE key = ?").get(key);
+  if (cur && cur.status === "open") {
+    db.prepare("UPDATE incidents SET attempts = attempts + 1, text = ?, updated_at = ? WHERE id = ?").run(text, now(), cur.id);
+  } else if (cur) {
+    db.prepare("UPDATE incidents SET attempts = 1, text = ?, status = 'open', notified = 0, updated_at = ? WHERE id = ?").run(text, now(), cur.id);
+  } else {
+    db.prepare("INSERT INTO incidents(key, contact_id, kind, text, attempts, created_at, updated_at) VALUES(?,?,?,?,1,?,?)").run(
+      key, contactId, kind, text, now(), now(),
+    );
+  }
+  return db.prepare("SELECT * FROM incidents WHERE key = ?").get(key);
+}
+export function markIncidentNotified(id) {
+  db.prepare("UPDATE incidents SET notified = 1 WHERE id = ?").run(id);
+}
+/** Les problèmes ouverts qui n'ont pas été revus à ce tour sont réglés. */
+export function resolveIncidentsExcept(keys) {
+  const open = db.prepare("SELECT * FROM incidents WHERE status = 'open'").all();
+  const gone = open.filter((i) => !keys.has(i.key));
+  for (const i of gone) db.prepare("UPDATE incidents SET status = 'resolved', updated_at = ? WHERE id = ?").run(now(), i.id);
+  return gone;
+}
+export function listIncidents({ since = 0 } = {}) {
+  return db
+    .prepare(
+      `SELECT i.*, c.name AS contact_name, c.channel, c.external_id FROM incidents i
+       LEFT JOIN contacts c ON c.id = i.contact_id WHERE i.updated_at >= ? ORDER BY i.updated_at DESC LIMIT 200`,
+    )
+    .all(since);
 }

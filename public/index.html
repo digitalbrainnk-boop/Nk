@@ -110,6 +110,18 @@
       <div class="sales">
         <div class="kpis" id="kpis"></div>
         <div class="card">
+          <div class="head-row"><h2>📊 Bilan du jour</h2>
+            <div class="btns" style="margin:0"><input type="date" id="report-day" /><button id="report-send" class="small">M'envoyer le bilan sur WhatsApp</button></div></div>
+          <p class="muted">Envoyé aussi automatiquement chaque soir sur ton WhatsApp (heure réglable dans Réglages).</p>
+          <pre id="report-text" class="report"></pre>
+        </div>
+        <div class="card">
+          <div class="head-row"><h2>🛟 Problèmes repérés (7 derniers jours)</h2>
+            <div class="btns" style="margin:0"><button id="watchdog-run" class="small">Vérifier maintenant</button></div></div>
+          <p class="muted">Chaque minute, l'agent relit les conversations et les commandes : message resté sans réponse, texte promis mais pas envoyé, composition ratée ou bloquée, chanson pas livrée, paiement qui attend ta vérification. Il réessaie tout seul, et te prévient sur ton WhatsApp s'il n'y arrive pas.</p>
+          <div id="incidents"></div>
+        </div>
+        <div class="card">
           <h2>Encaissé par semaine</h2>
           <p class="muted">Montants payés enregistrés sur les commandes, 8 dernières semaines.</p>
           <div id="chart-paid" class="chart"></div>
@@ -287,6 +299,10 @@
         <div class="row"><label>Ton numéro WhatsApp pour recevoir les messages de l'agent (avec indicatif, ex : 22670123456). Vide = ta propre discussion « moi » sur le WhatsApp connecté</label><input id="owner_whatsapp" placeholder="226…" /></div>
         <div class="row"><label>Emoji de confirmation du paiement</label><input id="payment_confirm_emoji" placeholder="✅" maxlength="8" /></div>
         <p class="muted">L'agent te laisse aussi un message sur ce WhatsApp quand il ne comprend pas quelque chose.</p>
+        <h2>🛟 Surveillance et bilan du jour</h2>
+        <label class="check"><input type="checkbox" id="watchdog_enabled" /> Vérifier chaque minute qu'aucun client n'est bloqué (et me prévenir des problèmes)</label>
+        <label class="check"><input type="checkbox" id="daily_report_enabled" /> M'envoyer chaque soir le bilan de la journée sur WhatsApp (chansons livrées, en cours, problèmes)</label>
+        <div class="row"><label>Heure du bilan (0 à 23, heure du téléphone)</label><input type="number" id="daily_report_hour" min="0" max="23" /></div>
         <h2>Répondre en vocal</h2>
         <p class="muted">Si ffmpeg est installé (Termux : <code>pkg install ffmpeg</code>), le vocal s'affiche comme une vraie note vocale.</p>
         <div class="row"><label>Voix utilisée</label>
@@ -317,7 +333,7 @@
         <div class="row"><label>Clé API transcription</label><input id="transcription_api_key" /></div>
         <div class="row"><label>Adresse du service</label><input id="transcription_url" /></div>
         <div class="row"><label>Modèle</label><input id="transcription_model" /></div>
-        <button class="primary save-settings" data-keys="currency,followup_enabled,followup_hours,followup_max,song_flow,compose_requires_payment,song_auto_send,auto_demo,lyrics_delay_min,lyrics_delay_max,owner_whatsapp,payment_confirm_emoji,voice_replies,voice_provider,tts_voice,elevenlabs_api_key,elevenlabs_voice_id,brain,kie_api_key,kie_chat_model,suno_model,llm_url,llm_api_key,llm_model,anthropic_api_key,model,effort,debounce_seconds,min_reply_delay_seconds,max_reply_delay_seconds,typing_chars_per_second,owner_takeover_hours,history_messages,transcription_api_key,transcription_url,transcription_model">Enregistrer</button>
+        <button class="primary save-settings" data-keys="currency,followup_enabled,followup_hours,followup_max,song_flow,compose_requires_payment,song_auto_send,auto_demo,lyrics_delay_min,lyrics_delay_max,owner_whatsapp,payment_confirm_emoji,watchdog_enabled,daily_report_enabled,daily_report_hour,voice_replies,voice_provider,tts_voice,elevenlabs_api_key,elevenlabs_voice_id,brain,kie_api_key,kie_chat_model,suno_model,llm_url,llm_api_key,llm_model,anthropic_api_key,model,effort,debounce_seconds,min_reply_delay_seconds,max_reply_delay_seconds,typing_chars_per_second,owner_takeover_hours,history_messages,transcription_api_key,transcription_url,transcription_model">Enregistrer</button>
       </div>
     </section>
   </div>

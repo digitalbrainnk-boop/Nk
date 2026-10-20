@@ -165,6 +165,11 @@ export function schedule(contactId, delaySeconds) {
   );
 }
 
+/** L'agent est en train de traiter (ou va traiter) ce client. */
+export function isBusy(contactId) {
+  return busy.has(contactId) || timers.has(contactId);
+}
+
 function cancel(contactId) {
   const t = timers.get(contactId);
   if (t) clearTimeout(t);
@@ -235,6 +240,7 @@ async function runAgent(contactId) {
 
   const lastPending = pending[pending.length - 1];
   await applyReply(contact, reply, mode, { clientSentVoice: lastPending.kind === "audio" });
+  if (reply.special_request) await handleSpecialRequest(contactId, reply.special_request);
   if (reply.song_step && reply.song_step !== "none") {
     await handleSongStep(contactId, reply, mode).catch((e) => {
       console.error("Chanson :", e.message);
@@ -291,7 +297,7 @@ async function applyReply(contact, reply, mode, { clientSentVoice = false, follo
     console.error("Commande :", e.message);
   }
   // (Un paiement annoncé a son propre message pour toi, avec la capture.)
-  if (reply.needs_human && reply.song_step !== "payment_claimed") notifyOwner(contact, reply.reason).catch(() => {});
+  if (reply.needs_human && reply.song_step !== "payment_claimed" && !reply.special_request) notifyOwner(contact, reply.reason).catch(() => {});
   if (reply.demo) maybeAutoDemo(contactId).catch((e) => console.error("Démo :", e.message));
   if (!reply.messages.length) {
     // Silence voulu (ex. « ok merci ») ou problème : dans ce cas on l'affiche.
@@ -421,7 +427,7 @@ export async function approveDraft(messageId, editedText) {
 
 // ---------- Chansons (Suno) ----------
 
-async function sendSong(contact, m) {
+export async function sendSong(contact, m) {
   const adapter = adapters.get(contact.channel);
   if (!adapter && contact.channel !== "test") throw new Error(`Canal ${contact.channel} non connecté`);
   let externalMsgId = null;
@@ -559,11 +565,18 @@ export async function startComposition(contactId) {
     stage: ["nouveau", "devis", "acompte"].includes(order.stage) ? "creation" : order.stage,
   });
   emit("order", { contact_id: contactId });
-  return createSong(
-    contactId,
-    { title: order.song_title || order.title || "Chanson", style: order.song_style, lyrics: order.lyrics },
-    { orderId: order.id, autoSend: !!s.song_auto_send },
-  );
+  try {
+    return await createSong(
+      contactId,
+      { title: order.song_title || order.title || "Chanson", style: order.song_style, lyrics: order.lyrics },
+      { orderId: order.id, autoSend: !!s.song_auto_send },
+    );
+  } catch (e) {
+    // Suno n'a pas pu démarrer (crédit, clé…) : on revient à « validé » pour pouvoir relancer.
+    saveOrder({ id: order.id, lyrics_status: "validated" });
+    emit("order", { contact_id: contactId });
+    throw e;
+  }
 }
 
 /**
@@ -602,15 +615,36 @@ export async function runLyricsQueue(at = Date.now()) {
       n++;
     } catch (e) {
       console.error("Texte de chanson :", e.message);
-      saveOrder({ id: o.id, lyrics_status: "writing", lyrics_due_at: Date.now() + 60_000 }); // nouvel essai dans 1 min
+      // Nouvel essai dans 1 min ; l'erreur est gardée pour la surveillance.
+      const tries = (Number(opts.tries) || 0) + 1;
+      saveOrder({
+        id: o.id,
+        lyrics_status: "writing",
+        lyrics_due_at: Date.now() + 60_000,
+        lyrics_notes: JSON.stringify({ ...opts, tries, error: friendlyError(e) }),
+      });
     }
   }
   return n;
 }
 
+/** Chanson + vidéo lyrics, montage… : c'est TOI qui t'en occupes. */
+async function handleSpecialRequest(contactId, what) {
+  let order = activeOrder(contactId) || saveOrder({ contact_id: contactId, stage: "nouveau" });
+  if (order.special) return; // déjà signalé
+  order = saveOrder({ id: order.id, special: String(what).slice(0, 200) });
+  emit("order", { contact_id: contactId });
+  const reason = `🎬 Demande spéciale à faire par toi : ${order.special}`;
+  updateContact(contactId, { needs_human: 1, needs_human_reason: reason });
+  emit("contact", { contact_id: contactId });
+  await notifyOwner(getContact(contactId), `${reason}
+(L'agent ne lance rien automatiquement pour cette commande.)`, { kind: "special", plain: true }).catch(() => {});
+}
+
 async function handleSongStep(contactId, reply, mode) {
   const s = getSettings();
   if (!s.song_flow) return;
+  if (activeOrder(contactId)?.special) return; // commande spéciale : tu la gères toi-même
   const contact = getContact(contactId);
   if (reply.song_step === "propose_lyrics" || reply.song_step === "revise_lyrics") {
     const revise = reply.song_step === "revise_lyrics";
@@ -787,23 +821,32 @@ export async function sendManual(contactId, text) {
 
 export async function notifyOwner(contact, reason, { kind, orderId, imagePath, imageMime, plain = false } = {}) {
   if (kind !== "payment") emitHook("needs_human", { contact: who(contact), reason });
-  const s = getSettings();
   const phone = contact.meta?.phone ? ` +${contact.meta.phone}` : "";
   const text = `${plain ? "" : "🔔 "}${contact.name || contact.external_id} (${contact.channel}${phone})${plain ? "\n" : " a besoin de toi : "}${reason}`;
-  // Sur TON WhatsApp (ton numéro ou ta discussion « moi »).
+  const id = await messageOwner(text, { imagePath, imageMime });
+  if (id && id !== true) rememberOwnerNote(id, { contactId: contact.id, orderId, kind: kind || "info" });
+}
+
+/**
+ * Message pour TOI : sur ton WhatsApp (ton numéro ou ta discussion « moi »),
+ * sinon sur Telegram. Renvoie l'identifiant du message (ou true), null si rien n'a pu partir.
+ */
+export async function messageOwner(text, { imagePath, imageMime } = {}) {
   const wa = adapters.get("whatsapp");
   if (wa?.notifyOwner) {
     try {
       const id = await wa.notifyOwner(text, { imagePath, imageMime });
-      if (id) {
-        rememberSent("whatsapp", "owner", text, id);
-        rememberOwnerNote(id, { contactId: contact.id, orderId, kind: kind || "info" });
-      }
-      return;
+      if (id) rememberSent("whatsapp", "owner", text, id);
+      return id || true;
     } catch (e) {
       console.error("Message WhatsApp pour toi :", e.message);
     }
   }
+  const s = getSettings();
   const tg = adapters.get("telegram");
-  if (s.owner_telegram_chat_id && tg?.notify) await tg.notify(s.owner_telegram_chat_id, text);
+  if (s.owner_telegram_chat_id && tg?.notify) {
+    await tg.notify(s.owner_telegram_chat_id, text);
+    return true;
+  }
+  return null;
 }

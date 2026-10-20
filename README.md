@@ -74,6 +74,12 @@ Dans une conversation, bouton **🎵 Créer la chanson** : l'IA écrit titre, st
 
 Si l'agent ne comprend pas un message, il te laisse aussi un message sur ton WhatsApp (ton numéro réglé dans Réglages, ou ta discussion « moi »).
 
+### Surveillance automatique et bilan du jour
+
+- **Chaque minute**, l'agent relit les conversations et les commandes et relance tout seul ce qui est bloqué : message de client resté sans réponse (erreur, coupure), texte promis mais jamais envoyé, composition ratée (Suno en panne, crédit) ou bloquée, chanson prête mais pas livrée. S'il n'y arrive pas après quelques essais, il te prévient sur ton WhatsApp, puis te dit « ✅ Réglé » quand c'est résolu. Il te rappelle aussi un paiement qui attend ta vérification depuis 30 minutes.
+- **Chaque soir** (21 h par défaut), il t'envoie le **bilan du jour** : nombre et liste des clients à qui une chanson a été composée et envoyée, ce qui est en cours (texte, paiement, composition), les demandes à faire par toi et les problèmes du jour. Aussi visible dans l'onglet **Ventes** (avec la liste des problèmes).
+- **Chanson + vidéo lyrics / montage / clip** : l'agent ne le fait pas. Il dit au client que tu t'en occupes personnellement, te prévient et ne lance rien automatiquement pour cette commande (champ « Demande spéciale » du panneau Commande).
+
 ### Numéros ignorés, vocaux et crédits
 
 - **Ne jamais répondre** : Réglages → liste de numéros (avec ou sans indicatif, ou @pseudo Telegram), ou bouton « 🚫 Ne jamais répondre » dans une conversation. Les messages sont gardés, l'agent ne répond pas.

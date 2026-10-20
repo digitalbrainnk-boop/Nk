@@ -32,6 +32,7 @@ import {
   updateContact,
   updateMessage,
   upsertContact,
+  listIncidents,
   DATA_DIR,
 } from "./db.js";
 import { bus } from "./events.js";
@@ -43,12 +44,14 @@ import {
   proposeLyrics,
   rejectDraft,
   runFollowups,
+  messageOwner,
   runLyricsQueue,
   schedule,
   sendManual,
   startComposition,
 } from "./router.js";
 import { TTS_VOICES } from "./tts.js";
+import { dailyReport, runWatchdog } from "./watchdog.js";
 import { HOOK_EVENTS, deliveryLog, emitHook, runAction, testHook } from "./integrations.js";
 import { buildStyleProfile, friendlyError, songBrief } from "./agent.js";
 import { chatText, probeKie } from "./openai-compat.js";
@@ -207,6 +210,18 @@ app.delete("/api/orders/:id", (req, res) => {
   res.json({ ok: true });
 });
 app.get("/api/sales", (req, res) => res.json({ ...salesStats(), currency: getSettings().currency }));
+// Bilan du jour et problèmes repérés par la surveillance.
+app.get("/api/report", (req, res) => {
+  const day = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.day || "")) ? String(req.query.day) : undefined;
+  res.json(dailyReport(day));
+});
+app.post("/api/report/send", wrap(async (req, res) => {
+  const ok = await messageOwner(dailyReport().text);
+  if (!ok) throw new Error("Impossible d'envoyer : connecte WhatsApp (onglet Canaux) ou Telegram.");
+  res.json({ ok: true });
+}));
+app.get("/api/incidents", (req, res) => res.json(listIncidents({ since: Date.now() - 7 * 24 * 3600_000 })));
+app.post("/api/watchdog/run", wrap(async (req, res) => res.json({ found: (await runWatchdog()).length })));
 app.post("/api/followups/run", wrap(async (req, res) => res.json({ sent: await runFollowups() })));
 // ---------- Applications connectées ----------
 app.get("/api/integrations", (req, res) => {
@@ -502,4 +517,6 @@ app.listen(port, () => {
   setInterval(() => runFollowups().catch((e) => console.error("Relances :", e.message)), 15 * 60_000);
   // Textes de chansons à envoyer (délai « humain », 12 minutes max) : toutes les 30 secondes.
   setInterval(() => runLyricsQueue().catch((e) => console.error("Textes :", e.message)), 30_000);
+  // Surveillance : chaque minute, on relance ce qui est bloqué et on te prévient ; bilan du soir.
+  setInterval(() => runWatchdog().catch((e) => console.error("Surveillance :", e.message)), 60_000);
 });

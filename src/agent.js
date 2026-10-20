@@ -14,14 +14,15 @@ const useCompat = () => ["openai", "kie"].includes(getSettings().brain);
 
 const REPLY_SHAPE = `{"messages": ["bulle 1", "bulle 2"], "memory": "mémoire à jour sur ce client", "needs_human": false, "reason": "",
  "order": {"stage": null, "title": null, "occasion": null, "price": null, "due_date": null}, "demo": false, "actions": [],
- "song_step": "none", "revision_notes": ""}
+ "song_step": "none", "revision_notes": "", "special_request": ""}
 - messages : 1 à 4 messages courts à envoyer (tableau vide si aucune réponse n'est nécessaire)
 - memory : prénom, occasion, chanson demandée, budget, délais, étape de la commande, préférences (concis)
 - needs_human : true si le propriétaire doit intervenir ; reason : pourquoi (vide sinon)
 - order : ce que tu sais de la commande (null si inconnu) ; stage = "nouveau" (demande en cours) ou "devis" (prix annoncé au client)
 - demo : true seulement si le client hésite et qu'un extrait de chanson pourrait le convaincre
 - actions : actions à lancer avant de répondre (tableau vide sinon), ex : [{"name": "Disponibilités", "input": "samedi"}]
-- song_step : "none", "propose_lyrics" (écrire et envoyer le texte), "revise_lyrics" (changements demandés, détaillés dans revision_notes), "client_validated" (le client approuve le texte) ou "payment_claimed" (le client dit avoir payé / envoie une preuve de paiement)`;
+- song_step : "none", "propose_lyrics" (écrire et envoyer le texte), "revise_lyrics" (changements demandés, détaillés dans revision_notes), "client_validated" (le client approuve le texte) ou "payment_claimed" (le client dit avoir payé / envoie une preuve de paiement)
+- special_request : vide, sauf si le client demande un service vidéo (vidéo lyrics, clip, montage…) : décris-le en quelques mots`;
 
 let client = null;
 let clientKey = null;
@@ -72,6 +73,10 @@ const ReplySchema = z.object({
       "Étape de la chanson : propose_lyrics = le client a confirmé que tu as toutes les infos, écrire et envoyer le texte ; revise_lyrics = le client veut des changements ; client_validated = le client approuve le texte proposé ; payment_claimed = le client dit avoir payé ou envoie une preuve de paiement.",
     ),
   revision_notes: z.string().optional().describe("Changements demandés par le client sur le texte (si revise_lyrics)."),
+  special_request: z
+    .string()
+    .optional()
+    .describe("Service que seul le propriétaire fait (chanson + vidéo lyrics, clip, montage…), décrit en quelques mots ; vide sinon."),
   actions: z
     .array(
       z.object({
@@ -261,6 +266,12 @@ export async function generateReply(contact, { followup = false, onAction } = {}
   const payInfo = s.compose_requires_payment
     ? `5) Dès qu'il a validé le texte, demande-lui de passer au paiement (montant${order?.price ? ` : ${order.price} ${s.currency}` : ""} et moyens de paiement indiqués dans les fiches ; s'il n'y en a pas, demande-lui comment il souhaite payer et mets needs_human à true) et de t'envoyer la capture ou la référence du paiement ; précise qu'il reçoit sa chanson environ 10 minutes après la vérification du paiement. 6) Quand le client dit avoir payé ou envoie une capture de paiement : song_step = "payment_claimed", remercie-le et dis-lui que tu vérifies le paiement et que tu lui envoies sa chanson juste après. Ne dis JAMAIS que le paiement est reçu ou vérifié, ne lance jamais la composition toi-même : seul ${s.owner_name || "le propriétaire"} confirme le paiement (une capture peut être fausse).`
     : "5) La chanson est alors composée et envoyée au client automatiquement.";
+  const owner = s.owner_name || "le propriétaire";
+  const specialHint = order?.special
+    ? `
+- ⚠️ Commande spéciale (« ${order.special} ») : c'est ${owner} qui s'en occupe personnellement. Ne lance AUCUNE étape de chanson (song_step = "none") ; réponds simplement et dis que ${owner} revient vers lui.`
+    : `
+- Services vidéo (chanson + vidéo lyrics, clip, montage vidéo…) : tu ne les fais pas toi-même. Si le client en demande un, dis-lui chaleureusement que ${owner} s'en occupe personnellement et revient vers lui très vite, mets special_request = ce qu'il veut (ex : « chanson + vidéo lyrics ») et song_step = "none".`;
   const songHint = s.song_flow
     ? `
 - Chanson personnalisée (processus) : 1) rassemble l'essentiel au fil de la discussion (pour qui, prénoms, occasion, 2 ou 3 anecdotes ou qualités, ambiance/style musical, langue) ; 2) quand le client t'a donné ses informations, demande-lui TOUJOURS d'abord si c'est tout ou s'il veut ajouter quelque chose (ex : « C'est noté 👌 Est-ce que c'est toutes les infos ou tu veux ajouter quelque chose ? ») ; 3) seulement quand il confirme que c'est complet, mets song_step à "propose_lyrics" : le texte sera écrit et envoyé automatiquement — dans messages, dis-lui que tu t'y mets et qu'il reçoit le texte d'ici ${Math.min(12, Math.max(1, Number(s.lyrics_delay_max) || 10))} minutes maximum ; n'écris jamais les paroles toi-même ; 4) si le client veut changer quelque chose dans le texte proposé : song_step = "revise_lyrics" et revision_notes = ses demandes précises ; s'il approuve clairement le texte : song_step = "client_validated". ${payInfo} Sinon song_step = "none". Ne remets pas la même étape si elle est déjà en cours (voir l'état ci-dessous).
@@ -283,7 +294,7 @@ Exemples réels de la façon dont ${s.owner_name || "le propriétaire"} répond 
 ${formatExamples(examples)}
 
 Rappels :
-- Remplis « order » avec ce que tu sais de la commande. Ne marque jamais un paiement comme reçu : si le client dit avoir payé, mets ${s.song_flow ? 'song_step à "payment_claimed"' : "needs_human à true"} pour que ${s.owner_name || "le propriétaire"} vérifie.${demoHint}${songHint}
+- Remplis « order » avec ce que tu sais de la commande. Ne marque jamais un paiement comme reçu : si le client dit avoir payé, mets ${s.song_flow ? 'song_step à "payment_claimed"' : "needs_human à true"} pour que ${s.owner_name || "le propriétaire"} vérifie.${demoHint}${songHint}${specialHint}
 
 ${instruction}`;
 
@@ -341,6 +352,7 @@ function salvageReply(p) {
     demo: p.demo === true,
     song_step: ["propose_lyrics", "revise_lyrics", "client_validated", "payment_claimed"].includes(p.song_step) ? p.song_step : "none",
     revision_notes: str(p.revision_notes) || "",
+    special_request: str(p.special_request) || "",
     actions: Array.isArray(p.actions)
       ? p.actions.filter((a) => a?.name).map((a) => ({ name: String(a.name), input: typeof a.input === "string" ? a.input : JSON.stringify(a.input ?? "") }))
       : [],

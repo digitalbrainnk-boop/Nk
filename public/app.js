@@ -323,6 +323,7 @@ async function loadOrderBox(contactId) {
     <div class="pair">${field("price", `Prix (${esc(settings.currency || "FCFA")})`, "number")}${field("paid", "Déjà payé", "number")}</div>
     ${field("due_date", "Pour quand")}${field("notes", "Notes")}
     <h3>📝 Texte de la chanson</h3>
+    <div class="row"><label>🎬 Demande spéciale faite par toi (vidéo lyrics, montage…) — l'agent ne lance rien tant qu'elle est remplie</label><input data-k="special" value="${esc(o?.special || "")}" placeholder="vide = chanson classique gérée par l'agent" /></div>
     <p class="muted">${LYRICS_STATUS[o?.lyrics_status || ""]}${o?.lyrics_version ? ` · version ${o.lyrics_version}` : ""}</p>
     <div class="row"><label>Titre</label><input data-k="song_title" value="${esc(o?.song_title || "")}" /></div>
     <div class="row"><label>Style musical (pour Suno, en anglais)</label><input data-k="song_style" value="${esc(o?.song_style || "")}" placeholder="afro pop, joyful, male vocals" /></div>
@@ -405,6 +406,7 @@ async function loadSales() {
         )
       : "");
   drawPaidChart(st.weeks);
+  loadReport();
 
   const groups = { open: "En cours", ...STAGES, all: "Toutes" };
   const counts = { open: st.open_orders, all: orders.length, ...st.by_stage };
@@ -1000,6 +1002,49 @@ $("#tts-preview").addEventListener("click", async () => {
   } finally {
     btn.disabled = false;
     btn.textContent = "Écouter cette voix";
+  }
+});
+
+// ---------- Bilan du jour et problèmes ----------
+const KIND_LABEL = { reponse: "Réponse", texte: "Texte", composition: "Composition", livraison: "Livraison", paiement: "Paiement" };
+async function loadReport() {
+  const dayInput = $("#report-day");
+  if (!dayInput.value) dayInput.value = new Date().toLocaleDateString("sv-SE"); // AAAA-MM-JJ
+  const [r, list] = await Promise.all([api(`/api/report?day=${dayInput.value}`), api("/api/incidents")]);
+  $("#report-text").textContent = r.text;
+  $("#incidents").innerHTML = list.length
+    ? `<div class="table-wrap"><table class="orders"><thead><tr><th>Quand</th><th>Client</th><th>Type</th><th>Problème</th><th>État</th></tr></thead><tbody>${list
+        .map(
+          (i) => `<tr data-contact="${i.contact_id || ""}"><td>${new Date(i.updated_at).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" })}</td>
+            <td>${esc(i.contact_name || i.external_id || "—")}</td><td>${KIND_LABEL[i.kind] || esc(i.kind)}</td><td>${esc(i.text)}</td>
+            <td>${i.status === "resolved" ? "✅ réglé" : `❗ en cours${i.attempts > 1 ? ` (${i.attempts} essais)` : ""}`}</td></tr>`,
+        )
+        .join("")}</tbody></table></div>`
+    : '<p class="muted">✅ Aucun problème repéré.</p>';
+  $$("#incidents tr[data-contact]").forEach((tr) =>
+    tr.dataset.contact &&
+    (tr.onclick = () => {
+      $('.tabs button[data-tab="conversations"]').click();
+      openContact(Number(tr.dataset.contact));
+    }),
+  );
+}
+$("#report-day").addEventListener("change", () => loadReport().catch((e) => toast(e.message)));
+$("#report-send").addEventListener("click", async () => {
+  try {
+    await api("/api/report/send", { method: "POST" });
+    toast("Bilan envoyé sur ton WhatsApp ✓");
+  } catch (err) {
+    toast(err.message);
+  }
+});
+$("#watchdog-run").addEventListener("click", async () => {
+  try {
+    const r = await api("/api/watchdog/run", { method: "POST" });
+    toast(r.found ? `${r.found} problème(s) en cours de correction` : "✅ Tout va bien");
+    loadReport();
+  } catch (err) {
+    toast(err.message);
   }
 });
 
