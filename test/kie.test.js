@@ -68,3 +68,27 @@ test("la documentation officielle de Kie est lue pour trouver l'adresse exacte",
   assert.equal(r.model, "deepseek-v4.1-flash-chat");
   assert.equal(tried.length, 1); // trouvé du premier coup grâce à la documentation
 });
+
+test("lit aussi une page au format OpenAPI (adresse et chemin séparés, model en enum)", async () => {
+  const { parseChatDoc } = await import("../src/openai-compat.js");
+  const md = `openapi: 3.0.0
+servers:
+  - url: https://api.kie.ai
+paths:
+  /deepseek/v1/chat/completions:
+    post:
+      requestBody:
+        content:
+          application/json:
+            schema:
+              properties:
+                model:
+                  type: string
+                  enum:
+                    - deepseek-v4.1-flash-x
+                messages:
+                  type: array
+`;
+  const hits = parseChatDoc(md);
+  assert.ok(hits.some((h) => h.url === "https://api.kie.ai/deepseek/v1/chat/completions" && h.model === "deepseek-v4.1-flash-x"));
+});

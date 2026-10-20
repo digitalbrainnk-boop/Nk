@@ -168,7 +168,7 @@ export function kieCandidates() {
  * docs.kie.ai/llms.txt liste les pages ; chaque page .md montre un exemple
  * avec l'adresse « https://api.kie.ai/…/chat/completions » et "model": "…".
  */
-export async function discoverKie({ fetchText = defaultFetchText } = {}) {
+export async function discoverKie({ fetchText = defaultFetchText, onPage } = {}) {
   const index = await fetchText("https://docs.kie.ai/llms.txt");
   const pageRe = /\((https:\/\/docs\.kie\.ai\/[^)\s]+?\.md)\)/g;
   const pagesFor = (test) => {
@@ -179,8 +179,8 @@ export async function discoverKie({ fetchText = defaultFetchText } = {}) {
     }
     return out;
   };
-  const deepseek = pagesFor((l) => /deepseek/i.test(l));
-  const otherChat = pagesFor((l) => /chat/i.test(l) && !/deepseek/i.test(l));
+  const deepseek = pagesFor((l) => /deep\s*seek/i.test(l));
+  const otherChat = pagesFor((l) => /chat/i.test(l) && !/deep\s*seek/i.test(l));
   const pages = [...deepseek.slice(0, 4), ...otherChat.slice(0, 3)];
   const found = [];
   for (const page of pages) {
@@ -190,19 +190,41 @@ export async function discoverKie({ fetchText = defaultFetchText } = {}) {
     } catch {
       continue;
     }
-    const urls = [...new Set([...md.matchAll(/https:\/\/api\.kie\.ai\/[^\s"'`)<>\\]*chat\/completions/g)].map((m) => m[0]))];
-    if (!urls.length) continue;
-    const models = new Set();
-    for (const m of md.matchAll(/"model"\s*:\s*"([^"]+)"/g)) models.add(m[1]);
-    for (const m of md.matchAll(/^\s*model:\s*([A-Za-z0-9][\w.\/-]*)\s*$/gm)) models.add(m[1]);
-    for (const url of urls) {
-      const slug = url.match(/api\.kie\.ai\/([^/]+)\/v1\//)?.[1];
-      const names = models.size ? [...models] : [];
-      if (slug && !names.includes(slug)) names.push(slug);
-      for (const model of names) if (!found.some((c) => c.url === url && c.model === model)) found.push({ url, model, doc: page });
-    }
+    const hits = parseChatDoc(md);
+    onPage?.(page, md, hits);
+    for (const h of hits) if (!found.some((c) => c.url === h.url && c.model === h.model)) found.push({ ...h, doc: page });
   }
   return found;
+}
+
+/**
+ * Extrait d'une page de documentation Kie les adresses de chat et les noms de
+ * modèles, qu'ils soient écrits en exemple (curl, JSON) ou en spécification
+ * OpenAPI (servers: url + paths: /…/chat/completions, model: enum/default/example).
+ */
+export function parseChatDoc(md) {
+  const urls = new Set(
+    [...md.matchAll(/https:\/\/api\.kie\.ai\/[^\s"'`)<>\\]*(?:chat\/completions|\/completions)/g)].map((m) => m[0]),
+  );
+  const server = md.match(/servers:\s*\n\s*-\s*url:\s*['"]?(https?:\/\/[^\s'"]+)/)?.[1]?.replace(/\/+$/, "") || "https://api.kie.ai";
+  for (const m of md.matchAll(/^\s*['"]?(\/[A-Za-z0-9._\/{}-]*completions)['"]?\s*:\s*$/gm)) urls.add(server + m[1]);
+  const models = new Set();
+  for (const m of md.matchAll(/"model"\s*:\s*"([^"]+)"/g)) models.add(m[1]);
+  for (const m of md.matchAll(/^\s*model:\s*['"]?([A-Za-z0-9][\w.\/-]*)['"]?\s*$/gm)) models.add(m[1]);
+  // Bloc « model: » d'une spécification : enum / default / example dans les lignes suivantes.
+  for (const m of md.matchAll(/^(\s*)model:\s*\n((?:\1\s+.*\n?){1,25})/gm)) {
+    for (const v of m[2].matchAll(/(?:default|example|const):\s*['"]?([A-Za-z0-9][\w.\/-]*)['"]?/g)) models.add(v[1]);
+    for (const v of m[2].matchAll(/^\s*-\s*['"]?([A-Za-z0-9][\w.\/-]*)['"]?\s*$/gm)) models.add(v[1]);
+  }
+  const plausible = [...models].filter((v) => v.length >= 3 && /[a-z]/i.test(v) && !["string", "object", "true", "false"].includes(v));
+  const hits = [];
+  for (const url of urls) {
+    const slug = url.match(/api\.kie\.ai\/([^/]+)\/v1\//)?.[1];
+    const names = [...plausible];
+    if (slug && !names.includes(slug)) names.push(slug);
+    for (const model of names) hits.push({ url, model });
+  }
+  return hits;
 }
 
 async function defaultFetchText(url) {

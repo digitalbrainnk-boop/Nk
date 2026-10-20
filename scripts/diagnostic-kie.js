@@ -32,7 +32,22 @@ console.log(`   ${credit.status} → ${credit.body}`);
 console.log("\n2) Documentation officielle de Kie (lue depuis ton téléphone)");
 let docs = [];
 try {
-  docs = await discoverKie();
+  const index = await (await fetch("https://docs.kie.ai/llms.txt", { signal: AbortSignal.timeout(15_000) })).text();
+  const lines = index.split("\n").filter((l) => /deep\s*seek|chat models|chat\/completions/i.test(l));
+  console.log(`   Index Kie : ${index.split("\n").length} lignes, ${lines.length} sur le chat / DeepSeek`);
+  for (const l of lines.slice(0, 8)) console.log(`     | ${l.trim().slice(0, 100)}`);
+} catch (e) {
+  console.log(`   Index Kie illisible : ${e.message}`);
+}
+try {
+  docs = await discoverKie({
+    onPage: (page, md, hits) => {
+      console.log(`   Page : ${page.replace("https://docs.kie.ai", "")} (${hits.length} pistes)`);
+      // Lignes utiles de la page, pour pouvoir corriger à la main si besoin.
+      const lines = md.split("\n").filter((l) => /completions|"model"|model:|servers|url:|enum|default:|example:/i.test(l));
+      for (const l of lines.slice(0, 12)) console.log(`     | ${l.trim().slice(0, 90)}`);
+    },
+  });
   if (!docs.length) console.log("   (rien trouvé dans la documentation)");
   for (const d of docs.slice(0, 8)) console.log(`   • ${d.model}  →  ${d.url.replace("https://api.kie.ai", "")}`);
 } catch (e) {
