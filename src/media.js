@@ -34,10 +34,21 @@ export async function downloadToMedia(url, headers = {}) {
   return saveMedia(Buffer.from(await res.arrayBuffer()), mime);
 }
 
-export async function transcribe(filePath, mime) {
+/**
+ * Transcrit un vocal : avec le service Whisper configuré (Groq, OpenAI…) s'il y
+ * en a un, sinon avec ta clé Kie.ai (si Kie propose un modèle de transcription).
+ */
+export async function transcribe(filePath, mime, { contactId } = {}) {
   const s = getSettings();
   const key = s.transcription_api_key || process.env.TRANSCRIPTION_API_KEY;
-  if (!key) return null;
+  if (!key) {
+    const { transcribeWithKie } = await import("./stt-kie.js");
+    const { withCredits } = await import("./credits.js");
+    return withCredits({ contactId, kind: "transcription" }, () => transcribeWithKie(filePath, mime)).catch((e) => {
+      console.error("Transcription Kie :", e.message);
+      return null;
+    });
+  }
   const form = new FormData();
   const blob = new Blob([fs.readFileSync(filePath)], { type: mime || "audio/ogg" });
   // Les services Whisper reconnaissent le format à l'extension du nom de fichier.

@@ -4,6 +4,8 @@
 import {
   activeOrder,
   addExamples,
+  isIgnored,
+  logCredits,
   addMessage,
   db,
   getContact,
@@ -21,6 +23,7 @@ import {
 import { friendlyError, generateReply, songBrief } from "./agent.js";
 import { transcribe } from "./media.js";
 import { emitHook } from "./integrations.js";
+import { withCredits } from "./credits.js";
 
 const who = (c) => ({ id: c.id, name: c.name, channel: c.channel, phone: c.meta?.phone || null });
 import { emit } from "./events.js";
@@ -81,11 +84,11 @@ export async function handleIncoming(input) {
   let text = input.text || "";
   let kind = input.kind || "text";
   if (kind === "audio" && input.media) {
-    const t = await transcribe(input.media.path, input.media.mime).catch((e) => {
+    const t = await transcribe(input.media.path, input.media.mime, { contactId: contact.id }).catch((e) => {
       console.error("Transcription :", e.message);
       return null;
     });
-    text = t ?? "(vocal non transcrit — configure la transcription dans Réglages)";
+    text = t ?? "(vocal reçu mais pas compris — Réglages → « Comprendre les vocaux des clients »)";
   }
 
   const msg = addMessage(contact.id, {
@@ -189,6 +192,10 @@ async function runAgent(contactId) {
   const mode = channelMode(contact.channel);
   if (mode === "off") return;
   if (contact.paused_until > Date.now()) return;
+  if (isIgnored(contact)) {
+    markAnswered(contactId); // numéro dans la liste « ne jamais répondre »
+    return;
+  }
   const pending = unansweredClientMessages(contactId);
   if (!pending.length) return;
   const lastPendingId = pending[pending.length - 1].id;
@@ -206,7 +213,9 @@ async function runAgent(contactId) {
   emit("thinking", { contact_id: contactId, on: true });
   let reply;
   try {
-    reply = await replyGenerator(contact, { onAction: (r) => noteAction(contactId, r) });
+    reply = await withCredits({ contactId, kind: "reply" }, () =>
+      replyGenerator(contact, { onAction: (r) => noteAction(contactId, r) }),
+    );
   } finally {
     emit("thinking", { contact_id: contactId, on: false });
   }
@@ -330,7 +339,7 @@ async function applyReply(contact, reply, mode, { clientSentVoice = false, follo
 /** Crée la voix d'un texte puis l'envoie comme note vocale. */
 async function sendVoiceText(contact, text, existingMessageId) {
   const { textToSpeech } = await import("./tts.js");
-  const audio = await textToSpeech(text);
+  const audio = await withCredits({ contactId: contact.id, kind: "voice" }, () => textToSpeech(text));
   const adapter = adapters.get(contact.channel);
   let externalMsgId = null;
   if (contact.channel !== "test") {
@@ -442,6 +451,8 @@ export async function createSong(contactId, brief) {
   });
   emit("message", { contact_id: contactId, message: placeholder });
   const taskId = await startSong(brief);
+  const { getBalance } = await import("./credits.js");
+  const balanceBefore = await getBalance();
   (async () => {
     try {
       const tracks = await waitSong(taskId, {
@@ -459,6 +470,11 @@ export async function createSong(contactId, brief) {
         const fields = { kind: "audio", text, media_path: media.path, media_type: mime, media_url: t.audioUrl, status: "draft" };
         if (i === 0) updateMessage(placeholder.id, fields);
         else addMessage(contactId, { author: "agent", ...fields });
+      }
+      // Coût de la chanson : différence de solde entre le lancement et la fin.
+      const after = await getBalance();
+      if (balanceBefore !== null && after !== null && balanceBefore > after) {
+        logCredits({ contactId, kind: "song", credits: Math.round((balanceBefore - after) * 100) / 100, balanceAfter: after });
       }
       emitHook("song.ready", {
         contact: who(getContact(contactId)),
@@ -518,10 +534,12 @@ export async function runFollowups(now = Date.now()) {
   for (const { id } of rows) {
     const contact = getContact(id);
     const mode = channelMode(contact.channel);
-    if (mode === "off" || busy.has(id)) continue;
+    if (mode === "off" || busy.has(id) || isIgnored(contact)) continue;
     busy.add(id);
     try {
-      const reply = await replyGenerator(contact, { followup: true, onAction: (r) => noteAction(id, r) });
+      const reply = await withCredits({ contactId: id, kind: "reply" }, () =>
+        replyGenerator(contact, { followup: true, onAction: (r) => noteAction(id, r) }),
+      );
       if (reply.messages.length) n++;
       else updateContact(id, { followups: s.followup_max }); // l'agent juge qu'il ne faut pas relancer
       await applyReply(getContact(id), reply, mode, { followup: true });

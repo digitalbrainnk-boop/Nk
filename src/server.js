@@ -12,8 +12,11 @@ import {
   deleteContact,
   deleteKnowledge,
   exampleStats,
+  contactKey,
+  creditStats,
   deleteOrder,
   getContact,
+  isIgnored,
   getOrder,
   getMessage,
   getSettings,
@@ -103,12 +106,32 @@ app.get("/api/events", (req, res) => {
 });
 
 // ---------- Conversations ----------
-app.get("/api/contacts", (req, res) => res.json(listContacts()));
+app.get("/api/contacts", (req, res) => {
+  const list = getSettings().ignored_contacts;
+  res.json(listContacts().map((c) => ({ ...c, ignored: isIgnored({ ...c, meta: JSON.parse(c.meta || "{}") }, list) })));
+});
 app.get("/api/contacts/:id", (req, res) => {
   const c = getContact(Number(req.params.id));
   if (!c) return res.sendStatus(404);
-  res.json({ contact: c, messages: listMessages(c.id, 300) });
+  res.json({ contact: { ...c, ignored: isIgnored(c) }, messages: listMessages(c.id, 300) });
 });
+// Ajoute / retire le contact de la liste « ne jamais répondre ».
+app.post("/api/contacts/:id/ignore", (req, res) => {
+  const c = getContact(Number(req.params.id));
+  if (!c) return res.sendStatus(404);
+  let list = [...(getSettings().ignored_contacts || [])];
+  if (req.body?.ignore) {
+    if (!isIgnored(c, list)) list.push(contactKey(c));
+  } else {
+    list = list.filter((entry) => !isIgnored(c, [entry]));
+  }
+  setSettings({ ignored_contacts: list });
+  res.json({ ignored: isIgnored(c, list), list });
+});
+app.get("/api/credits", wrap(async (req, res) => {
+  const { getBalance, USD_PER_CREDIT } = await import("./credits.js");
+  res.json({ balance: await getBalance(), usd_per_credit: USD_PER_CREDIT, ...creditStats() });
+}));
 app.patch("/api/contacts/:id", (req, res) => {
   const id = Number(req.params.id);
   const { memory, paused, needs_human, unread, name } = req.body;

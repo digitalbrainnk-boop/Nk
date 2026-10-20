@@ -65,11 +65,24 @@ for (const sql of [
   "ALTER TABLE contacts ADD COLUMN followups INTEGER NOT NULL DEFAULT 0",
   "ALTER TABLE contacts ADD COLUMN last_followup_at INTEGER NOT NULL DEFAULT 0",
   "ALTER TABLE contacts ADD COLUMN demo_at INTEGER NOT NULL DEFAULT 0",
+  "ALTER TABLE contacts ADD COLUMN credits_used REAL NOT NULL DEFAULT 0",
 ]) {
   try {
     db.exec(sql);
   } catch {}
 }
+
+// Crédits Kie dépensés (mesurés par la différence de solde avant / après).
+db.exec(`
+CREATE TABLE IF NOT EXISTS credit_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  contact_id INTEGER,
+  kind TEXT NOT NULL,             -- reply | song | voice | transcription | other
+  credits REAL NOT NULL,
+  balance_after REAL,
+  created_at INTEGER NOT NULL
+);
+`);
 
 // Commandes : une ligne par chanson commandée.
 db.exec(`
@@ -107,6 +120,7 @@ export const DEFAULT_SETTINGS = {
   max_reply_delay_seconds: 20,
   typing_chars_per_second: 7,
   owner_takeover_hours: 6,
+  ignored_contacts: [], // numéros (ou @pseudos) auxquels l'agent ne répond jamais
   currency: "FCFA",
   followup_enabled: true,
   followup_hours: 20, // < 24 h : Messenger/Instagram n'autorisent pas les messages après 24 h sans réponse
@@ -475,5 +489,67 @@ export function salesStats() {
     needs_human: one("SELECT COUNT(*) FROM contacts WHERE needs_human = 1 AND channel != 'test'"),
     by_stage: byStage,
     weeks,
+  };
+}
+
+// ---------- Contacts ignorés ----------
+const digits = (v) => String(v || "").replace(/@.*$/, "").replace(/\D/g, "").replace(/^0+/, "");
+
+/** Un contact est ignoré si son numéro (ou pseudo) est dans la liste « ne jamais répondre ». */
+export function isIgnored(contact, list = getSettings().ignored_contacts) {
+  if (!contact || !Array.isArray(list) || !list.length) return false;
+  const ids = [contact.external_id, contact.meta?.phone].map(digits).filter((d) => d.length >= 6);
+  const names = [contact.meta?.username, contact.name].filter(Boolean).map((n) => String(n).toLowerCase().replace(/^@/, ""));
+  return list.some((raw) => {
+    const entry = String(raw).trim();
+    if (!entry) return false;
+    const d = digits(entry);
+    // Numéro : on accepte avec ou sans indicatif du pays (comparaison par la fin).
+    if (d.length >= 6 && /^[+\d\s().-]+$/.test(entry)) return ids.some((id) => id.endsWith(d) || d.endsWith(id));
+    return names.includes(entry.toLowerCase().replace(/^@/, ""));
+  });
+}
+
+/** Identifiant le plus parlant d'un contact pour la liste des ignorés. */
+export function contactKey(contact) {
+  const phone = digits(contact.meta?.phone) || digits(contact.external_id);
+  if (phone.length >= 6) return phone;
+  return contact.meta?.username ? "@" + contact.meta.username : contact.external_id;
+}
+
+// ---------- Crédits ----------
+export function logCredits({ contactId = null, kind, credits, balanceAfter = null }) {
+  if (!(credits > 0)) return;
+  db.prepare("INSERT INTO credit_log(contact_id, kind, credits, balance_after, created_at) VALUES(?,?,?,?,?)").run(
+    contactId,
+    kind,
+    credits,
+    balanceAfter,
+    now(),
+  );
+  if (contactId) db.prepare("UPDATE contacts SET credits_used = credits_used + ? WHERE id = ?").run(credits, contactId);
+}
+
+export function creditStats() {
+  const day = new Date();
+  day.setHours(0, 0, 0, 0);
+  const month = new Date(day);
+  month.setDate(1);
+  const sum = (since) => db.prepare("SELECT COALESCE(SUM(credits), 0) AS n FROM credit_log WHERE created_at >= ?").get(since).n;
+  const byKind = Object.fromEntries(
+    db.prepare("SELECT kind, SUM(credits) AS n FROM credit_log WHERE created_at >= ? GROUP BY kind").all(month.getTime()).map((r) => [r.kind, r.n]),
+  );
+  const conv = db
+    .prepare("SELECT COUNT(DISTINCT contact_id) AS c, COALESCE(SUM(credits),0) AS n FROM credit_log WHERE kind = 'reply' AND contact_id IS NOT NULL")
+    .get();
+  const replies = db.prepare("SELECT COUNT(*) AS c, COALESCE(SUM(credits),0) AS n FROM credit_log WHERE kind = 'reply'").get();
+  const last = db.prepare("SELECT balance_after FROM credit_log WHERE balance_after IS NOT NULL ORDER BY id DESC LIMIT 1").get();
+  return {
+    today: sum(day.getTime()),
+    month: sum(month.getTime()),
+    by_kind_month: byKind,
+    per_conversation: conv.c ? conv.n / conv.c : 0,
+    per_reply: replies.c ? replies.n / replies.c : 0,
+    last_balance: last?.balance_after ?? null,
   };
 }

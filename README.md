@@ -61,6 +61,12 @@ Dans une conversation, bouton **🎵 Créer la chanson** : l'IA écrit titre, st
 - Réglages → **Répondre en vocal** : jamais, quand le client envoie un vocal, ou toujours. Voix ElevenLabs via ta clé Kie.ai (bouton « Écouter cette voix »). Avec ffmpeg installé, c'est une vraie note vocale.
 - **Démo automatique** : quand un client hésite, l'agent prépare un extrait avec Suno (une fois par client) ; tu l'écoutes avant de l'envoyer.
 
+### Numéros ignorés, vocaux et crédits
+
+- **Ne jamais répondre** : Réglages → liste de numéros (avec ou sans indicatif, ou @pseudo Telegram), ou bouton « 🚫 Ne jamais répondre » dans une conversation. Les messages sont gardés, l'agent ne répond pas.
+- **Vocaux** : sans clé Whisper/Groq, l'agent cherche un modèle de transcription dans la documentation Kie et l'utilise avec ta clé Kie (`npm run diag` montre s'il l'a trouvé).
+- **Crédits Kie** : le solde est lu avant/après chaque réponse, vocal ou chanson ; le coût (estimation) s'affiche par conversation et dans Ventes (ce mois, par conversation, par réponse). 1 crédit ≈ 0,005 $.
+
 ### Connecter l'agent à tes applications (onglet Applications)
 
 1. **Prévenir mes applications (webhooks)** : à chaque événement choisi (nouveau message, commande, paiement, « besoin de toi », chanson prête), l'agent envoie un JSON signé (`X-Agent-Signature: sha256=HMAC(clé, corps)`) à une adresse. Avec **Make / Zapier / n8n**, ça relie l'agent à Google Sheets, Gmail, Agenda, Notion…

@@ -266,6 +266,11 @@
         <div class="row"><label>Vitesse de frappe simulée (caractères / seconde)</label><input type="number" id="typing_chars_per_second" /></div>
         <div class="row"><label>Quand tu réponds toi-même, l'agent se tait pendant (heures)</label><input type="number" id="owner_takeover_hours" /></div>
         <div class="row"><label>Nombre de messages d'historique lus par l'agent</label><input type="number" id="history_messages" /></div>
+        <h2>🚫 Ne jamais répondre à ces numéros</h2>
+        <p class="muted">Un numéro par ligne, avec ou sans indicatif (ex : 22670123456). Pour Telegram, tu peux mettre le @pseudo. L'agent garde leurs messages mais ne leur répond jamais : famille, amis, collègues… Tu peux aussi le faire depuis une conversation (bouton « 🚫 Ne jamais répondre »).</p>
+        <textarea id="ignored_list" rows="5" placeholder="22670123456&#10;22566554433&#10;@monpote"></textarea>
+        <div class="btns"><button id="ignored-save">Enregistrer la liste</button></div>
+
         <h2>Commandes et relances</h2>
         <div class="row"><label>Devise</label><input id="currency" placeholder="FCFA" /></div>
         <label class="check"><input type="checkbox" id="followup_enabled" /> Relancer automatiquement les clients qui ne répondent plus (demande ou devis en cours)</label>
@@ -283,7 +288,7 @@
         <div class="row"><label>Voix</label><select id="tts_voice"></select></div>
         <button id="tts-preview" class="small">Écouter cette voix</button> <audio id="tts-audio" controls class="hidden"></audio>
         <h2>Comprendre les vocaux des clients</h2>
-        <p class="muted">Pour comprendre les vocaux, il faut un service de transcription (Whisper). Groq est rapide et peu cher : crée une clé sur console.groq.com.</p>
+        <p class="muted">Par défaut, l'agent essaie de transcrire les vocaux avec ta clé Kie.ai (s'il trouve un modèle de transcription chez Kie). Si les vocaux restent « pas compris », ajoute ici une clé <b>Groq</b> gratuite (console.groq.com → API Keys) : c'est rapide et très fiable.</p>
         <div class="row"><label>Clé API transcription</label><input id="transcription_api_key" /></div>
         <div class="row"><label>Adresse du service</label><input id="transcription_url" /></div>
         <div class="row"><label>Modèle</label><input id="transcription_model" /></div>

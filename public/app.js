@@ -102,7 +102,7 @@ function renderContacts() {
     <div class="contact ${c.id === currentId ? "active" : ""}" data-id="${c.id}">
       <div class="top"><span class="name">${esc(c.name || c.external_id)}</span><span class="tag">${CHANNELS[c.channel] || c.channel}</span></div>
       <div class="top"><span class="preview">${c.last_author === "client" ? "" : "↩ "}${esc(c.last_text || "")}</span>
-        <span>${c.needs_human ? '<span class="tag alert">besoin de toi</span>' : ""}${c.drafts ? `<span class="tag draft">${c.drafts} à valider</span>` : ""}${c.last_at ? `<span class="tag">${time(c.last_at)}</span>` : ""}</span></div>
+        <span>${c.ignored ? '<span class="tag">🚫 ignoré</span>' : ""}${c.needs_human ? '<span class="tag alert">besoin de toi</span>' : ""}${c.drafts ? `<span class="tag draft">${c.drafts} à valider</span>` : ""}${c.last_at ? `<span class="tag">${time(c.last_at)}</span>` : ""}</span></div>
     </div>`,
       )
       .join("") || '<p class="muted" style="padding:14px">Aucune conversation pour l\'instant.</p>';
@@ -143,9 +143,11 @@ async function openContact(id) {
   $("#thread").innerHTML = `
     <div class="thread-head">
       <div><button class="ghost small" id="back">←</button> <span class="who">${esc(c.name || c.external_id)}</span>
-        <span class="tag">${CHANNELS[c.channel] || c.channel}</span> <span class="muted">${esc(c.meta?.phone || "")}</span></div>
+        <span class="tag">${CHANNELS[c.channel] || c.channel}</span> <span class="muted">${esc(c.meta?.phone || "")}</span>
+        ${c.credits_used ? `<span class="tag" title="Crédits Kie utilisés pour ce client (estimation)">≈ ${credits(c.credits_used)}</span>` : ""}</div>
       <div class="btns" style="margin:0">
-        <span class="status ${paused ? "" : "ok"}">${paused ? (forever ? "Agent en pause" : `Tu as la main jusqu'à ${new Date(c.paused_until).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}`) : "Agent actif"}</span>
+        <span class="status ${paused || c.ignored ? "" : "ok"}">${c.ignored ? "🚫 L'agent ne répond jamais à ce contact" : paused ? (forever ? "Agent en pause" : `Tu as la main jusqu'à ${new Date(c.paused_until).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}`) : "Agent actif"}</span>
+        <button class="small" id="toggle-ignore">${c.ignored ? "✅ Répondre à nouveau à ce contact" : "🚫 Ne jamais répondre à ce contact"}</button>
         <button class="small" id="toggle-pause">${paused ? "Réactiver l'agent" : "Mettre l'agent en pause"}</button>
         <button class="small" id="regen">Proposer une réponse</button>
         <button class="small primary" id="song-open">🎵 Créer la chanson</button>
@@ -181,6 +183,14 @@ async function openContact(id) {
   const b = $("#bubbles");
   b.scrollTop = b.scrollHeight;
   $("#back").onclick = () => $(".split").classList.remove("open");
+  $("#toggle-ignore").onclick = async () => {
+    await api(`/api/contacts/${id}/ignore`, { method: "POST", body: { ignore: !c.ignored } });
+    toast(c.ignored ? "L'agent répondra de nouveau à ce contact" : "C'est noté : l'agent ne répondra plus jamais à ce contact");
+    settings = await api("/api/settings");
+    fillSettings();
+    openContact(id);
+    loadContacts();
+  };
   $("#toggle-pause").onclick = async () => {
     await api(`/api/contacts/${id}`, { method: "PATCH", body: { paused: !paused } });
     openContact(id);
@@ -285,6 +295,7 @@ const STAGES = {
   livree: "Livrée",
   annulee: "Annulée",
 };
+const credits = (n) => `${(Math.round(Number(n || 0) * 10) / 10).toLocaleString("fr-FR")} crédits`;
 const money = (n) => `${Math.round(Number(n) || 0).toLocaleString("fr-FR")} ${settings.currency || "FCFA"}`;
 
 async function loadOrderBox(contactId) {
@@ -321,7 +332,7 @@ async function loadOrderBox(contactId) {
 // ---------- Ventes ----------
 let salesFilter = "open";
 async function loadSales() {
-  const [st, orders] = await Promise.all([api("/api/sales"), api("/api/orders")]);
+  const [st, orders, cr] = await Promise.all([api("/api/sales"), api("/api/orders"), api("/api/credits").catch(() => null)]);
   const tile = (label, value, sub = "", hero = false) =>
     `<div class="kpi ${hero ? "hero" : ""}"><div class="kpi-label">${label}</div><div class="kpi-value">${value}</div>${sub ? `<div class="kpi-sub">${sub}</div>` : ""}</div>`;
   $("#kpis").innerHTML =
@@ -330,7 +341,14 @@ async function loadSales() {
     tile("Commandes en cours", st.open_orders, `${st.by_stage.devis} devis · ${st.by_stage.acompte + st.by_stage.creation} payées`) +
     tile("Livrées ce mois", st.delivered_month, `${st.songs_made} chansons créées au total`) +
     tile("Clients", st.clients, `+${st.new_clients_week} cette semaine · ${st.active_week} actifs`) +
-    tile("Besoin de toi", st.needs_human, st.needs_human ? "voir Conversations" : "tout est géré ✓");
+    tile("Besoin de toi", st.needs_human, st.needs_human ? "voir Conversations" : "tout est géré ✓") +
+    (cr
+      ? tile(
+          "Crédits Kie restants",
+          cr.balance !== null ? credits(cr.balance) : "—",
+          `Ce mois : ${credits(cr.month)} (≈ ${(cr.month * cr.usd_per_credit).toFixed(2)} $) · ≈ ${credits(cr.per_conversation)} par conversation · ≈ ${credits(cr.per_reply)} par réponse`,
+        )
+      : "");
   drawPaidChart(st.weeks);
 
   const groups = { open: "En cours", ...STAGES, all: "Toutes" };
@@ -805,7 +823,12 @@ $("#wa-logout").addEventListener("click", () => {
 $("#whatsapp_learning_only").addEventListener("change", (e) => saveSettings({ whatsapp_learning_only: e.target.checked }));
 
 // ---------- Réglages ----------
+function fillIgnored() {
+  const el = $("#ignored_list");
+  if (el && document.activeElement !== el) el.value = (settings.ignored_contacts || []).join("\n");
+}
 function fillSettings() {
+  fillIgnored();
   $$("input[id], textarea[id], select[id]").forEach((el) => {
     if (!(el.id in settings)) return;
     if (el.type === "checkbox") el.checked = !!settings[el.id];
@@ -862,6 +885,13 @@ $$(".save-settings").forEach((b) =>
     if (!$("#tab-channels").classList.contains("hidden")) loadChannels();
   }),
 );
+
+// ---------- Numéros ignorés ----------
+$("#ignored-save").addEventListener("click", async () => {
+  const list = $("#ignored_list").value.split(/[\n,;]+/).map((x) => x.trim()).filter(Boolean);
+  await saveSettings({ ignored_contacts: list });
+  loadContacts();
+});
 
 // ---------- Clé Kie.ai ----------
 function hasAiKey() {

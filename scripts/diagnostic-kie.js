@@ -74,3 +74,12 @@ try {
   console.log(`\n❌ Aucun ne marche. Dernière erreur : ${short(show(e.message))}`);
   console.log("   Fais une capture de cet écran et envoie-la.\n");
 }
+
+console.log("\n4) Transcription des vocaux avec Kie");
+try {
+  const { discoverKieStt } = await import("../src/stt-kie.js");
+  const stt = await discoverKieStt({ force: true });
+  console.log(stt ? `   ✅ Modèle trouvé : ${stt.model} (champ « ${stt.audioKey} »)` : "   ❌ Aucun modèle de transcription trouvé dans la documentation Kie");
+} catch (e) {
+  console.log(`   ❌ ${e.message}`);
+}
