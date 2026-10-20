@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  AndroidManifest.xml — DB Localisation (rôle AGENT, appareil protégé).
+
+  Ce manifeste déclare TOUTES les permissions et receivers prévus par le
+  cahier des charges. Les blocs <service>/<receiver> qui référencent des
+  classes natives (Kotlin) sont commentés "À ACTIVER" : décommentez-les au
+  fur et à mesure que vous ajoutez leur implémentation (étapes 2, 4 et 5),
+  sinon la compilation échoue (classe introuvable).
+
+  RÈGLE NON-NÉGOCIABLE : pas de permission CAMERA. L'appli reste VISIBLE
+  (icône présente) et le suivi est signalé par une notification permanente.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- ===================== PERMISSIONS ===================== -->
+
+    <!-- Réseau : envoi des positions vers Firestore. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- Localisation précise (GPS) + arrière-plan (suivi continu). -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+
+    <!-- Service de premier plan (notification permanente) + type localisation. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+
+    <!-- Notifications (Android 13+). -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- Démarrage automatique après le redémarrage du téléphone. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!-- Mode SMS sans data : recevoir le code secret et répondre la position. -->
+    <uses-permission android:name="android.permission.RECEIVE_SMS" />
+    <uses-permission android:name="android.permission.SEND_SMS" />
+
+    <!-- Détection du changement de carte SIM (alerte antivol légitime). -->
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+
+    <!-- Exclusion de l'optimisation batterie (demande explicite à l'utilisateur). -->
+    <uses-permission
+        android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
+    <!-- Faire sonner l'alarme même en mode silencieux (réglage du volume). -->
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+
+    <!-- PAS de permission CAMERA : capture silencieuse NON implémentée (éthique). -->
+
+    <application
+        android:label="DB Localisation"
+        android:name="${applicationName}"
+        android:icon="@mipmap/ic_launcher">
+
+        <!-- Activité principale Flutter (standard). -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:theme="@style/LaunchTheme"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
+            android:hardwareAccelerated="true"
+            android:windowSoftInputMode="adjustResize">
+            <meta-data
+                android:name="io.flutter.embedding.android.NormalTheme"
+                android:resource="@style/NormalTheme" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <meta-data
+            android:name="flutterEmbedding"
+            android:value="2" />
+
+        <!-- ============================================================
+             À ACTIVER — ÉTAPE 2 : service de premier plan + boot receiver.
+             Décommentez une fois les classes Kotlin créées.
+             ============================================================
+        <service
+            android:name=".suivi.ServiceSuiviLocalisation"
+            android:exported="false"
+            android:foregroundServiceType="location" />
+
+        <receiver
+            android:name=".suivi.RecepteurDemarrage"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+            </intent-filter>
+        </receiver>
+        -->
+
+        <!-- ============================================================
+             À ACTIVER — ÉTAPE 5 : mode SMS (code secret) + alerte SIM.
+             ============================================================
+        <receiver
+            android:name=".sms.RecepteurSms"
+            android:exported="true"
+            android:permission="android.permission.BROADCAST_SMS">
+            <intent-filter android:priority="999">
+                <action android:name="android.provider.Telephony.SMS_RECEIVED" />
+            </intent-filter>
+        </receiver>
+        -->
+
+        <!-- ============================================================
+             À ACTIVER — ÉTAPE 4 : Device Admin (verrouillage à distance +
+             résistance à la désinstallation, appli restant VISIBLE).
+             Nécessite res/xml/device_admin.xml décrivant les règles.
+             ============================================================
+        <receiver
+            android:name=".admin.RecepteurDeviceAdmin"
+            android:permission="android.permission.BIND_DEVICE_ADMIN"
+            android:exported="true">
+            <meta-data
+                android:name="android.app.device_admin"
+                android:resource="@xml/device_admin" />
+            <intent-filter>
+                <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
+            </intent-filter>
+        </receiver>
+        -->
+
+    </application>
+
+    <!-- Nécessaire pour envoyer un SMS via une Intent sur Android 11+. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.SENDTO" />
+            <data android:scheme="smsto" />
+        </intent>
+    </queries>
+
+</manifest>

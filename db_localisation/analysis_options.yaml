@@ -1,0 +1,8 @@
+# Règles d'analyse statique (lint) du projet.
+include: package:flutter_lints/flutter.yaml
+
+linter:
+  rules:
+    # On autorise les commentaires en français sans contrainte de ponctuation.
+    prefer_const_constructors: true
+    avoid_print: false # On garde print() utile pendant le développement.

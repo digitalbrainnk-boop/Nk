@@ -1,0 +1,36 @@
+rules_version = '2';
+
+// Règles de sécurité Firestore — DB Localisation.
+//
+// RÈGLE NON-NÉGOCIABLE : chaque utilisateur ne peut lire/écrire QUE ses
+// propres données. Tout est rangé sous users/{uid}/... et l'accès n'est
+// autorisé que si l'utilisateur connecté est bien le propriétaire
+// (request.auth.uid == uid).
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Fonction utilitaire : l'appelant est-il le propriétaire ?
+    function estProprietaire(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+
+    // Document utilisateur (profil).
+    match /users/{uid} {
+      allow read, write: if estProprietaire(uid);
+
+      // Appareils du compte.
+      match /devices/{deviceId} {
+        allow read, write: if estProprietaire(uid);
+
+        // État courant (meta/state), positions, commandes :
+        // tout hérite du même cloisonnement par propriétaire.
+        match /{sousCollection}/{docId} {
+          allow read, write: if estProprietaire(uid);
+        }
+      }
+    }
+
+    // Tout le reste est refusé par défaut (aucune règle = accès interdit).
+  }
+}

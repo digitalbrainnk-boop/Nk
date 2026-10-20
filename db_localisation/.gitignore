@@ -1,0 +1,27 @@
+# Fichiers générés / locaux à ne PAS committer.
+
+# Flutter / Dart
+.dart_tool/
+.packages
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+pubspec.lock
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Secrets Firebase générés par `flutterfire configure`.
+# NB : firebase_options.dart est committé avec des valeurs d'EXEMPLE pour que
+# le projet compile ; régénérez-le avec `flutterfire configure` (voir docs).
+# La config web Firebase n'est pas un secret, mais google-services.json et le
+# plist iOS sont propres à votre projet et restent ignorés.
+android/app/google-services.json
+ios/Runner/GoogleService-Info.plist
+
+# Clés / variables d'environnement
+.env
+*.keystore
+key.properties

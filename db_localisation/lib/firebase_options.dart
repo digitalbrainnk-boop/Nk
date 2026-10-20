@@ -1,0 +1,54 @@
+// Valeurs d'EXEMPLE : régénérez ce fichier avec `flutterfire configure`.
+// Voir docs/01-configurer-firebase.md. Le projet compile avec ces placeholders.
+// Ce fichier est normalement généré par la commande :
+//   flutterfire configure
+// qui crée `lib/firebase_options.dart` avec les vraies clés de VOTRE projet
+// Firebase. Copiez ce gabarit en `firebase_options.dart` seulement si vous
+// voulez remplir les valeurs à la main (déconseillé : préférez flutterfire).
+//
+// Voir docs/01-configurer-firebase.md.
+
+import 'package:firebase_core/firebase_core.dart' show FirebaseOptions;
+import 'package:flutter/foundation.dart'
+    show defaultTargetPlatform, kIsWeb, TargetPlatform;
+
+class DefaultFirebaseOptions {
+  static FirebaseOptions get currentPlatform {
+    if (kIsWeb) return web;
+    switch (defaultTargetPlatform) {
+      case TargetPlatform.android:
+        return android;
+      case TargetPlatform.iOS:
+        return ios;
+      default:
+        return web;
+    }
+  }
+
+  // Remplacez TOUTES les valeurs "VOTRE_..." par celles de votre projet.
+  static const FirebaseOptions web = FirebaseOptions(
+    apiKey: 'VOTRE_WEB_API_KEY',
+    appId: 'VOTRE_WEB_APP_ID',
+    messagingSenderId: 'VOTRE_SENDER_ID',
+    projectId: 'VOTRE_PROJECT_ID',
+    authDomain: 'VOTRE_PROJECT_ID.firebaseapp.com',
+    storageBucket: 'VOTRE_PROJECT_ID.appspot.com',
+  );
+
+  static const FirebaseOptions android = FirebaseOptions(
+    apiKey: 'VOTRE_ANDROID_API_KEY',
+    appId: 'VOTRE_ANDROID_APP_ID',
+    messagingSenderId: 'VOTRE_SENDER_ID',
+    projectId: 'VOTRE_PROJECT_ID',
+    storageBucket: 'VOTRE_PROJECT_ID.appspot.com',
+  );
+
+  static const FirebaseOptions ios = FirebaseOptions(
+    apiKey: 'VOTRE_IOS_API_KEY',
+    appId: 'VOTRE_IOS_APP_ID',
+    messagingSenderId: 'VOTRE_SENDER_ID',
+    projectId: 'VOTRE_PROJECT_ID',
+    storageBucket: 'VOTRE_PROJECT_ID.appspot.com',
+    iosBundleId: 'com.dblocalisation.app',
+  );
+}
