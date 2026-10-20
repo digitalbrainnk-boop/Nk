@@ -7,7 +7,19 @@ BRANCHE="claude/ai-agent-multichannel-0snabq"
 DOSSIER="$HOME/Nk"
 
 echo "=== Installation de l'agent IA (3 à 10 minutes) ==="
-pkg update -y -o Dpkg::Options::="--force-confnew"
+# Si le serveur de paquets choisi au hasard est saturé (erreur 429…), on passe au serveur officiel.
+use_default_mirror() {
+  if [ -f "$PREFIX/etc/termux/mirrors/default" ]; then
+    ln -sf "$PREFIX/etc/termux/mirrors/default" "$PREFIX/etc/termux/chosen_mirrors"
+  else
+    echo "deb https://packages-cf.termux.dev/apt/termux-main stable main" > "$PREFIX/etc/apt/sources.list"
+  fi
+}
+if ! pkg update -y -o Dpkg::Options::="--force-confnew"; then
+  echo "Serveur de paquets indisponible, passage au serveur officiel Termux…"
+  use_default_mirror
+  pkg update -y -o Dpkg::Options::="--force-confnew"
+fi
 pkg install -y nodejs-lts git procps || pkg install -y nodejs git procps
 # ffmpeg : pour envoyer les réponses vocales comme de vraies notes vocales (facultatif)
 pkg install -y ffmpeg || echo "ffmpeg non installé : les vocaux seront envoyés comme fichiers audio."
