@@ -44,8 +44,16 @@ try {
     onPage: (page, md, hits) => {
       console.log(`   Page : ${page.replace("https://docs.kie.ai", "")} (${hits.length} pistes)`);
       // Lignes utiles de la page, pour pouvoir corriger à la main si besoin.
-      const lines = md.split("\n").filter((l) => /completions|"model"|model:|servers|url:|enum|default:|example:/i.test(l));
-      for (const l of lines.slice(0, 12)) console.log(`     | ${l.trim().slice(0, 90)}`);
+      const deep = /deepseek/i.test(page);
+      // Pour DeepSeek on montre les chemins (/…:) et les valeurs possibles (- …) pour pouvoir le brancher.
+      const lines = md
+        .split("\n")
+        .filter((l) =>
+          deep
+            ? /^\s*\/\S+:\s*$|^\s*-\s+['"]?[\w.\/-]+['"]?\s*$|url:|"model"|operationId/i.test(l)
+            : /completions|"model"|operationId/i.test(l),
+        );
+      for (const l of lines.slice(0, deep ? 25 : 6)) console.log(`     | ${l.trim().slice(0, 90)}`);
     },
   });
   if (!docs.length) console.log("   (rien trouvé dans la documentation)");
