@@ -84,7 +84,7 @@ test("relance d'un client silencieux, une seule fois par période", async () => 
   let asked = null;
   router.setReplyGenerator(async (contact, opts) => ((asked = opts), reply({ messages: ["Coucou Moussa, tu as pu réfléchir ? 😊"] })));
   assert.equal(await router.runFollowups(), 1);
-  assert.deepEqual(asked, { followup: true });
+  assert.equal(asked.followup, true);
   assert.equal(sent.at(-1), "Coucou Moussa, tu as pu réfléchir ? 😊");
   assert.equal(db.getContact(c.id).followups, 1);
   // Juste après : rien (la dernière activité est trop récente).

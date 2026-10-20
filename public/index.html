@@ -29,6 +29,7 @@
       <button data-tab="business">Mon activité</button>
       <button data-tab="sales">Ventes</button>
       <button data-tab="channels">Canaux</button>
+      <button data-tab="apps">Applications</button>
       <button data-tab="settings">Réglages</button>
     </nav>
 
@@ -112,6 +113,37 @@
           <div id="stage-filter" class="chips"></div>
           <div class="table-wrap"><table class="orders" id="orders-table"></table></div>
         </div>
+      </div>
+    </section>
+
+    <!-- Applications connectées -->
+    <section id="tab-apps" class="tab hidden">
+      <div class="card narrow">
+        <h2>Connecter l'agent à mes applications</h2>
+        <p class="muted">Deux façons de relier l'agent à tes autres outils. Le plus simple : utilise <b>Make</b> (make.com), <b>Zapier</b> ou <b>n8n</b>, qui savent parler à des milliers d'applications (Google Sheets, Gmail, Agenda, Notion, ta banque…). Tu y crées un scénario qui commence par « Webhook » : il te donne une adresse à coller ici.</p>
+
+        <h2>1. Prévenir mes applications</h2>
+        <p class="muted">À chaque événement choisi, l'agent envoie les informations à l'adresse. Ex : chaque commande payée s'ajoute à ton tableur Google Sheets.</p>
+        <div id="hooks"></div>
+        <div class="btns">
+          <button class="small" data-tpl-hook="sheets">+ Google Sheets (via Make)</button>
+          <button class="small" data-tpl-hook="zapier">+ Zapier</button>
+          <button class="small" data-tpl-hook="other">+ Autre adresse</button>
+        </div>
+
+        <h2>2. Actions que l'agent peut utiliser</h2>
+        <p class="muted">L'agent peut appeler ces adresses pendant une conversation, puis répondre au client avec le résultat. Ex : « Vérifier mes disponibilités » (ton agenda), « Enregistrer une commande », « Consulter le catalogue ». Il ne voit que le nom et la description, jamais les clés.</p>
+        <div id="actions"></div>
+        <div class="btns">
+          <button class="small" data-tpl-action="agenda">+ Vérifier mes disponibilités</button>
+          <button class="small" data-tpl-action="catalogue">+ Consulter mon catalogue</button>
+          <button class="small" data-tpl-action="other">+ Autre action</button>
+        </div>
+
+        <div class="btns"><button class="primary" id="apps-save">Enregistrer</button></div>
+
+        <h2>Derniers envois</h2>
+        <div id="apps-log" class="muted"></div>
       </div>
     </section>
 

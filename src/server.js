@@ -14,6 +14,7 @@ import {
   exampleStats,
   deleteOrder,
   getContact,
+  getOrder,
   getMessage,
   getSettings,
   listOrders,
@@ -31,6 +32,7 @@ import {
 import { bus } from "./events.js";
 import { approveDraft, createSong, handleIncoming, rejectDraft, runFollowups, schedule, sendManual } from "./router.js";
 import { TTS_VOICES } from "./tts.js";
+import { HOOK_EVENTS, deliveryLog, emitHook, runAction, testHook } from "./integrations.js";
 import { buildStyleProfile, friendlyError, songBrief } from "./agent.js";
 import { chatText, probeKie } from "./openai-compat.js";
 import { buildPairs, parseWhatsAppExport, participants } from "./learning.js";
@@ -149,7 +151,13 @@ app.get("/api/orders", (req, res) => res.json(listOrders({ contactId: Number(req
 app.post("/api/orders", wrap(async (req, res) => {
   const o = req.body || {};
   if (!o.id && !o.contact_id) throw new Error("Client manquant");
-  res.json(saveOrder(o));
+  const before = o.id ? getOrder(Number(o.id)) : null;
+  const saved = saveOrder(o);
+  const c = getContact(saved.contact_id);
+  const contact = { id: c.id, name: c.name, channel: c.channel, phone: c.meta?.phone || null };
+  emitHook("order.updated", { contact, order: saved });
+  if (saved.paid > (before?.paid || 0)) emitHook("order.paid", { contact, order: saved, amount: saved.paid - (before?.paid || 0) });
+  res.json(saved);
 }));
 app.delete("/api/orders/:id", (req, res) => {
   deleteOrder(Number(req.params.id));
@@ -157,6 +165,70 @@ app.delete("/api/orders/:id", (req, res) => {
 });
 app.get("/api/sales", (req, res) => res.json({ ...salesStats(), currency: getSettings().currency }));
 app.post("/api/followups/run", wrap(async (req, res) => res.json({ sent: await runFollowups() })));
+// ---------- Applications connectées ----------
+app.get("/api/integrations", (req, res) => {
+  const s = getSettings();
+  // Les en-têtes (clés) des actions ne sont jamais renvoyés en clair.
+  const actions = (s.agent_actions || []).map((a) => ({
+    ...a,
+    headers: Object.fromEntries(Object.keys(a.headers || {}).map((k) => [k, "••••••"])),
+  }));
+  res.json({ webhooks: s.webhooks || [], actions, events: HOOK_EVENTS, log: deliveryLog() });
+});
+app.put("/api/integrations", wrap(async (req, res) => {
+  const s = getSettings();
+  const { webhooks, actions } = req.body || {};
+  const patch = {};
+  const isUrl = (u) => /^https?:\/\//i.test(u || "");
+  if (Array.isArray(webhooks)) {
+    patch.webhooks = webhooks.map((h) => {
+      if (h.url && !isUrl(h.url)) throw new Error(`Adresse invalide : ${h.url}`);
+      return {
+        id: h.id || crypto.randomUUID(),
+        name: String(h.name || "Application").slice(0, 60),
+        url: String(h.url || "").trim(),
+        events: (h.events || []).filter((e) => e in HOOK_EVENTS),
+        secret: h.secret || crypto.randomBytes(16).toString("hex"),
+        enabled: h.enabled !== false,
+      };
+    });
+  }
+  if (Array.isArray(actions)) {
+    const old = Object.fromEntries((s.agent_actions || []).map((a) => [a.id, a]));
+    patch.agent_actions = actions.map((a) => {
+      if (a.url && !isUrl(a.url)) throw new Error(`Adresse invalide : ${a.url}`);
+      const id = a.id || crypto.randomUUID();
+      // "••••••" = clé inchangée : on garde l'ancienne valeur.
+      const headers = {};
+      for (const [k, v] of Object.entries(a.headers || {})) {
+        if (!k.trim()) continue;
+        headers[k.trim()] = v === "••••••" ? old[id]?.headers?.[k.trim()] ?? "" : String(v);
+      }
+      return {
+        id,
+        name: String(a.name || "Action").slice(0, 60),
+        description: String(a.description || "").slice(0, 500),
+        url: String(a.url || "").trim(),
+        method: a.method === "GET" ? "GET" : "POST",
+        headers,
+        enabled: a.enabled !== false,
+      };
+    });
+  }
+  setSettings(patch);
+  res.json({ ok: true });
+}));
+app.post("/api/integrations/webhooks/:id/test", wrap(async (req, res) => {
+  const hook = (getSettings().webhooks || []).find((h) => h.id === req.params.id);
+  if (!hook) throw new Error("Webhook introuvable (enregistre d'abord)");
+  res.json(await testHook(hook));
+}));
+app.post("/api/integrations/actions/:id/test", wrap(async (req, res) => {
+  const a = (getSettings().agent_actions || []).find((x) => x.id === req.params.id);
+  if (!a) throw new Error("Action introuvable (enregistre d'abord)");
+  res.json(await runAction({ name: a.name, input: String(req.body?.input || "test") }, { name: "Test", channel: "test" }));
+}));
+
 app.get("/api/tts/voices", (req, res) => res.json(TTS_VOICES));
 app.post("/api/tts/preview", wrap(async (req, res) => {
   const { textToSpeech } = await import("./tts.js");
@@ -208,6 +280,9 @@ const SECRET_KEYS = [
 app.get("/api/settings", (req, res) => {
   const s = getSettings();
   for (const k of SECRET_KEYS) s[k] = s[k] ? "••••••" + String(s[k]).slice(-4) : "";
+  // Applications connectées : gérées par /api/integrations (elles contiennent des clés).
+  delete s.webhooks;
+  delete s.agent_actions;
   s.env = {
     anthropic_api_key: !!process.env.ANTHROPIC_API_KEY,
     transcription_api_key: !!process.env.TRANSCRIPTION_API_KEY,
@@ -218,6 +293,8 @@ app.put("/api/settings", wrap(async (req, res) => {
   const patch = { ...req.body };
   delete patch.env;
   delete patch.admin_password;
+  delete patch.webhooks;
+  delete patch.agent_actions;
   for (const k of SECRET_KEYS) if (typeof patch[k] === "string" && patch[k].startsWith("••••••")) delete patch[k];
   setSettings(patch);
   if ("telegram_token" in patch) await startTelegram();

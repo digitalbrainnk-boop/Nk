@@ -60,6 +60,11 @@ Dans une conversation, bouton **🎵 Créer la chanson** : l'IA écrit titre, st
 - Réglages → **Répondre en vocal** : jamais, quand le client envoie un vocal, ou toujours. Voix ElevenLabs via ta clé Kie.ai (bouton « Écouter cette voix »). Avec ffmpeg installé, c'est une vraie note vocale.
 - **Démo automatique** : quand un client hésite, l'agent prépare un extrait avec Suno (une fois par client) ; tu l'écoutes avant de l'envoyer.
 
+### Connecter l'agent à tes applications (onglet Applications)
+
+1. **Prévenir mes applications (webhooks)** : à chaque événement choisi (nouveau message, commande, paiement, « besoin de toi », chanson prête), l'agent envoie un JSON signé (`X-Agent-Signature: sha256=HMAC(clé, corps)`) à une adresse. Avec **Make / Zapier / n8n**, ça relie l'agent à Google Sheets, Gmail, Agenda, Notion…
+2. **Actions de l'agent** : des adresses que l'agent peut appeler pendant une conversation (ex : « Disponibilités », « Catalogue »). Il envoie `{"input": "...", "contact": {...}}` et répond au client avec le résultat. Il ne voit que le nom et la description de l'action, jamais les clés. Chaque appel apparaît dans la conversation (🔌).
+
 ### Utiliser un autre cerveau que Claude (DeepSeek, OpenRouter…)
 
 Réglages → **Cerveau de l'agent** → « Autre service compatible OpenAI », puis colle l'adresse de l'API (`…/chat/completions`), ta clé et le nom du modèle (ex. `deepseek-v4-flash`). Le bouton **Tester la connexion** vérifie que tout marche. Les photos ne sont pas vues par ces modèles (seulement signalées).

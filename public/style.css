@@ -161,3 +161,9 @@ table.orders .num { text-align: right; font-variant-numeric: tabular-nums; white
   .kpi.hero { grid-column: 1 / -1; }
   .kpi-value { font-size: 20px; }
 }
+
+/* Notes système dans une conversation (actions lancées par l'agent) */
+.note { align-self: center; font-size: 12px; color: var(--muted); background: var(--card); border: 1px dashed var(--line); border-radius: 8px; padding: 4px 10px; max-width: 90%; }
+label.chip { display: inline-flex; gap: 6px; align-items: center; border: 1px solid var(--line); cursor: pointer; }
+label.chip input { width: auto; }
+.kn .pair { align-items: center; }

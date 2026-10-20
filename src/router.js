@@ -20,6 +20,9 @@ import {
 } from "./db.js";
 import { friendlyError, generateReply, songBrief } from "./agent.js";
 import { transcribe } from "./media.js";
+import { emitHook } from "./integrations.js";
+
+const who = (c) => ({ id: c.id, name: c.name, channel: c.channel, phone: c.meta?.phone || null });
 import { emit } from "./events.js";
 
 const adapters = new Map();
@@ -97,6 +100,7 @@ export async function handleIncoming(input) {
   });
   updateContact(contact.id, { unread: (getContact(contact.id).unread || 0) + 1, followups: 0 });
   emit("message", { contact_id: contact.id, message: msg });
+  emitHook("message.received", { contact: who(contact), message: { id: msg.id, kind, text } });
   if (input.noReply) {
     markAnswered(contact.id);
     return;
@@ -202,7 +206,7 @@ async function runAgent(contactId) {
   emit("thinking", { contact_id: contactId, on: true });
   let reply;
   try {
-    reply = await replyGenerator(contact);
+    reply = await replyGenerator(contact, { onAction: (r) => noteAction(contactId, r) });
   } finally {
     emit("thinking", { contact_id: contactId, on: false });
   }
@@ -221,6 +225,17 @@ async function runAgent(contactId) {
   await applyReply(contact, reply, mode, { clientSentVoice: lastPending.kind === "audio" });
 }
 
+// Trace visible (pour toi seulement) des actions lancées par l'agent.
+function noteAction(contactId, r) {
+  const msg = addMessage(contactId, {
+    author: "system",
+    kind: "note",
+    text: `🔌 ${r.name} : ${r.ok ? "ok" : "échec"} — ${String(r.result).slice(0, 200)}`,
+    status: "note",
+  });
+  emit("message", { contact_id: contactId, message: msg });
+}
+
 /** Enregistre la commande proposée par l'agent (jamais les paiements). */
 function applyOrder(contactId, o) {
   if (!o) return;
@@ -236,6 +251,7 @@ function applyOrder(contactId, o) {
     saveOrder({ contact_id: contactId, stage: clean.stage || "nouveau", ...clean });
   }
   emit("order", { contact_id: contactId });
+  emitHook("order.updated", { contact: who(getContact(contactId)), order: activeOrder(contactId) });
 }
 
 /** Applique une réponse de l'agent : mémoire, commande, brouillons ou envoi. */
@@ -342,6 +358,7 @@ async function deliver(contact, text, author) {
   if (externalMsgId) rememberSent(contact.channel, contact.external_id, text, externalMsgId);
   const msg = addMessage(contact.id, { author, text, status: "sent", external_id: externalMsgId });
   emit("message", { contact_id: contact.id, message: msg });
+  emitHook("message.sent", { contact: who(contact), message: { id: msg.id, author, text } });
   return msg;
 }
 
@@ -435,6 +452,11 @@ export async function createSong(contactId, brief) {
         if (i === 0) updateMessage(placeholder.id, fields);
         else addMessage(contactId, { author: "agent", ...fields });
       }
+      emitHook("song.ready", {
+        contact: who(getContact(contactId)),
+        title,
+        tracks: tracks.map((t) => ({ title: t.title, url: t.audioUrl })),
+      });
     } catch (e) {
       updateMessage(placeholder.id, { text: `❌ Chanson « ${title} » : ${e.message}`, status: "rejected" });
     }
@@ -491,7 +513,7 @@ export async function runFollowups(now = Date.now()) {
     if (mode === "off" || busy.has(id)) continue;
     busy.add(id);
     try {
-      const reply = await replyGenerator(contact, { followup: true });
+      const reply = await replyGenerator(contact, { followup: true, onAction: (r) => noteAction(id, r) });
       if (reply.messages.length) n++;
       else updateContact(id, { followups: s.followup_max }); // l'agent juge qu'il ne faut pas relancer
       await applyReply(getContact(id), reply, mode, { followup: true });
@@ -522,6 +544,7 @@ export async function sendManual(contactId, text) {
 }
 
 async function notifyOwner(contact, reason) {
+  emitHook("needs_human", { contact: who(contact), reason });
   const s = getSettings();
   const tg = adapters.get("telegram");
   if (!s.owner_telegram_chat_id || !tg?.notify) return;

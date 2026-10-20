@@ -71,6 +71,7 @@ $$(".tabs button").forEach((b) =>
     $$(".tab").forEach((t) => t.classList.toggle("hidden", t.id !== `tab-${b.dataset.tab}`));
     if (b.dataset.tab === "channels") loadChannels();
     if (b.dataset.tab === "sales") loadSales();
+    if (b.dataset.tab === "apps") loadApps();
     if (b.dataset.tab === "learn") loadLearn();
     if (b.dataset.tab === "business") loadKnowledge();
   }),
@@ -104,6 +105,7 @@ function renderContacts() {
 $("#search").addEventListener("input", renderContacts);
 
 function bubble(m, { actions = true } = {}) {
+  if (m.kind === "note") return `<div class="note">${esc(m.text)} · ${time(m.created_at)}</div>`;
   const cls = m.status === "draft" ? "draft" : m.status === "rejected" ? "rejected" : m.status === "generating" ? "draft" : m.author;
   let media = "";
   if (m.media_path && m.kind === "image") media = `<img src="/api/media/${m.id}" alt="photo" />`;
@@ -408,6 +410,151 @@ $("#run-followups").addEventListener("click", async () => {
   const r = await api("/api/followups/run", { method: "POST" });
   toast(r.sent ? `${r.sent} relance(s) envoyée(s) ou préparée(s)` : "Personne à relancer pour l'instant");
   loadSales();
+});
+
+// ---------- Applications connectées ----------
+let apps = { webhooks: [], actions: [], events: {}, log: [] };
+const HOOK_TEMPLATES = {
+  sheets: { name: "Google Sheets (Make)", events: ["order.updated", "order.paid"] },
+  zapier: { name: "Zapier", events: ["order.paid", "needs_human"] },
+  other: { name: "Mon application", events: ["message.received"] },
+};
+const ACTION_TEMPLATES = {
+  agenda: {
+    name: "Disponibilités",
+    description: "Vérifie si je suis disponible à une date (input = la date demandée par le client). Utilise-la avant de promettre une date de livraison.",
+    method: "POST",
+  },
+  catalogue: {
+    name: "Catalogue",
+    description: "Renvoie mes offres, prix et exemples de chansons (input = ce que le client cherche).",
+    method: "GET",
+  },
+  other: { name: "Mon action", description: "Explique ici à l'agent quand utiliser cette action et quoi lui donner.", method: "POST" },
+};
+
+async function loadApps() {
+  apps = await api("/api/integrations");
+  renderApps();
+}
+
+function renderApps() {
+  $("#hooks").innerHTML =
+    apps.webhooks
+      .map(
+        (h, i) => `<div class="kn" data-hook="${i}">
+      <div class="pair"><input data-f="name" value="${esc(h.name)}" placeholder="Nom" />
+        <label class="check" style="margin:0"><input type="checkbox" data-f="enabled" ${h.enabled !== false ? "checked" : ""} /> Actif</label></div>
+      <input data-f="url" value="${esc(h.url)}" placeholder="https://hook.eu1.make.com/…" />
+      <div class="chips">${Object.entries(apps.events)
+        .map(([k, v]) => `<label class="chip"><input type="checkbox" data-ev="${k}" ${(h.events || []).includes(k) ? "checked" : ""} /> ${v}</label>`)
+        .join("")}</div>
+      ${h.secret ? `<p class="muted">Clé de signature (en-tête X-Agent-Signature) : <code>${esc(h.secret)}</code></p>` : ""}
+      <div class="btns"><button class="small" data-act="test-hook">Tester</button><button class="small danger" data-act="del-hook">Supprimer</button></div>
+    </div>`,
+      )
+      .join("") || '<p class="muted">Aucune application pour l\'instant.</p>';
+
+  $("#actions").innerHTML =
+    apps.actions
+      .map((a, i) => {
+        const [hk, hv] = Object.entries(a.headers || {})[0] || ["", ""];
+        return `<div class="kn" data-action="${i}">
+      <div class="pair"><input data-f="name" value="${esc(a.name)}" placeholder="Nom de l'action" />
+        <label class="check" style="margin:0"><input type="checkbox" data-f="enabled" ${a.enabled !== false ? "checked" : ""} /> Active</label></div>
+      <textarea data-f="description" rows="2" placeholder="Quand l'agent doit l'utiliser">${esc(a.description)}</textarea>
+      <div class="pair"><select data-f="method" style="width:110px"><option ${a.method !== "GET" ? "selected" : ""}>POST</option><option ${a.method === "GET" ? "selected" : ""}>GET</option></select>
+        <input data-f="url" value="${esc(a.url)}" placeholder="https://…" /></div>
+      <div class="pair"><input data-f="hk" value="${esc(hk)}" placeholder="En-tête (facultatif, ex : Authorization)" />
+        <input data-f="hv" value="${esc(hv)}" placeholder="Valeur (ex : Bearer ta-clé)" /></div>
+      <div class="pair"><input data-f="test-input" placeholder="Essai : ce que l'agent enverrait" />
+        <button class="small" data-act="test-action">Tester</button><button class="small danger" data-act="del-action">Supprimer</button></div>
+      <div class="muted" data-out></div>
+    </div>`;
+      })
+      .join("") || '<p class="muted">Aucune action pour l\'instant.</p>';
+
+  $("#apps-log").innerHTML = apps.log.length
+    ? apps.log
+        .map(
+          (l) => `${l.ok ? "✅" : "❌"} ${time(l.at)} — ${esc(l.kind === "action" ? "Action" : "Envoi")} « ${esc(l.name)} »${l.event ? ` (${esc(l.event)})` : ""}${l.status ? ` · ${l.status}` : ""}${l.error ? ` · ${esc(l.error)}` : ""}`,
+        )
+        .join("<br>")
+    : "Rien pour l'instant.";
+}
+
+// Relit le formulaire dans `apps` avant d'enregistrer ou de redessiner.
+function readApps() {
+  $$("#hooks [data-hook]").forEach((el) => {
+    const h = apps.webhooks[el.dataset.hook];
+    h.name = el.querySelector('[data-f="name"]').value;
+    h.url = el.querySelector('[data-f="url"]').value.trim();
+    h.enabled = el.querySelector('[data-f="enabled"]').checked;
+    h.events = $$("[data-ev]", el).filter((c) => c.checked).map((c) => c.dataset.ev);
+  });
+  $$("#actions [data-action]").forEach((el) => {
+    const a = apps.actions[el.dataset.action];
+    const f = (k) => el.querySelector(`[data-f="${k}"]`);
+    a.name = f("name").value;
+    a.description = f("description").value;
+    a.method = f("method").value;
+    a.url = f("url").value.trim();
+    a.enabled = f("enabled").checked;
+    a.headers = f("hk").value.trim() ? { [f("hk").value.trim()]: f("hv").value } : {};
+  });
+}
+async function saveApps() {
+  readApps();
+  await api("/api/integrations", { method: "PUT", body: { webhooks: apps.webhooks, actions: apps.actions } });
+  await loadApps();
+  toast("Applications enregistrées ✓");
+}
+$("#apps-save").addEventListener("click", () => saveApps().catch((e) => toast(e.message)));
+$$("[data-tpl-hook]").forEach((b) =>
+  b.addEventListener("click", () => {
+    readApps();
+    apps.webhooks.push({ ...HOOK_TEMPLATES[b.dataset.tplHook], url: "", enabled: true });
+    renderApps();
+  }),
+);
+$$("[data-tpl-action]").forEach((b) =>
+  b.addEventListener("click", () => {
+    readApps();
+    apps.actions.push({ ...ACTION_TEMPLATES[b.dataset.tplAction], url: "", headers: {}, enabled: true });
+    renderApps();
+  }),
+);
+$("#tab-apps").addEventListener("click", async (e) => {
+  const btn = e.target.closest("button[data-act]");
+  if (!btn) return;
+  const hookEl = btn.closest("[data-hook]");
+  const actEl = btn.closest("[data-action]");
+  try {
+    if (btn.dataset.act === "del-hook") {
+      readApps();
+      apps.webhooks.splice(hookEl.dataset.hook, 1);
+      renderApps();
+    } else if (btn.dataset.act === "del-action") {
+      readApps();
+      apps.actions.splice(actEl.dataset.action, 1);
+      renderApps();
+    } else if (btn.dataset.act === "test-hook") {
+      const i = Number(hookEl.dataset.hook);
+      await saveApps();
+      const r = await api(`/api/integrations/webhooks/${apps.webhooks[i].id}/test`, { method: "POST" });
+      toast(r.ok ? "✅ Ton application a bien reçu le test" : `❌ ${r.error || `Erreur ${r.status}`}`);
+      loadApps();
+    } else if (btn.dataset.act === "test-action") {
+      const i = Number(actEl.dataset.action);
+      const input = actEl.querySelector('[data-f="test-input"]').value;
+      await saveApps();
+      const r = await api(`/api/integrations/actions/${apps.actions[i].id}/test`, { method: "POST", body: { input } });
+      const out = $(`#actions [data-action="${i}"] [data-out]`);
+      out.innerHTML = `${r.ok ? "✅" : "❌"} Réponse : <code>${esc(r.result)}</code>`;
+    }
+  } catch (err) {
+    toast(err.message);
+  }
 });
 
 // ---------- Temps réel ----------
