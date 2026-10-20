@@ -284,6 +284,7 @@ app.get("/api/settings", (req, res) => {
   delete s.webhooks;
   delete s.agent_actions;
   s.env = {
+    kie_api_key: !!process.env.KIE_API_KEY,
     anthropic_api_key: !!process.env.ANTHROPIC_API_KEY,
     transcription_api_key: !!process.env.TRANSCRIPTION_API_KEY,
   };

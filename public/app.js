@@ -806,6 +806,7 @@ function fillSettings() {
     else el.value = settings[el.id] ?? "";
   });
   if (settings.env?.anthropic_api_key && !settings.anthropic_api_key) $("#anthropic_api_key").placeholder = "Déjà fournie par le serveur (.env)";
+  if (settings.env?.kie_api_key && !settings.kie_api_key) $("#kie_api_key").placeholder = "Déjà fournie au démarrage (.env) ✓";
   toggleBrain();
 }
 function toggleBrain() {
@@ -856,6 +857,32 @@ $$(".save-settings").forEach((b) =>
   }),
 );
 
+// ---------- Clé Kie.ai ----------
+function hasAiKey() {
+  return !!(settings.kie_api_key || settings.anthropic_api_key || settings.llm_api_key || settings.env?.kie_api_key || settings.env?.anthropic_api_key);
+}
+function updateKeyBanner() {
+  $("#key-banner").classList.toggle("hidden", hasAiKey());
+}
+// Enregistre la clé Kie, choisit Kie comme cerveau, puis teste la connexion.
+async function saveKieKey(key, out) {
+  key = key.trim();
+  if (!key || key.startsWith("••••••")) return toast("Colle d'abord ta clé Kie.ai");
+  out.textContent = "Enregistrement et test en cours…";
+  await api("/api/settings", { method: "PUT", body: { kie_api_key: key, brain: "kie" } });
+  settings = await api("/api/settings");
+  fillSettings();
+  updateKeyBanner();
+  const r = await api("/api/llm/test", { method: "POST" });
+  out.innerHTML = r.ok
+    ? `✅ Ta clé Kie marche ! Réponse de l'agent : « ${esc(r.text)} »`
+    : `<span class="error">❌ ${esc(r.error)}</span>`;
+  // Le bandeau disparaît une fois la clé enregistrée : on affiche aussi le résultat en notification.
+  toast(r.ok ? "✅ Ta clé Kie marche ! Va dans « Tester » pour parler à ton agent." : `❌ ${r.error}`);
+}
+$("#kie-save").addEventListener("click", () => saveKieKey($("#kie_api_key").value, $("#llm-test-result")).catch((e) => toast(e.message)));
+$("#banner-save").addEventListener("click", () => saveKieKey($("#banner-key").value, $("#banner-result")).catch((e) => toast(e.message)));
+
 // ---------- Voix ----------
 async function loadVoices() {
   try {
@@ -894,6 +921,7 @@ async function start() {
   $("#app").classList.remove("hidden");
   await loadVoices();
   fillSettings();
+  updateKeyBanner();
   bindDraftActions($("#test-thread"), loadTest);
   await loadContacts();
   listen();

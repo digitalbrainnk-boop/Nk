@@ -167,3 +167,13 @@ table.orders .num { text-align: right; font-variant-numeric: tabular-nums; white
 label.chip { display: inline-flex; gap: 6px; align-items: center; border: 1px solid var(--line); cursor: pointer; }
 label.chip input { width: auto; }
 .kn .pair { align-items: center; }
+
+/* Clé Kie bien visible */
+.keybox { border: 2px solid var(--accent); background: var(--accent-soft); border-radius: 12px; padding: 14px; margin-bottom: 14px; }
+.keybox h2 { margin-top: 0; }
+.keybox input { font-size: 16px; }
+details.advanced { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin: 14px 0; }
+details.advanced summary { cursor: pointer; font-weight: 600; }
+.key-banner { margin: 12px 16px 0; padding: 12px 14px; border-radius: 12px; border: 2px solid var(--accent); background: var(--accent-soft); display: grid; gap: 8px; }
+.key-banner .pair { gap: 8px; }
+.key-banner button { white-space: nowrap; }

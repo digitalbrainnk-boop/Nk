@@ -33,6 +33,13 @@
       <button data-tab="settings">Réglages</button>
     </nav>
 
+    <!-- Bandeau tant qu'aucune clé n'est enregistrée -->
+    <div id="key-banner" class="key-banner hidden">
+      <b>🔑 Pour que l'agent réponde, colle ta clé Kie.ai</b>
+      <div class="pair"><input id="banner-key" placeholder="Ta clé Kie.ai" autocomplete="off" /><button class="primary" id="banner-save">Enregistrer</button></div>
+      <p id="banner-result" class="muted"></p>
+    </div>
+
     <!-- Conversations -->
     <section id="tab-conversations" class="tab">
       <div class="split">
@@ -207,43 +214,51 @@
     <!-- Réglages -->
     <section id="tab-settings" class="tab hidden">
       <div class="card narrow">
-        <h2>Cerveau de l'agent</h2>
-        <div class="row"><label>Service d'IA utilisé</label>
-          <select id="brain">
-            <option value="kie">Kie.ai — DeepSeek V4.1 Flash (avec ta clé Kie)</option>
-            <option value="claude">Claude (Anthropic)</option>
-            <option value="openai">Autre service compatible OpenAI (DeepSeek, OpenRouter…)</option>
-          </select></div>
-        <p id="brain-kie" class="muted">Le cerveau utilise ta clé Kie.ai (section « Kie.ai » ci-dessous).</p>
-        <div id="brain-openai">
-          <p class="muted">Copie ces informations depuis la page du modèle sur ton service (ex : Kie.ai → DeepSeek V4 Flash → API).</p>
-          <div class="row"><label>Adresse de l'API (URL « chat/completions »)</label><input id="llm_url" placeholder="https://api.exemple.com/v1/chat/completions" /></div>
-          <div class="row"><label>Clé API</label><input id="llm_api_key" placeholder="sk-…" /></div>
-          <div class="row"><label>Nom du modèle</label><input id="llm_model" placeholder="deepseek-v4-flash" /></div>
+        <div class="keybox">
+          <h2>🔑 Ta clé Kie.ai</h2>
+          <p class="muted">Une seule clé pour tout : le cerveau de l'agent (DeepSeek), les chansons (Suno) et les réponses vocales. Tu la trouves sur kie.ai → « API Key ».</p>
+          <input id="kie_api_key" placeholder="Colle ta clé Kie.ai ici" autocomplete="off" />
+          <div class="btns"><button class="primary" id="kie-save">Enregistrer et tester</button></div>
+          <p id="llm-test-result" class="muted"></p>
         </div>
-        <div id="brain-claude">
-        <div class="row"><label>Clé API Anthropic (Claude)</label><input id="anthropic_api_key" placeholder="sk-ant-…" /></div>
-        <div class="row"><label>Modèle</label>
-          <select id="model">
-            <option value="claude-opus-5-5">Claude Opus 5.5 (recommandé)</option>
-            <option value="claude-sonnet-5-5">Claude Sonnet 5.5 (moins cher)</option>
-            <option value="claude-haiku-5-5">Claude Haiku 5.5 (très économique)</option>
-          </select></div>
-        <div class="row"><label>Niveau de réflexion</label>
-          <select id="effort"><option value="low">Rapide</option><option value="medium">Normal</option><option value="high">Approfondi</option></select></div>
-        </div>
-        <h2>Kie.ai (Suno pour les chansons, DeepSeek pour le cerveau)</h2>
-        <div class="row"><label>Clé API Kie.ai</label><input id="kie_api_key" placeholder="colle ta clé Kie ici" /></div>
-        <div class="row"><label>Modèle de chat Kie (ne change que si besoin)</label><input id="kie_chat_model" placeholder="deepseek-v4-1-flash" /></div>
-        <div class="row"><label>Version de Suno</label>
+        <div class="row"><label>Version de Suno (chansons)</label>
           <select id="suno_model">
             <option value="V5_5">V5.5 (la plus récente)</option>
             <option value="V5">V5 (recommandée)</option>
             <option value="V4_5PLUS">V4.5+</option>
             <option value="V4_5">V4.5</option>
           </select></div>
-        <div class="btns"><button id="llm-test">Tester la connexion</button></div>
-        <p id="llm-test-result" class="muted"></p>
+
+        <details class="advanced">
+          <summary>Autres services d'IA (facultatif)</summary>
+          <p class="muted">Par défaut, l'agent utilise Kie.ai. Change ici seulement si tu veux un autre service.</p>
+          <div class="row"><label>Service d'IA utilisé</label>
+            <select id="brain">
+              <option value="kie">Kie.ai — DeepSeek (recommandé)</option>
+              <option value="claude">Claude (Anthropic)</option>
+              <option value="openai">Autre service compatible OpenAI (DeepSeek, OpenRouter…)</option>
+            </select></div>
+          <div id="brain-kie">
+            <div class="row"><label>Modèle de chat Kie (trouvé automatiquement par le test)</label><input id="kie_chat_model" placeholder="deepseek-v4-1-flash" /></div>
+          </div>
+          <div id="brain-openai">
+            <div class="row"><label>Adresse de l'API (URL « chat/completions »)</label><input id="llm_url" placeholder="https://api.exemple.com/v1/chat/completions" /></div>
+            <div class="row"><label>Clé API</label><input id="llm_api_key" placeholder="sk-…" /></div>
+            <div class="row"><label>Nom du modèle</label><input id="llm_model" placeholder="deepseek-v4-flash" /></div>
+          </div>
+          <div id="brain-claude">
+            <div class="row"><label>Clé API Anthropic (Claude, commence par sk-ant-)</label><input id="anthropic_api_key" placeholder="sk-ant-…" /></div>
+            <div class="row"><label>Modèle</label>
+              <select id="model">
+                <option value="claude-opus-5-5">Claude Opus 5.5</option>
+                <option value="claude-sonnet-5-5">Claude Sonnet 5.5 (moins cher)</option>
+                <option value="claude-haiku-5-5">Claude Haiku 5.5 (très économique)</option>
+              </select></div>
+            <div class="row"><label>Niveau de réflexion</label>
+              <select id="effort"><option value="low">Rapide</option><option value="medium">Normal</option><option value="high">Approfondi</option></select></div>
+          </div>
+          <div class="btns"><button id="llm-test">Tester la connexion</button></div>
+        </details>
         <h2>Comportement humain</h2>
         <div class="row"><label>Attendre que le client ait fini d'écrire (secondes)</label><input type="number" id="debounce_seconds" /></div>
         <div class="row"><label>Délai avant de répondre : min / max (secondes)</label>
