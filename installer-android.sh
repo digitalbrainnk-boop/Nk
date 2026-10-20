@@ -32,11 +32,20 @@ cd "$DOSSIER"
 npm install --no-audit --no-fund
 
 [ -f .env ] || cp .env.example .env
-if ! grep -qE '^ANTHROPIC_API_KEY=.+' .env; then
+if ! grep -qE '^(ANTHROPIC_API_KEY|KIE_API_KEY)=.+' .env; then
   echo
-  echo "Colle ta clé Claude (sk-ant-..., créée sur console.anthropic.com) puis Entrée :"
-  read -r KEY < /dev/tty
-  sed -i "s|^ANTHROPIC_API_KEY=.*|ANTHROPIC_API_KEY=$KEY|" .env
+  echo "Quelle clé d'IA as-tu ?  1 = Kie.ai (DeepSeek + Suno)   2 = Claude (Anthropic)   Entrée = plus tard"
+  read -r CHOIX < /dev/tty
+  if [ "$CHOIX" = "1" ]; then
+    echo "Colle ta clé Kie.ai puis Entrée :"
+    read -r KEY < /dev/tty
+    grep -q '^KIE_API_KEY=' .env && sed -i "s|^KIE_API_KEY=.*|KIE_API_KEY=$KEY|" .env || echo "KIE_API_KEY=$KEY" >> .env
+    grep -q '^BRAIN=' .env && sed -i "s|^BRAIN=.*|BRAIN=kie|" .env || echo "BRAIN=kie" >> .env
+  elif [ "$CHOIX" = "2" ]; then
+    echo "Colle ta clé Claude (sk-ant-...) puis Entrée :"
+    read -r KEY < /dev/tty
+    sed -i "s|^ANTHROPIC_API_KEY=.*|ANTHROPIC_API_KEY=$KEY|" .env
+  fi
 fi
 if ! grep -qE '^ADMIN_PASSWORD=.+' .env; then
   echo

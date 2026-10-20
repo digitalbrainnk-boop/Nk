@@ -129,7 +129,7 @@ export const DEFAULT_SETTINGS = {
   transcription_model: "whisper-large-v3",
   transcription_api_key: "",
   anthropic_api_key: "",
-  brain: "claude", // claude | kie | openai (autre service compatible OpenAI)
+  brain: process.env.BRAIN || "claude", // claude | kie | openai (autre service compatible OpenAI)
   kie_api_key: "",
   kie_chat_model: "deepseek-v4-1-flash",
   kie_chat_url: "",
