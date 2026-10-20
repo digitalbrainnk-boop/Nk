@@ -153,8 +153,14 @@ export function getSettings() {
     if (!out.kie_api_key) out.kie_api_key = out.anthropic_api_key;
     out.anthropic_api_key = "";
   }
+  // Même chose pour une clé donnée à l'installation (.env) à la place de la clé Claude.
+  let envClaude = process.env.ANTHROPIC_API_KEY || "";
+  if (envClaude && !envClaude.startsWith("sk-ant-")) {
+    if (!out.kie_api_key && !process.env.KIE_API_KEY) out.kie_api_key = envClaude;
+    envClaude = "";
+  }
   // Pas de clé Claude mais une clé Kie : on utilise Kie automatiquement.
-  const hasClaude = out.anthropic_api_key || process.env.ANTHROPIC_API_KEY;
+  const hasClaude = out.anthropic_api_key || envClaude;
   const hasKie = out.kie_api_key || process.env.KIE_API_KEY;
   if (out.brain === "claude" && !hasClaude && hasKie) out.brain = "kie";
   if (out.brain === "kie" && !hasKie && hasClaude) out.brain = "claude";

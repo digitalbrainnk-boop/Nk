@@ -24,7 +24,8 @@ const REPLY_SHAPE = `{"messages": ["bulle 1", "bulle 2"], "memory": "mémoire à
 let client = null;
 let clientKey = null;
 function getClient() {
-  const key = getSettings().anthropic_api_key || process.env.ANTHROPIC_API_KEY || null;
+  const env = process.env.ANTHROPIC_API_KEY || "";
+  const key = getSettings().anthropic_api_key || (env.startsWith("sk-ant-") ? env : "") || null;
   if (!client || key !== clientKey) {
     client = key ? new Anthropic({ apiKey: key }) : new Anthropic();
     clientKey = key;

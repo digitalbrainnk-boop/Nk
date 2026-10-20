@@ -111,3 +111,15 @@ test("une clé Kie déjà enregistrée par erreur dans la case Claude est utilis
   assert.equal(s.kie_api_key, "0dd23e8da5c4");
   assert.equal(s.anthropic_api_key, "");
 });
+
+test("une clé Kie donnée à l'installation comme clé Claude (.env) est utilisée comme clé Kie", () => {
+  db.setSettings({ brain: "kie", anthropic_api_key: "", kie_api_key: "" });
+  process.env.ANTHROPIC_API_KEY = "0dd2envkey";
+  try {
+    const s = db.getSettings();
+    assert.equal(s.brain, "kie");
+    assert.equal(s.kie_api_key, "0dd2envkey");
+  } finally {
+    delete process.env.ANTHROPIC_API_KEY;
+  }
+});
