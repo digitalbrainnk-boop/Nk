@@ -25,7 +25,13 @@ async function api(path, opts = {}) {
     init.headers["Content-Type"] = "application/json";
     init.body = JSON.stringify(opts.body);
   }
-  const res = await fetch(path, init);
+  let res;
+  try {
+    res = await fetch(path, init);
+  } catch {
+    // Le serveur ne répond plus : en général l'agent a été arrêté dans Termux.
+    throw new Error("L'agent est arrêté : ouvre Termux et tape « agent » puis Entrée, puis réessaie.");
+  }
   if (res.status === 401 && path !== "/api/login") {
     showLogin();
     throw new Error("Non connecté");
