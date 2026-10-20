@@ -296,10 +296,20 @@ app.put("/api/settings", wrap(async (req, res) => {
   delete patch.webhooks;
   delete patch.agent_actions;
   for (const k of SECRET_KEYS) if (typeof patch[k] === "string" && patch[k].startsWith("••••••")) delete patch[k];
+  // Une clé collée dans la case Claude qui n'est pas une clé Claude (sk-ant-…)
+  // est très probablement une clé Kie.ai : on la range au bon endroit.
+  let moved = false;
+  const ak = typeof patch.anthropic_api_key === "string" ? patch.anthropic_api_key.trim() : "";
+  if (ak && !ak.startsWith("sk-ant-")) {
+    patch.kie_api_key = ak;
+    patch.anthropic_api_key = "";
+    patch.brain = "kie";
+    moved = true;
+  }
   setSettings(patch);
   if ("telegram_token" in patch) await startTelegram();
   if ("facebook_page_token" in patch) resetMetaCache();
-  res.json({ ok: true });
+  res.json({ ok: true, moved });
 }));
 
 app.post("/api/llm/test", wrap(async (req, res) => {

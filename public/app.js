@@ -835,9 +835,10 @@ $("#llm-test").addEventListener("click", async () => {
 
 async function saveSettings(patch) {
   try {
-    await api("/api/settings", { method: "PUT", body: patch });
+    const r = await api("/api/settings", { method: "PUT", body: patch });
     settings = await api("/api/settings");
-    toast("Enregistré ✓");
+    toast(r.moved ? "Ce n'était pas une clé Claude : elle a été rangée comme clé Kie.ai et Kie est maintenant utilisé ✓" : "Enregistré ✓");
+    if (r.moved) fillSettings();
   } catch (err) {
     toast(err.message);
   }

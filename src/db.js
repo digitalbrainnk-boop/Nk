@@ -148,6 +148,15 @@ export function getSettings() {
       out[row.key] = row.value;
     }
   }
+  // Clé enregistrée dans la case Claude qui n'est pas une clé Claude : c'est une clé Kie.
+  if (out.anthropic_api_key && !String(out.anthropic_api_key).startsWith("sk-ant-")) {
+    if (!out.kie_api_key) out.kie_api_key = out.anthropic_api_key;
+    out.anthropic_api_key = "";
+  }
+  // Pas de clé Claude mais une clé Kie : on utilise Kie automatiquement.
+  const hasClaude = out.anthropic_api_key || process.env.ANTHROPIC_API_KEY;
+  const hasKie = out.kie_api_key || process.env.KIE_API_KEY;
+  if (out.brain === "claude" && !hasClaude && hasKie) out.brain = "kie";
   return out;
 }
 

@@ -96,3 +96,18 @@ test("action : l'agent l'appelle, reçoit le résultat, puis répond", async () 
   assert.match(lastSystem, /Disponibilités : Vérifie si je suis libre/);
   assert.doesNotMatch(lastSystem, /secret-jamais-montre/);
 });
+
+test("une clé non-Claude collée dans la case Claude part vers Kie", () => {
+  db.setSettings({ brain: "claude", anthropic_api_key: "", kie_api_key: "" });
+  assert.equal(db.getSettings().brain, "claude");
+  db.setSettings({ kie_api_key: "abc" });
+  assert.equal(db.getSettings().brain, "kie"); // pas de clé Claude : Kie utilisé automatiquement
+});
+
+test("une clé Kie déjà enregistrée par erreur dans la case Claude est utilisée comme clé Kie", () => {
+  db.setSettings({ brain: "claude", anthropic_api_key: "0dd23e8da5c4", kie_api_key: "" });
+  const s = db.getSettings();
+  assert.equal(s.brain, "kie");
+  assert.equal(s.kie_api_key, "0dd23e8da5c4");
+  assert.equal(s.anthropic_api_key, "");
+});
