@@ -1,6 +1,6 @@
 // "Cerveau" alternatif : n'importe quel service compatible avec le format
 // OpenAI /chat/completions (Kie.ai, DeepSeek, OpenRouter, Groq...).
-import { getSettings } from "./db.js";
+import { getSettings, setSettings } from "./db.js";
 
 export function kieKey() {
   return (getSettings().kie_api_key || process.env.KIE_API_KEY || "").trim();
@@ -44,13 +44,14 @@ function toOpenAI(turns) {
   }));
 }
 
-async function post(cfg, body) {
+async function post(cfg, body, { timeoutMs } = {}) {
   let res;
   try {
     res = await fetch(cfg.url, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${cfg.key}` },
       body: JSON.stringify(body),
+      signal: timeoutMs ? AbortSignal.timeout(timeoutMs) : undefined,
     });
   } catch (e) {
     throw new LLMError(`Impossible de joindre ${cfg.url} : ${e.message}`);
@@ -74,7 +75,25 @@ async function post(cfg, body) {
   return text;
 }
 
-export async function chatText({ system, turns, json = false }) {
+// Erreur qui veut dire « mauvais nom de modèle ou d'adresse » (et pas « mauvaise clé »).
+const isModelError = (e) =>
+  e instanceof LLMError && (e.status === 404 || /model|not supported|not found|unsupported|no such/i.test(e.message)) && !isKeyError(e);
+const isKeyError = (e) =>
+  e instanceof LLMError && (e.status === 401 || e.status === 402 || /api key|apikey|token|unauthori|credit|balance|insufficient/i.test(e.message));
+
+export async function chatText(opts) {
+  try {
+    return await chatTextOnce(opts);
+  } catch (e) {
+    // Kie.ai : si le nom du modèle n'est plus accepté, on retrouve le bon et on réessaie une fois.
+    if (getSettings().brain !== "kie" || !isModelError(e)) throw e;
+    const found = await probeKie();
+    setSettings({ kie_chat_url: found.url, kie_chat_model: found.model });
+    return chatTextOnce(opts);
+  }
+}
+
+async function chatTextOnce({ system, turns, json = false }) {
   const cfg = llmConfig();
   if (!cfg.url || !cfg.key || !cfg.model) {
     throw new LLMError(
@@ -124,16 +143,22 @@ export async function chatJSON({ system, turns, schema, shape }) {
  */
 export function kieCandidates() {
   const s = getSettings();
-  const models = [s.kie_chat_model, KIE_DEFAULT_MODEL, "deepseek-v4.1-flash", "deepseek-v4-flash", "deepseek-chat"]
-    .filter(Boolean)
-    .filter((v, i, a) => a.indexOf(v) === i);
   const list = [];
-  if (s.kie_chat_url) list.push({ url: s.kie_chat_url, model: s.kie_chat_model || KIE_DEFAULT_MODEL });
-  for (const m of models) list.push({ url: kieChatUrl(m), model: m });
-  for (const m of models.slice(0, 3)) {
-    list.push({ url: "https://api.kie.ai/v1/chat/completions", model: m });
-    list.push({ url: "https://api.kie.ai/api/v1/chat/completions", model: m });
+  const add = (url, model) => {
+    if (!list.some((c) => c.url === url && c.model === model)) list.push({ url, model });
+  };
+  // 1. Ce qui a déjà marché.
+  if (s.kie_chat_url && s.kie_chat_model) add(s.kie_chat_url, s.kie_chat_model);
+  // 2. DeepSeek : le nom dans l'adresse et le nom envoyé peuvent différer selon Kie.
+  const slugs = ["deepseek-v4-1-flash", "deepseek-v4.1-flash", "deepseek-v4-flash", "deepseek"];
+  const names = ["deepseek-v4.1-flash", "deepseek-v4-1-flash", "deepseek-v4-flash", "deepseek-flash", "deepseek-chat", "deepseek/deepseek-v4.1-flash"];
+  for (const slug of slugs) for (const name of names) add(kieChatUrl(slug), name);
+  for (const name of names) {
+    add("https://api.kie.ai/v1/chat/completions", name);
+    add("https://api.kie.ai/api/v1/chat/completions", name);
   }
+  // 3. Repli : Gemini, aussi disponible avec la même clé Kie.
+  for (const g of ["gemini-2.5-flash", "gemini-3-flash", "gemini-2.5-pro"]) add(kieChatUrl(g), g);
   return list;
 }
 
@@ -146,6 +171,7 @@ export async function probeKie({ onTry } = {}) {
       const text = await post(
         { ...c, key },
         { model: c.model, messages: [{ role: "user", content: "Dis bonjour en une phrase courte, en français." }], max_tokens: 100 },
+        { timeoutMs: 20_000 },
       );
       onTry?.(c, null);
       return { ...c, text };
@@ -153,7 +179,7 @@ export async function probeKie({ onTry } = {}) {
       onTry?.(c, e);
       lastError = e;
       // Clé refusée ou crédit épuisé : inutile d'essayer d'autres adresses.
-      if ([401, 402, 403].includes(e.status)) throw e;
+      if (isKeyError(e)) throw e;
     }
   }
   throw lastError;

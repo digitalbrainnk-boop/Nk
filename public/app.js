@@ -868,7 +868,7 @@ function updateKeyBanner() {
 async function saveKieKey(key, out) {
   key = key.trim();
   if (!key || key.startsWith("••••••")) return toast("Colle d'abord ta clé Kie.ai");
-  out.textContent = "Enregistrement et test en cours…";
+  out.textContent = "Enregistrement et recherche du bon modèle Kie… (jusqu’\x27à 1 minute)";
   await api("/api/settings", { method: "PUT", body: { kie_api_key: key, brain: "kie" } });
   settings = await api("/api/settings");
   fillSettings();
