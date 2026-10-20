@@ -4,7 +4,10 @@
 import {
   activeOrder,
   addExamples,
+  dueLyrics,
+  findContactByOwnerNote,
   isIgnored,
+  rememberOwnerNote,
   logCredits,
   addMessage,
   db,
@@ -287,7 +290,8 @@ async function applyReply(contact, reply, mode, { clientSentVoice = false, follo
   } catch (e) {
     console.error("Commande :", e.message);
   }
-  if (reply.needs_human) notifyOwner(contact, reply.reason).catch(() => {});
+  // (Un paiement annoncé a son propre message pour toi, avec la capture.)
+  if (reply.needs_human && reply.song_step !== "payment_claimed") notifyOwner(contact, reply.reason).catch(() => {});
   if (reply.demo) maybeAutoDemo(contactId).catch((e) => console.error("Démo :", e.message));
   if (!reply.messages.length) {
     // Silence voulu (ex. « ok merci ») ou problème : dans ce cas on l'affiche.
@@ -562,28 +566,144 @@ export async function startComposition(contactId) {
   );
 }
 
+/**
+ * Écriture du texte avec un délai « humain » (entre lyrics_delay_min et
+ * lyrics_delay_max minutes, 12 max) : la commande passe en « writing » et
+ * runLyricsQueue l'envoie à l'heure prévue.
+ */
+export function scheduleLyrics(contactId, { revise = false, notes = "" } = {}) {
+  const s = getSettings();
+  const order = activeOrder(contactId) || saveOrder({ contact_id: contactId, stage: "nouveau" });
+  const min = Math.max(0, Math.min(12, Number(s.lyrics_delay_min) || 0));
+  const max = Math.max(min, Math.min(12, Number(s.lyrics_delay_max) || 0));
+  const delayMs = rand(min, max) * 60_000;
+  saveOrder({
+    id: order.id,
+    lyrics_status: "writing",
+    lyrics_due_at: Date.now() + delayMs,
+    lyrics_notes: JSON.stringify({ revise: revise && !!order.lyrics, notes }),
+  });
+  emit("order", { contact_id: contactId });
+  return delayMs;
+}
+
+/** Envoie les textes dont l'heure est arrivée (appelé toutes les 30 secondes). */
+export async function runLyricsQueue(at = Date.now()) {
+  let n = 0;
+  for (const o of dueLyrics(at)) {
+    let opts = {};
+    try {
+      opts = JSON.parse(o.lyrics_notes || "{}");
+    } catch {}
+    // On passe tout de suite en « proposed » pour ne pas l'envoyer deux fois.
+    saveOrder({ id: o.id, lyrics_status: o.lyrics ? "proposed" : "", lyrics_due_at: 0 });
+    try {
+      await proposeLyrics(o.contact_id, { revise: !!opts.revise, notes: opts.notes || "" });
+      n++;
+    } catch (e) {
+      console.error("Texte de chanson :", e.message);
+      saveOrder({ id: o.id, lyrics_status: "writing", lyrics_due_at: Date.now() + 60_000 }); // nouvel essai dans 1 min
+    }
+  }
+  return n;
+}
+
 async function handleSongStep(contactId, reply, mode) {
   const s = getSettings();
   if (!s.song_flow) return;
+  const contact = getContact(contactId);
   if (reply.song_step === "propose_lyrics" || reply.song_step === "revise_lyrics") {
-    await proposeLyrics(contactId, { revise: reply.song_step === "revise_lyrics", notes: reply.revision_notes, mode });
+    const revise = reply.song_step === "revise_lyrics";
+    if (contact.channel === "test" || !(Number(s.lyrics_delay_max) > 0)) {
+      await proposeLyrics(contactId, { revise, notes: reply.revision_notes, mode });
+    } else {
+      scheduleLyrics(contactId, { revise, notes: reply.revision_notes });
+    }
     return;
   }
+  let order = activeOrder(contactId);
   if (reply.song_step === "client_validated") {
-    const order = activeOrder(contactId);
     if (!order?.lyrics || !["proposed", "validated"].includes(order.lyrics_status)) return;
     if (s.compose_requires_payment && !(order.paid > 0)) {
+      // Texte validé : l'agent vient de demander le paiement ; rien n'est composé avant ta vérification.
       saveOrder({ id: order.id, lyrics_status: "validated" });
-      updateContact(contactId, {
-        needs_human: 1,
-        needs_human_reason: "Le client a validé le texte. La composition démarrera dès que tu enregistres son paiement.",
-      });
       emit("order", { contact_id: contactId });
-      emit("contact", { contact_id: contactId });
       return;
     }
     await startComposition(contactId);
+    return;
   }
+  if (reply.song_step === "payment_claimed") {
+    if (!order) order = saveOrder({ contact_id: contactId, stage: "devis" });
+    if (order.lyrics_status === "composing" || order.lyrics_status === "composed") return;
+    // Si le texte n'est pas encore validé, il garde son état : on compose seulement quand il l'est.
+    if (!order.lyrics || order.lyrics_status === "validated") saveOrder({ id: order.id, lyrics_status: "payment_claimed" });
+    emit("order", { contact_id: contactId });
+    // Preuve envoyée par le client (capture) : on te la transfère.
+    const proof = listMessages(contactId, 15)
+      .filter((m) => m.author === "client" && m.kind === "image" && m.media_path && Date.now() - m.created_at < 3600_000)
+      .at(-1);
+    const emoji = s.payment_confirm_emoji || "✅";
+    const amount = order.price ? `${order.price} ${s.currency}` : "le montant convenu";
+    await notifyOwner(
+      contact,
+      `💰 Ce client dit avoir payé ${amount}${order.song_title || order.title ? ` pour « ${order.song_title || order.title} »` : ""}.\nVérifie ton compte. Si c'est bon, réagis à CE message avec ${emoji} : je compose la chanson et je la lui envoie.\n(Tant que tu n'as pas réagi, rien n'est composé.)`,
+      { kind: "payment", orderId: order.id, imagePath: proof?.media_path, imageMime: proof?.media_type, plain: true },
+    );
+    updateContact(contactId, { needs_human: 1, needs_human_reason: `Paiement annoncé par le client : vérifie-le puis réagis avec ${emoji} (WhatsApp) ou clique « Paiement vérifié ».` });
+    emit("contact", { contact_id: contactId });
+  }
+}
+
+/**
+ * TU as vérifié le paiement : la chanson est composée puis livrée au client.
+ * Appelé par ta réaction emoji sur WhatsApp ou par le bouton du tableau de bord.
+ */
+export async function confirmPayment(contactId, { by = "tableau de bord" } = {}) {
+  const s = getSettings();
+  const contact = getContact(contactId);
+  const order = activeOrder(contactId);
+  if (!order) throw new Error("Aucune commande en cours pour ce client.");
+  if (["composing", "composed"].includes(order.lyrics_status)) return order; // déjà lancé
+  saveOrder({
+    id: order.id,
+    paid: order.paid > 0 ? order.paid : order.price || 0,
+    stage: ["nouveau", "devis"].includes(order.stage) ? "acompte" : order.stage,
+  });
+  updateContact(contactId, { needs_human: 0, needs_human_reason: null });
+  emitHook("order.paid", { contact: who(contact), order: activeOrder(contactId), confirmed_by: by });
+  const ready = order.lyrics && ["validated", "payment_claimed"].includes(order.lyrics_status);
+  if (order.lyrics_status === "payment_claimed" && !order.lyrics) saveOrder({ id: order.id, lyrics_status: "" });
+  const say = (text) => deliver(contact, text, "agent").catch((e) => console.error("Message de confirmation :", e.message));
+  if (!ready) {
+    // Payé avant d'avoir validé le texte : la composition partira dès qu'il le valide.
+    await say("Paiement bien reçu, merci 🙏");
+    emit("order", { contact_id: contactId });
+    return activeOrder(contactId);
+  }
+  await say("Paiement bien reçu, merci 🙏 Je compose ta chanson maintenant, tu la reçois dans une dizaine de minutes 🎶");
+  await startComposition(contactId);
+  notifyOwner(contact, `✅ Paiement confirmé (${by}) : composition lancée.`, { plain: true }).catch(() => {});
+  return activeOrder(contactId);
+}
+
+/** Réaction emoji venue de TON WhatsApp. */
+export async function handleOwnerReaction({ channel, chatJid, targetId, emoji, ownerChat }) {
+  const s = getSettings();
+  const norm = (e) => String(e || "").replace(/[\uFE0F\u{1F3FB}-\u{1F3FF}]/gu, "");
+  if (norm(emoji) !== norm(s.payment_confirm_emoji || "✅")) return null;
+  // 1. Réaction sur le message que l'agent t'a envoyé.
+  const note = findContactByOwnerNote(targetId);
+  let contactId = note?.kind === "payment" ? note.contactId : null;
+  // 2. Ou réaction directement dans la discussion du client (sur sa capture, par exemple).
+  if (!contactId && !ownerChat) {
+    const c = upsertContact(channel, chatJid);
+    const o = activeOrder(c.id);
+    const claimed = String(c.needs_human_reason || "").startsWith("Paiement annoncé");
+    if (o && (claimed || ["payment_claimed", "validated"].includes(o.lyrics_status))) contactId = c.id;
+  }
+  if (!contactId) return null;
+  return confirmPayment(contactId, { by: `ta réaction ${emoji} sur WhatsApp` });
 }
 
 /** Démo automatique : une seule fois par client, toujours en brouillon à valider. */
@@ -665,13 +785,25 @@ export async function sendManual(contactId, text) {
   return deliver(contact, text, "owner");
 }
 
-async function notifyOwner(contact, reason) {
-  emitHook("needs_human", { contact: who(contact), reason });
+export async function notifyOwner(contact, reason, { kind, orderId, imagePath, imageMime, plain = false } = {}) {
+  if (kind !== "payment") emitHook("needs_human", { contact: who(contact), reason });
   const s = getSettings();
+  const phone = contact.meta?.phone ? ` +${contact.meta.phone}` : "";
+  const text = `${plain ? "" : "🔔 "}${contact.name || contact.external_id} (${contact.channel}${phone})${plain ? "\n" : " a besoin de toi : "}${reason}`;
+  // Sur TON WhatsApp (ton numéro ou ta discussion « moi »).
+  const wa = adapters.get("whatsapp");
+  if (wa?.notifyOwner) {
+    try {
+      const id = await wa.notifyOwner(text, { imagePath, imageMime });
+      if (id) {
+        rememberSent("whatsapp", "owner", text, id);
+        rememberOwnerNote(id, { contactId: contact.id, orderId, kind: kind || "info" });
+      }
+      return;
+    } catch (e) {
+      console.error("Message WhatsApp pour toi :", e.message);
+    }
+  }
   const tg = adapters.get("telegram");
-  if (!s.owner_telegram_chat_id || !tg?.notify) return;
-  await tg.notify(
-    s.owner_telegram_chat_id,
-    `🔔 ${contact.name || contact.external_id} (${contact.channel}) a besoin de toi : ${reason}`,
-  );
+  if (s.owner_telegram_chat_id && tg?.notify) await tg.notify(s.owner_telegram_chat_id, text);
 }

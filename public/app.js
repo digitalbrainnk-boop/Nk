@@ -297,8 +297,10 @@ const STAGES = {
 };
 const LYRICS_STATUS = {
   "": "Pas encore de texte.",
+  writing: "✍️ Texte en cours d'écriture : il part chez le client dans quelques minutes.",
   proposed: "📤 Texte envoyé au client, en attente de sa réponse.",
-  validated: "✅ Texte validé par le client.",
+  validated: "✅ Texte validé par le client : en attente de son paiement.",
+  payment_claimed: "💰 Le client dit avoir payé : vérifie ton compte puis réagis avec ton emoji sur WhatsApp (ou clique « Paiement vérifié »).",
   composing: "🎵 Composition en cours avec Suno…",
   composed: "🎧 Chanson composée : écoute-la dans la conversation.",
 };
@@ -329,6 +331,7 @@ async function loadOrderBox(contactId) {
       <button class="small" id="lyrics-write">✍️ ${o?.lyrics ? "Réécrire" : "Écrire"} le texte avec l'IA</button>
       ${o?.lyrics ? '<button class="small" id="lyrics-send">📤 Envoyer ce texte au client</button><button class="small primary" id="compose-now">🎵 Composer maintenant</button>' : ""}
     </div>
+    ${o && o.lyrics_status !== "composing" && o.lyrics_status !== "composed" && !(o.price > 0 && o.paid >= o.price) ? `<div class="btns"><button class="small primary" id="pay-ok">✅ Paiement vérifié${["validated", "payment_claimed"].includes(o.lyrics_status) ? " : composer et livrer" : ""}</button></div>` : ""}
     <div class="btns"><button class="small primary" id="order-save">${o ? "Enregistrer" : "Créer la commande"}</button>
     ${orders.length > 1 ? `<span class="muted">${orders.length} commandes au total</span>` : ""}</div>
     <p class="muted">Seul toi peux marquer un paiement : l'agent ne le fait jamais.</p><hr />`;
@@ -370,6 +373,11 @@ async function loadOrderBox(contactId) {
     await saveOrderForm();
     await api(`/api/contacts/${contactId}/lyrics/send`, { method: "POST" });
   }, "Texte envoyé au client"));
+  $("#pay-ok")?.addEventListener("click", run($("#pay-ok"), "Lancement…", async () => {
+    if (!confirm("Tu as bien reçu l'argent sur ton compte ? La chanson sera composée et envoyée au client.")) throw new Error("Annulé");
+    await saveOrderForm();
+    await api(`/api/contacts/${contactId}/confirm-payment`, { method: "POST" });
+  }, "Paiement confirmé : le client est prévenu et la chanson est en composition (livrée en ~10 min)"));
   $("#compose-now")?.addEventListener("click", run($("#compose-now"), "Lancement…", async () => {
     await saveOrderForm();
     await api(`/api/contacts/${contactId}/compose`, { method: "POST" });
@@ -884,6 +892,8 @@ function fillSettings() {
   if (settings.env?.anthropic_api_key && !settings.anthropic_api_key) $("#anthropic_api_key").placeholder = "Déjà fournie par le serveur (.env)";
   if (settings.env?.kie_api_key && !settings.kie_api_key) $("#kie_api_key").placeholder = "Déjà fournie au démarrage (.env) ✓";
   toggleBrain();
+  toggleVoice();
+  showVoiceState();
 }
 function toggleBrain() {
   const b = $("#brain").value;
@@ -976,7 +986,7 @@ async function loadVoices() {
 }
 $("#tts-preview").addEventListener("click", async () => {
   const btn = $("#tts-preview");
-  await saveSettings({ tts_voice: $("#tts_voice").value });
+  await saveSettings({ tts_voice: $("#tts_voice").value, voice_provider: $("#voice_provider").value });
   btn.disabled = true;
   btn.textContent = "Création de la voix…";
   try {
@@ -992,6 +1002,72 @@ $("#tts-preview").addEventListener("click", async () => {
     btn.textContent = "Écouter cette voix";
   }
 });
+
+// ---------- Ma voix (clonage) ----------
+let voiceChunks = [];
+let recorder = null;
+let recorded = null;
+const voiceStatus = (t) => ($("#voice-status").innerHTML = t);
+function showVoiceState() {
+  voiceStatus(settings.elevenlabs_voice_id
+    ? `✅ Ta voix est prête${settings.voice_provider === "elevenlabs" ? " et utilisée pour les vocaux" : " (choisis « Ma propre voix » ci-dessus pour l'utiliser)"}.`
+    : "Pas encore de voix créée.");
+}
+$("#voice-record").addEventListener("click", async () => {
+  const btn = $("#voice-record");
+  if (recorder?.state === "recording") {
+    recorder.stop();
+    return;
+  }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    voiceChunks = [];
+    recorder = new MediaRecorder(stream);
+    recorder.ondataavailable = (e) => e.data.size && voiceChunks.push(e.data);
+    recorder.onstop = () => {
+      stream.getTracks().forEach((t) => t.stop());
+      recorded = new Blob(voiceChunks, { type: recorder.mimeType || "audio/webm" });
+      const a = $("#voice-recorded");
+      a.src = URL.createObjectURL(recorded);
+      a.classList.remove("hidden");
+      btn.textContent = "🎙️ Recommencer l'enregistrement";
+      voiceStatus("Enregistrement prêt. Écoute-le puis clique « Créer ma voix ».");
+    };
+    recorder.start();
+    btn.textContent = "⏹️ Arrêter l'enregistrement";
+    voiceStatus("🔴 Enregistrement… parle naturellement 1 à 2 minutes, comme dans tes vocaux aux clients.");
+  } catch {
+    toast("Micro inaccessible : autorise le micro, ou envoie un fichier audio ci-dessous.");
+  }
+});
+$("#voice-clone").addEventListener("click", async () => {
+  const btn = $("#voice-clone");
+  const fd = new FormData();
+  if (recorded) fd.append("files", recorded, `ma-voix.${(recorded.type.split("/")[1] || "webm").split(";")[0]}`);
+  for (const f of $("#voice-files").files) fd.append("files", f);
+  if (!fd.has("files")) return toast("Enregistre ta voix ou choisis un fichier audio d'abord.");
+  const key = $("#elevenlabs_api_key").value;
+  if (key && !key.startsWith("••••••")) await saveSettings({ elevenlabs_api_key: key });
+  btn.disabled = true;
+  btn.textContent = "Création de ta voix…";
+  try {
+    await api("/api/voice/clone", { method: "POST", body: fd });
+    settings = await api("/api/settings");
+    fillSettings();
+    toast("✅ Ta voix est créée ! Clique « Écouter cette voix » pour l'essayer.");
+  } catch (err) {
+    toast(err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "✨ Créer ma voix";
+    showVoiceState();
+  }
+});
+function toggleVoice() {
+  $("#voice-mine").classList.toggle("hidden", $("#voice_provider").value !== "elevenlabs");
+  $("#voice-preset").classList.toggle("hidden", $("#voice_provider").value === "elevenlabs");
+}
+$("#voice_provider").addEventListener("change", toggleVoice);
 
 // ---------- Démarrage ----------
 async function start() {

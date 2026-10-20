@@ -56,20 +56,23 @@ Dans une conversation, bouton **🎵 Créer la chanson** : l'IA écrit titre, st
 - **Relances automatiques** : un client silencieux avec une demande ou un devis en cours reçoit une relance douce après X heures (Réglages → Commandes et relances).
 - Onglet **Ventes** : encaissé du mois, reste à encaisser, commandes en cours, livrées, clients, graphique par semaine et liste des commandes.
 
-### Réponses en vocal et démo automatique
+### Réponses en vocal (avec TA voix) et démo automatique
 
-- Réglages → **Répondre en vocal** : jamais, quand le client envoie un vocal, ou toujours. Voix ElevenLabs via ta clé Kie.ai (bouton « Écouter cette voix »). Avec ffmpeg installé, c'est une vraie note vocale.
+- Réglages → **Répondre en vocal** : jamais, quand le client envoie un vocal, ou toujours. Avec ffmpeg installé, c'est une vraie note vocale.
+- **Voix utilisée** : une voix toute faite (ElevenLabs via ta clé Kie.ai) ou **ta propre voix** : colle une clé ElevenLabs (abonnement « Starter » pour le clonage), clique « 🎙️ M'enregistrer » (1 à 2 minutes) ou envoie des fichiers audio de toi, puis « ✨ Créer ma voix ». La clé ElevenLabs sert aussi à mieux comprendre les vocaux des clients.
 - **Démo automatique** : quand un client hésite, l'agent prépare un extrait avec Suno (une fois par client) ; tu l'écoutes avant de l'envoyer.
 
-### Composition guidée des chansons (texte → validation → Suno)
+### Composition guidée des chansons (texte → validation → paiement → Suno)
 
-1. L'agent rassemble les infos (pour qui, prénoms, occasion, anecdotes, style, langue).
-2. Il **écrit le texte** et l'envoie au client pour validation (en Brouillon, tu le relis d'abord).
+1. L'agent rassemble les infos (pour qui, prénoms, occasion, anecdotes, style, langue), puis demande au client **si c'est toutes les infos**.
+2. Il **écrit le texte** et l'envoie au client après un délai « humain » (Réglages : 3 à 10 min par défaut, **12 min maximum**).
 3. Le client demande un changement → **nouvelle version** corrigée.
-4. Le client valide → **Suno compose** avec le texte validé (option : seulement après paiement enregistré).
-5. Tu écoutes les versions et cliques **Envoyer au client** (option : envoi automatique).
+4. Le client valide → l'agent lui **demande de payer** (moyens de paiement : mets-les dans une fiche de l'onglet Apprentissage).
+5. Le client dit avoir payé / envoie une capture → l'agent **ne compose rien** : il t'envoie un message sur **ton WhatsApp** (avec la capture).
+6. Tu vérifies ton compte et **réagis à ce message avec ton emoji** (✅ par défaut, Réglages → Vérification des paiements) — ou bouton « ✅ Paiement vérifié » dans le panneau Commande. Seule **ta** réaction compte : un client qui réagit avec le même emoji ne déclenche rien.
+7. Suno compose et la chanson est **livrée au client automatiquement** (~10 minutes).
 
-Tout est visible et modifiable dans le panneau 📦 Commande → « Texte de la chanson » (Écrire / Envoyer / Composer maintenant).
+Si l'agent ne comprend pas un message, il te laisse aussi un message sur ton WhatsApp (ton numéro réglé dans Réglages, ou ta discussion « moi »).
 
 ### Numéros ignorés, vocaux et crédits
 

@@ -32,15 +32,18 @@ import {
   updateContact,
   updateMessage,
   upsertContact,
+  DATA_DIR,
 } from "./db.js";
 import { bus } from "./events.js";
 import {
   approveDraft,
+  confirmPayment,
   createSong,
   handleIncoming,
   proposeLyrics,
   rejectDraft,
   runFollowups,
+  runLyricsQueue,
   schedule,
   sendManual,
   startComposition,
@@ -274,8 +277,14 @@ app.post("/api/tts/preview", wrap(async (req, res) => {
   const { textToSpeech } = await import("./tts.js");
   const name = getSettings().owner_name || "moi";
   const audio = await textToSpeech(`Bonjour ! C'est ${name}. Merci pour ton message, je te prépare ta chanson avec plaisir.`);
-  res.json({ url: audio.url });
+  res.json({ url: `/api/voice/file/${path.basename(audio.path)}` });
 }));
+// Écoute d'un vocal créé par l'agent (dossier data/media).
+app.get("/api/voice/file/:name", (req, res) => {
+  const file = path.join(DATA_DIR, "media", path.basename(req.params.name));
+  if (!fs.existsSync(file)) return res.sendStatus(404);
+  res.sendFile(file);
+});
 
 // Processus chanson : écrire / corriger le texte et l'envoyer, ou composer tout de suite.
 app.post("/api/contacts/:id/lyrics", wrap(async (req, res) => {
@@ -293,6 +302,10 @@ app.post("/api/contacts/:id/lyrics/send", wrap(async (req, res) => {
   saveOrder({ id: order.id, lyrics_status: "proposed" });
   await sendManual(id, `🎵 ${order.song_title || order.title || "Ta chanson"}\n\n${order.lyrics}\n\nDis-moi si ce texte te plaît, ou ce que tu veux changer 😊`);
   res.json({ ok: true });
+}));
+// TU as vérifié le paiement (même effet que ta réaction emoji sur WhatsApp).
+app.post("/api/contacts/:id/confirm-payment", wrap(async (req, res) => {
+  res.json(await confirmPayment(Number(req.params.id), { by: "tableau de bord" }));
 }));
 app.post("/api/contacts/:id/compose", wrap(async (req, res) => {
   res.json(await startComposition(Number(req.params.id)));
@@ -335,6 +348,7 @@ const SECRET_KEYS = [
   "transcription_api_key",
   "llm_api_key",
   "kie_api_key",
+  "elevenlabs_api_key",
   "admin_password",
 ];
 app.get("/api/settings", (req, res) => {
@@ -409,6 +423,15 @@ function readExport(file) {
   }
   return file.buffer.toString("utf8");
 }
+// Ma voix : tes enregistrements -> ta voix clonée chez ElevenLabs.
+app.post("/api/voice/clone", upload.array("files", 5), wrap(async (req, res) => {
+  const { saveMedia } = await import("./media.js");
+  const { cloneVoice } = await import("./elevenlabs.js");
+  const files = (req.files || []).map((f) => saveMedia(f.buffer, f.mimetype || "audio/webm"));
+  const voiceId = await cloneVoice(files, `Voix de ${getSettings().owner_name || "moi"}`);
+  setSettings({ elevenlabs_voice_id: voiceId, voice_provider: "elevenlabs" });
+  res.json({ ok: true, voice_id: voiceId });
+}));
 app.post("/api/learn/preview", upload.array("files"), wrap(async (req, res) => {
   const all = [];
   for (const f of req.files || []) all.push(...parseWhatsAppExport(readExport(f)));
@@ -469,11 +492,14 @@ app.listen(port, () => {
   console.log(`\n✅ Agent démarré : http://localhost:${port}`);
   console.log(`\n🔑 MOT DE PASSE : ${password}`);
   console.log(`   (il est aussi écrit dans le fichier MOT-DE-PASSE.txt du dossier du projet)\n`);
-  if (!process.env.ANTHROPIC_API_KEY && !getSettings().anthropic_api_key) {
-    console.log("⚠️  Ajoute ta clé ANTHROPIC_API_KEY (fichier .env ou Réglages du tableau de bord).");
+  const st = getSettings();
+  if (!process.env.ANTHROPIC_API_KEY && !st.anthropic_api_key && !process.env.KIE_API_KEY && !st.kie_api_key) {
+    console.log("⚠️  Ajoute ta clé Kie.ai (Réglages du tableau de bord).");
   }
   startTelegram();
   maybeAutoStartWhatsApp();
   // Relances automatiques : vérification toutes les 15 minutes.
   setInterval(() => runFollowups().catch((e) => console.error("Relances :", e.message)), 15 * 60_000);
+  // Textes de chansons à envoyer (délai « humain », 12 minutes max) : toutes les 30 secondes.
+  setInterval(() => runLyricsQueue().catch((e) => console.error("Textes :", e.message)), 30_000);
 });

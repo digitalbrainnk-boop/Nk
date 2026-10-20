@@ -9,7 +9,7 @@ import fs from "node:fs";
 import { spawnSync } from "node:child_process";
 import { getSettings } from "./db.js";
 import { kieKey } from "./openai-compat.js";
-import { downloadToMedia } from "./media.js";
+import { downloadToMedia, saveMedia } from "./media.js";
 
 const BASE = "https://api.kie.ai/api/v1";
 const POLL_MS = Number(process.env.KIE_POLL_MS || 3000);
@@ -62,6 +62,7 @@ function toVoiceNote(media) {
  */
 export async function textToSpeech(text) {
   const s = getSettings();
+  if (s.voice_provider === "elevenlabs") return myVoice(text);
   const data = await kie("/jobs/createTask", {
     method: "POST",
     body: {
@@ -97,4 +98,18 @@ export async function textToSpeech(text) {
     await sleep(POLL_MS);
   }
   throw new Error("Voix : trop long, réessaie.");
+}
+
+/** Ta propre voix (ElevenLabs). */
+async function myVoice(text) {
+  const { speakWithMyVoice } = await import("./elevenlabs.js");
+  const media = saveMedia(await speakWithMyVoice(text), "audio/mpeg");
+  // Adresse publique (utile pour Messenger / WhatsApp Cloud) si ta clé Kie est là.
+  let url = "";
+  if (kieKey()) {
+    const { upload } = await import("./stt-kie.js");
+    url = await upload(media.path, media.mime).catch(() => "");
+  }
+  const voice = toVoiceNote(media);
+  return { ...voice, url, voiceNote: voice.mime.startsWith("audio/ogg") };
 }

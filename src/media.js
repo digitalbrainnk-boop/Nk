@@ -12,6 +12,8 @@ const EXT = {
   "audio/mp4": "m4a",
   "audio/aac": "aac",
   "audio/wav": "wav",
+  "audio/x-wav": "wav",
+  "audio/x-m4a": "m4a",
   "audio/webm": "webm",
   "image/jpeg": "jpg",
   "image/png": "png",
@@ -36,11 +38,17 @@ export async function downloadToMedia(url, headers = {}) {
 
 /**
  * Transcrit un vocal : avec le service Whisper configuré (Groq, OpenAI…) s'il y
- * en a un, sinon avec ta clé Kie.ai (si Kie propose un modèle de transcription).
+ * en a un, sinon avec ta clé ElevenLabs, sinon avec ta clé Kie.ai (si Kie
+ * propose un modèle de transcription).
  */
 export async function transcribe(filePath, mime, { contactId } = {}) {
   const s = getSettings();
   const key = s.transcription_api_key || process.env.TRANSCRIPTION_API_KEY;
+  const { elevenKey, transcribeWithEleven } = await import("./elevenlabs.js");
+  if (!key && elevenKey()) {
+    const text = await transcribeWithEleven(filePath, mime).catch((e) => (console.error("Transcription ElevenLabs :", e.message), null));
+    if (text) return text;
+  }
   if (!key) {
     const { transcribeWithKie } = await import("./stt-kie.js");
     const { withCredits } = await import("./credits.js");

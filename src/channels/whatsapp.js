@@ -19,7 +19,7 @@ import {
 } from "baileys";
 import { DATA_DIR, addExamples, getSettings, setSettings } from "../db.js";
 import { saveMedia } from "../media.js";
-import { handleIncoming, handleOwnerMessage, registerAdapter } from "../router.js";
+import { handleIncoming, handleOwnerMessage, handleOwnerReaction, registerAdapter } from "../router.js";
 import { buildPairs } from "../learning.js";
 import { emit } from "../events.js";
 
@@ -72,11 +72,43 @@ function extract(msg) {
   }
 }
 
+// Ta propre discussion (« moi ») et le numéro où l'agent te laisse ses messages :
+// ce ne sont pas des clients.
+const bare = (jid) => String(jid || "").replace(/:\d+@/, "@");
+function ownerJid() {
+  const d = String(getSettings().owner_whatsapp || "").replace(/\D/g, "");
+  return d ? `${d}@s.whatsapp.net` : bare(sock?.user?.id);
+}
+function isOwnerChat(jid) {
+  const j = bare(jid);
+  return !!j && (j === bare(sock?.user?.id) || j === bare(sock?.user?.lid) || j === ownerJid());
+}
+
+const seenReactions = new Set();
+function onReaction({ chatJid, targetId, emoji, fromMe, reactionId }) {
+  const k = reactionId || `${chatJid}|${targetId}|${emoji}`;
+  if (seenReactions.has(k)) return;
+  seenReactions.add(k);
+  if (seenReactions.size > 500) seenReactions.clear();
+  // Seule TA réaction compte (depuis ton WhatsApp, ou depuis ton numéro « propriétaire »
+  // dans la discussion où l'agent te prévient) ; celle d'un client est toujours ignorée.
+  const fromOwnerNumber = !!getSettings().owner_whatsapp && bare(chatJid) === ownerJid();
+  if (!(fromMe || fromOwnerNumber) || !emoji) return;
+  handleOwnerReaction({ channel: "whatsapp", chatJid, targetId, emoji, ownerChat: isOwnerChat(chatJid) });
+}
+
 async function onUpsert({ messages, type }) {
   for (const msg of messages) {
     try {
       const jid = msg.key.remoteJid;
       if (ignorable(jid)) continue;
+      const content = normalizeMessageContent(msg.message);
+      if (content?.reactionMessage) {
+        const r = content.reactionMessage;
+        onReaction({ chatJid: jid, targetId: r.key?.id, emoji: r.text, fromMe: !!msg.key.fromMe, reactionId: msg.key.id });
+        continue;
+      }
+      if (isOwnerChat(jid)) continue; // tes notes à toi-même et les messages de l'agent pour toi
       const data = extract(msg);
       if (!data) continue;
       const ts = Number(msg.messageTimestamp || 0) * 1000 || Date.now();
@@ -231,6 +263,18 @@ export async function startWhatsApp({ phone } = {}) {
     }
   });
   me.ev.on("messages.upsert", (e) => current() && onUpsert(e));
+  me.ev.on("messages.reaction", (list) => {
+    if (!current()) return;
+    for (const r of list || []) {
+      onReaction({
+        chatJid: r.key?.remoteJid,
+        targetId: r.key?.id,
+        emoji: r.reaction?.text,
+        fromMe: !!r.reaction?.key?.fromMe,
+        reactionId: r.reaction?.key?.id,
+      });
+    }
+  });
   me.ev.on("messaging-history.set", (e) => current() && onHistory(e));
 }
 
@@ -274,6 +318,18 @@ registerAdapter({
       ptt: !!(voice && voiceNote),
     });
     await sock.sendPresenceUpdate("paused", contact.external_id).catch(() => {});
+    return r?.key?.id;
+  },
+  // Message pour TOI (sur ton numéro, ou ta propre discussion « moi »).
+  async notifyOwner(text, { imagePath, imageMime } = {}) {
+    if (!sock || state.status !== "connecté") throw new Error("WhatsApp n'est pas connecté");
+    const to = ownerJid();
+    let r;
+    if (imagePath) {
+      r = await sock.sendMessage(to, { image: fs.readFileSync(imagePath), mimetype: imageMime || "image/jpeg", caption: text });
+    } else {
+      r = await sock.sendMessage(to, { text });
+    }
     return r?.key?.id;
   },
   async markRead(contact, msgs) {

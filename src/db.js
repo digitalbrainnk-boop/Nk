@@ -102,13 +102,17 @@ CREATE TABLE IF NOT EXISTS orders (
 );
 CREATE INDEX IF NOT EXISTS idx_orders_contact ON orders(contact_id);
 `);
-// Texte de la chanson : statut '' | proposed (envoyé au client) | validated | composing | composed
+// Texte de la chanson : statut '' | writing (en cours d'écriture) | proposed (envoyé au client)
+// | validated (validé, paiement demandé) | payment_claimed (le client dit avoir payé, en attente
+// de ta vérification) | composing | composed
 for (const sql of [
   "ALTER TABLE orders ADD COLUMN lyrics TEXT NOT NULL DEFAULT ''",
   "ALTER TABLE orders ADD COLUMN song_title TEXT NOT NULL DEFAULT ''",
   "ALTER TABLE orders ADD COLUMN song_style TEXT NOT NULL DEFAULT ''",
   "ALTER TABLE orders ADD COLUMN lyrics_status TEXT NOT NULL DEFAULT ''",
   "ALTER TABLE orders ADD COLUMN lyrics_version INTEGER NOT NULL DEFAULT 0",
+  "ALTER TABLE orders ADD COLUMN lyrics_due_at INTEGER NOT NULL DEFAULT 0",
+  "ALTER TABLE orders ADD COLUMN lyrics_notes TEXT NOT NULL DEFAULT ''",
 ]) {
   try {
     db.exec(sql);
@@ -141,8 +145,15 @@ export const DEFAULT_SETTINGS = {
   tts_voice: "Brian",
   auto_demo: false,
   song_flow: true, // l'agent propose le texte, le client valide, puis Suno compose
-  compose_requires_payment: false, // composer seulement après un paiement enregistré
-  song_auto_send: false, // envoyer la chanson au client sans que tu l'écoutes d'abord
+  compose_requires_payment: true, // composer seulement après TA confirmation du paiement
+  song_auto_send: true, // livrer la chanson dès qu'elle est prête (le paiement a déjà été vérifié par toi)
+  lyrics_delay_min: 3, // le texte est envoyé entre 3 et 10 minutes après la confirmation des infos
+  lyrics_delay_max: 10,
+  owner_whatsapp: "", // numéro où l'agent te laisse ses messages (vide = ton propre WhatsApp)
+  payment_confirm_emoji: "✅", // ta réaction pour confirmer un paiement
+  voice_provider: "kie", // kie (voix toute faite) | elevenlabs (TA voix clonée)
+  elevenlabs_api_key: "",
+  elevenlabs_voice_id: "",
   history_messages: 40,
   whatsapp_learning_only: false,
   whatsapp_enabled: false,
@@ -429,7 +440,10 @@ export function listOrders({ contactId } = {}) {
 }
 
 export function saveOrder(o) {
-  const fields = ["stage", "title", "occasion", "price", "paid", "due_date", "notes", "lyrics", "song_title", "song_style", "lyrics_status", "lyrics_version"];
+  const fields = [
+    "stage", "title", "occasion", "price", "paid", "due_date", "notes",
+    "lyrics", "song_title", "song_style", "lyrics_status", "lyrics_version", "lyrics_due_at", "lyrics_notes",
+  ];
   if (o.stage && !STAGES.includes(o.stage)) throw new Error(`Étape inconnue : ${o.stage}`);
   if (o.id) {
     const cur = getOrder(o.id);
@@ -439,7 +453,7 @@ export function saveOrder(o) {
     const delivered = next.stage === "livree" && cur.stage !== "livree" ? now() : cur.delivered_at;
     db.prepare(
       `UPDATE orders SET stage=?, title=?, occasion=?, price=?, paid=?, due_date=?, notes=?, lyrics=?, song_title=?, song_style=?,
-       lyrics_status=?, lyrics_version=?, updated_at=?, delivered_at=? WHERE id=?`,
+       lyrics_status=?, lyrics_version=?, lyrics_due_at=?, lyrics_notes=?, updated_at=?, delivered_at=? WHERE id=?`,
     ).run(
       next.stage,
       next.title,
@@ -453,6 +467,8 @@ export function saveOrder(o) {
       next.song_style || "",
       next.lyrics_status || "",
       Number(next.lyrics_version) || 0,
+      Number(next.lyrics_due_at) || 0,
+      next.lyrics_notes || "",
       now(),
       delivered,
       o.id,
@@ -590,4 +606,23 @@ export function creditStats() {
     per_reply: replies.c ? replies.n / replies.c : 0,
     last_balance: last?.balance_after ?? null,
   };
+}
+
+/** Commandes dont le texte doit être envoyé maintenant. */
+export function dueLyrics(at = now()) {
+  return db.prepare("SELECT * FROM orders WHERE lyrics_status = 'writing' AND lyrics_due_at <= ?").all(at);
+}
+
+/** Commande dont un message (notification de paiement) attend ta réaction. */
+export function findContactByOwnerNote(msgId) {
+  const map = getSettings().owner_notes || {};
+  return map[msgId] || null;
+}
+export function rememberOwnerNote(msgId, data) {
+  const map = { ...(getSettings().owner_notes || {}) };
+  map[msgId] = { ...data, at: now() };
+  // On ne garde que les 200 dernières.
+  const keys = Object.keys(map).sort((a, b) => map[a].at - map[b].at);
+  for (const k of keys.slice(0, Math.max(0, keys.length - 200))) delete map[k];
+  setSettings({ owner_notes: map });
 }

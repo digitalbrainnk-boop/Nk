@@ -41,6 +41,8 @@ globalThis.fetch = async (url, init = {}) => {
 };
 
 const sent = [];
+const audios = [];
+const ownerNotes = [];
 db.setSettings({
   brain: "kie",
   kie_api_key: "k",
@@ -53,11 +55,21 @@ db.setSettings({
   typing_chars_per_second: 1000,
   song_flow: true,
   compose_requires_payment: false,
+  song_auto_send: false,
+  lyrics_delay_min: 0,
+  lyrics_delay_max: 0,
+  payment_confirm_emoji: "👍",
 });
 router.registerAdapter({
   channel: "fake3",
   send: async (c, t) => (sent.push(t), `m${sent.length}`),
-  sendAudio: async () => "a1",
+  sendAudio: async (c, a) => (audios.push({ to: c.external_id, ...a }), `a${audios.length}`),
+});
+// Ton WhatsApp : l'agent t'y laisse ses messages (paiements, questions).
+router.registerAdapter({
+  channel: "whatsapp",
+  send: async () => "w0",
+  notifyOwner: async (text, opts) => (ownerNotes.push({ text, ...opts }), `note${ownerNotes.length}`),
 });
 const reply = (o) => ({ messages: [], memory: "- anniversaire Ibrahim", needs_human: false, reason: "", ...o });
 const contact = () => db.upsertContact("fake3", "c1");
@@ -90,7 +102,7 @@ test("3. le client valide : Suno compose avec le texte validé, chanson prête �
   assert.match(sunoBodies[0].prompt, /\(v2\)/); // la version validée
   assert.equal(sunoBodies[0].style, "zouglou, festif");
   const song = db.listMessages(contact().id).find((m) => m.kind === "audio");
-  assert.equal(song.status, "draft"); // tu l'écoutes avant de l'envoyer
+  assert.equal(song.status, "draft"); // envoi automatique désactivé : tu l'écoutes avant
   assert.equal(db.getContact(contact().id).needs_human, 1);
   assert.equal(db.activeOrder(contact().id).stage, "creation");
 });
@@ -104,5 +116,61 @@ test("4. paiement exigé : validation mise en attente, rien n'est composé", asy
   await router.handleIncoming({ channel: "fake3", externalId: "c2", text: "Oui ça me va", externalMsgId: "4" });
   await waitFor(() => db.getOrder(o.id).lyrics_status === "validated");
   assert.equal(sunoBodies.length, before);
-  assert.match(db.getContact(c.id).needs_human_reason, /paiement/);
+});
+
+let payNote = "";
+test("5. le client dit avoir payé : rien n'est composé, tu es prévenu sur WhatsApp avec la capture", async () => {
+  const c = db.upsertContact("fake3", "c2");
+  router.setReplyGenerator(async () => reply({ messages: ["Merci ! Je vérifie et je t'envoie ta chanson 🙏"], song_step: "payment_claimed" }));
+  const before = sunoBodies.length;
+  const notesBefore = ownerNotes.length;
+  const img = path.join(process.env.DATA_DIR, "capture.jpg");
+  fs.writeFileSync(img, "jpg");
+  await router.handleIncoming({ channel: "fake3", externalId: "c2", kind: "image", media: { path: img, mime: "image/jpeg" }, text: "[capture]", externalMsgId: "5" });
+  await waitFor(() => ownerNotes.length > notesBefore);
+  payNote = `note${ownerNotes.length}`;
+  const o = db.activeOrder(c.id);
+  assert.equal(o.lyrics_status, "payment_claimed");
+  assert.equal(o.paid, 0); // l'agent ne marque jamais un paiement
+  assert.match(ownerNotes.at(-1).text, /dit avoir payé/);
+  assert.match(ownerNotes.at(-1).text, /👍/);
+  assert.equal(ownerNotes.at(-1).imagePath, img); // la capture t'est transférée
+  assert.equal(sunoBodies.length, before);
+  assert.equal(db.getContact(c.id).needs_human, 1);
+});
+
+test("6. réaction d'un autre emoji, ou sur un autre message : rien ne se passe", async () => {
+  const c = db.upsertContact("fake3", "c2");
+  assert.equal(await router.handleOwnerReaction({ channel: "whatsapp", chatJid: "x", targetId: payNote, emoji: "❤️", ownerChat: true }), null);
+  assert.equal(await router.handleOwnerReaction({ channel: "whatsapp", chatJid: "x", targetId: "inconnu", emoji: "👍", ownerChat: true }), null);
+  assert.equal(db.activeOrder(c.id).lyrics_status, "payment_claimed");
+});
+
+test("7. TA réaction 👍 sur le message de l'agent : composition puis livraison au client", async () => {
+  const c = db.upsertContact("fake3", "c2");
+  db.setSettings({ song_auto_send: true });
+  const before = sunoBodies.length;
+  const done = await router.handleOwnerReaction({ channel: "whatsapp", chatJid: "moi", targetId: payNote, emoji: "👍🏽", ownerChat: true });
+  assert.ok(done);
+  assert.equal(sunoBodies.length, before + 1);
+  assert.match(sunoBodies.at(-1).prompt, /Moussa/);
+  await waitFor(() => audios.some((a) => a.to === "c2"));
+  assert.ok(sent.some((t) => /Paiement bien reçu/.test(t)));
+  const o = db.activeOrder(c.id) || db.listOrders({ contactId: c.id })[0];
+  assert.equal(o.stage, "livree");
+  assert.ok(o.paid >= 0);
+});
+
+test("8. texte envoyé avec un délai « humain » (12 min max)", async () => {
+  db.setSettings({ lyrics_delay_min: 5, lyrics_delay_max: 5 });
+  const c = db.upsertContact("fake3", "c3", "Ali");
+  router.setReplyGenerator(async () => reply({ messages: ["C'est noté, je t'envoie le texte d'ici 10 minutes 👌"], song_step: "propose_lyrics" }));
+  await router.handleIncoming({ channel: "fake3", externalId: "c3", text: "Oui c'est tout", externalMsgId: "8" });
+  await waitFor(() => db.activeOrder(c.id)?.lyrics_status === "writing");
+  const o = db.activeOrder(c.id);
+  assert.ok(o.lyrics_due_at > Date.now() + 4 * 60_000 && o.lyrics_due_at <= Date.now() + 5 * 60_000);
+  assert.equal(await router.runLyricsQueue(Date.now()), 0); // pas encore l'heure
+  assert.equal(await router.runLyricsQueue(Date.now() + 6 * 60_000), 1);
+  assert.equal(db.activeOrder(c.id).lyrics_status, "proposed");
+  assert.match(sent.at(-1), /Dis-moi si ce texte te plaît/);
 });

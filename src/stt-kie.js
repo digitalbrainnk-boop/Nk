@@ -51,7 +51,7 @@ export async function discoverKieStt({ fetchDoc = fetchText, force = false } = {
   return null;
 }
 
-async function upload(filePath, mime) {
+export async function upload(filePath, mime) {
   const form = new FormData();
   const name = path.basename(filePath);
   form.append("file", new Blob([fs.readFileSync(filePath)], { type: (mime || "audio/ogg").split(";")[0] }), name);
