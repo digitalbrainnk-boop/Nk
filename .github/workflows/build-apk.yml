@@ -2,9 +2,12 @@
 # But : permettre de tester sans ordinateur. À chaque push (ou lancement manuel),
 # GitHub compile l'APK et le met à télécharger dans l'onglet "Actions" du dépôt.
 #
-# Récupérer l'APK : dépôt GitHub -> onglet "Actions" -> dernier run ->
-# section "Artifacts" -> "db-localisation-apk" (fichier .apk à installer sur le
-# téléphone, en autorisant "installer des applis de sources inconnues").
+# Récupérer l'APK, au choix :
+#  - LE PLUS SIMPLE : dépôt GitHub -> onglet "Releases" -> "APK (dernier build)"
+#    -> télécharger le fichier .apk directement (pas de .zip).
+#  - OU : onglet "Actions" -> dernier run -> "Artifacts" -> "db-localisation-apk"
+#    (téléchargé en .zip, à décompresser).
+# Installer : ouvrir le .apk et autoriser "installer des applis de sources inconnues".
 
 name: Build APK (DB Localisation)
 
@@ -15,6 +18,9 @@ on:
       - "db_localisation/**"
       - ".github/workflows/build-apk.yml"
   workflow_dispatch: # bouton "Run workflow" dans l'onglet Actions.
+
+permissions:
+  contents: write # nécessaire pour publier l'APK dans les Releases.
 
 jobs:
   build-apk:
@@ -49,9 +55,22 @@ jobs:
       - name: Construire l'APK (debug, directement installable)
         run: flutter build apk --debug
 
-      - name: Publier l'APK comme artefact téléchargeable
+      - name: Renommer l'APK (nom lisible)
+        run: cp build/app/outputs/flutter-apk/app-debug.apk DB-Localisation.apk
+
+      - name: Publier l'APK comme artefact téléchargeable (.zip)
         uses: actions/upload-artifact@v4
         with:
           name: db-localisation-apk
-          path: db_localisation/build/app/outputs/flutter-apk/app-debug.apk
+          path: db_localisation/DB-Localisation.apk
           if-no-files-found: error
+
+      - name: Publier l'APK en Release (lien direct, le plus simple)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Release "rolling" : on remplace à chaque build pour garder un lien stable.
+          gh release delete apk-latest --yes --cleanup-tag 2>/dev/null || true
+          gh release create apk-latest DB-Localisation.apk \
+            --title "APK (dernier build) — DB Localisation" \
+            --notes "Dernier APK de test. Télécharge le fichier DB-Localisation.apk et installe-le sur ton téléphone Android."
