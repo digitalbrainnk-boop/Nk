@@ -1050,6 +1050,21 @@ $("#tts-preview").addEventListener("click", async () => {
   }
 });
 
+// ---------- Sauvegarde ----------
+$("#restore-btn").addEventListener("click", async () => {
+  const f = $("#restore-file").files[0];
+  if (!f) return toast("Choisis d'abord le fichier de sauvegarde (.db).");
+  if (!confirm("Remplacer TOUTES les données de cet agent par cette sauvegarde ? (les données actuelles sont gardées de côté)")) return;
+  const fd = new FormData();
+  fd.append("file", f);
+  try {
+    await api("/api/restore", { method: "POST", body: fd });
+    toast("✅ Sauvegarde reçue : l'agent redémarre. Recharge la page dans 30 secondes (sur le téléphone : relance « agent » dans Termux).");
+  } catch (err) {
+    toast(err.message);
+  }
+});
+
 // ---------- Bilan du jour et problèmes ----------
 const KIND_LABEL = { reponse: "Réponse", texte: "Texte", composition: "Composition", livraison: "Livraison", paiement: "Paiement" };
 async function loadReport() {

@@ -7,7 +7,17 @@ import path from "node:path";
 export const DATA_DIR = path.resolve(process.env.DATA_DIR || "data");
 fs.mkdirSync(path.join(DATA_DIR, "media"), { recursive: true });
 
-export const db = new DatabaseSync(path.join(DATA_DIR, "agent.db"));
+// Restauration d'une sauvegarde demandée depuis le tableau de bord : appliquée au démarrage.
+const DB_FILE = path.join(DATA_DIR, "agent.db");
+const PENDING = path.join(DATA_DIR, "restauration.db");
+if (fs.existsSync(PENDING)) {
+  if (fs.existsSync(DB_FILE)) fs.renameSync(DB_FILE, path.join(DATA_DIR, `agent-avant-restauration-${Date.now()}.db`));
+  for (const ext of ["-wal", "-shm"]) fs.rmSync(DB_FILE + ext, { force: true });
+  fs.renameSync(PENDING, DB_FILE);
+  console.log("✅ Sauvegarde restaurée.");
+}
+
+export const db = new DatabaseSync(DB_FILE);
 db.exec(`
 PRAGMA journal_mode = WAL;
 CREATE TABLE IF NOT EXISTS settings (
@@ -741,4 +751,21 @@ export function listSocialPosts(limit = 30) {
 }
 export function lastPublishedPost() {
   return db.prepare("SELECT * FROM social_posts WHERE status = 'published' ORDER BY id DESC LIMIT 1").get();
+}
+
+// ---------- Sauvegarde ----------
+
+/** Copie cohérente de toute la base (clients, conversations, réglages). Renvoie le chemin du fichier. */
+export function backupDatabase() {
+  const file = path.join(DATA_DIR, `sauvegarde-${Date.now()}.db`);
+  db.exec(`VACUUM INTO '${file.replace(/'/g, "''")}'`);
+  return file;
+}
+
+/** Prépare la restauration d'une sauvegarde (appliquée au prochain démarrage). */
+export function scheduleRestore(buffer) {
+  if (!Buffer.isBuffer(buffer) || buffer.subarray(0, 16).toString("latin1") !== "SQLite format 3\0") {
+    throw new Error("Ce fichier n'est pas une sauvegarde de l'agent (.db).");
+  }
+  fs.writeFileSync(PENDING, buffer);
 }

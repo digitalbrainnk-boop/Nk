@@ -135,7 +135,23 @@ Sur Telegram, écris à **@BotFather** → `/newbot` → colle le jeton dans Can
 
 ## Héberger le site 24h/24
 
-### En un clic avec Render (recommandé)
+### Chez o2switch (ton hébergement actuel)
+
+Un agent par sous-domaine (ex. `agent.tondomaine.com`, puis `cousin.tondomaine.com` pour un deuxième agent). Le paquet est préparé automatiquement par GitHub ; rien à compiler sur le serveur.
+
+1. cPanel → **Sous-domaines** : crée `agent.tondomaine.com`.
+2. cPanel → **Terminal**, colle :
+   ```
+   curl -fsSL https://raw.githubusercontent.com/digitalbrainnk-boop/Nk/claude/ai-agent-multichannel-0snabq/deploy/o2switch/installer.sh | bash
+   ```
+   (pour un deuxième agent : `… | bash -s cousin`). Il demande l'adresse, crée le mot de passe et un réveil automatique toutes les 5 minutes.
+3. cPanel → **Setup Node.js App** → **Create Application** : Node.js 22 (la plus récente), mode Production, *Application root* `nk-agent`, *Application URL* ton sous-domaine, *Startup file* `app.js` → **Create**.
+4. Ouvre `https://agent.tondomaine.com`, connecte-toi, colle ta clé Kie (Réglages) et connecte WhatsApp (Canaux). **Arrête d'abord l'agent du téléphone** : un même numéro WhatsApp ne peut être relié qu'à un seul agent.
+5. Pour garder tes clients et réglages du téléphone : Réglages → 💾 Sauvegarde sur le téléphone, puis « Restaurer » sur le serveur.
+
+Commandes dans le Terminal : `nk maj`, `nk journal`, `nk relancer`, `nk retour`, `nk motdepasse` (ajoute le nom de l'agent, ex. `nk maj cousin`).
+
+### En un clic avec Render
 
 [![Déployer sur Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/digitalbrainnk-boop/Nk/tree/claude/ai-agent-multichannel-0snabq)
 

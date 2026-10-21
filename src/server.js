@@ -62,6 +62,8 @@ import { buildPairs, parseWhatsAppExport, participants } from "./learning.js";
 import { startTelegram, telegramStatus } from "./channels/telegram.js";
 import { maybeAutoStartWhatsApp, startWhatsApp, stopWhatsApp, whatsappStatus } from "./channels/whatsapp.js";
 import { metaRouter, metaStatus, resetMetaCache } from "./channels/meta.js";
+import { whenLeader } from "./leader.js";
+import { backupDatabase, scheduleRestore } from "./db.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -93,6 +95,8 @@ function isAuthed(req) {
 
 // Webhooks publics (Meta) avant le JSON/auth.
 app.use(metaRouter);
+// Page publique de bon fonctionnement (l'hébergeur la consulte pour garder l'agent éveillé).
+app.get("/health", (req, res) => res.json({ ok: true }));
 app.use(express.json({ limit: "2mb" }));
 
 app.post("/api/login", (req, res) => {
@@ -457,6 +461,19 @@ function readExport(file) {
   }
   return file.buffer.toString("utf8");
 }
+// Sauvegarde complète (clients, conversations, réglages, clés) et restauration.
+app.get("/api/backup", wrap(async (req, res) => {
+  const file = backupDatabase();
+  const day = new Date().toISOString().slice(0, 10);
+  res.download(file, `sauvegarde-agent-${day}.db`, () => fs.rmSync(file, { force: true }));
+}));
+app.post("/api/restore", upload.single("file"), wrap(async (req, res) => {
+  if (!req.file) throw new Error("Choisis le fichier de sauvegarde (.db).");
+  scheduleRestore(req.file.buffer);
+  res.json({ ok: true });
+  // Redémarrage pour charger la sauvegarde (l'hébergeur ou la commande « agent » relance l'agent).
+  setTimeout(() => process.kill(process.pid, "SIGTERM"), 800);
+}));
 // Ma voix : tes enregistrements -> ta voix clonée chez ElevenLabs.
 app.post("/api/voice/clone", upload.array("files", 5), wrap(async (req, res) => {
   const { saveMedia } = await import("./media.js");
@@ -530,6 +547,10 @@ app.listen(port, () => {
   if (!process.env.ANTHROPIC_API_KEY && !st.anthropic_api_key && !process.env.KIE_API_KEY && !st.kie_api_key) {
     console.log("⚠️  Ajoute ta clé Kie.ai (Réglages du tableau de bord).");
   }
+});
+
+// WhatsApp, Telegram et tâches automatiques : une seule copie de l'agent s'en occupe.
+whenLeader(() => {
   startTelegram();
   maybeAutoStartWhatsApp();
   // Relances automatiques : vérification toutes les 15 minutes.

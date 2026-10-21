@@ -1,0 +1,40 @@
+# Agent IA : prépare le paquet prêt à installer chez o2switch et le publie ici :
+#   https://github.com/digitalbrainnk-boop/Nk/releases/download/agent-o2switch/agent-o2switch.tar.gz
+# Le serveur l'installe avec deploy/o2switch/installer.sh (commande « nk maj »).
+name: Agent — paquet o2switch
+
+on:
+  push:
+    branches: [claude/ai-agent-multichannel-0snabq]
+    paths: ["src/**", "public/**", "scripts/**", "package.json", "package-lock.json", "deploy/o2switch/**", ".github/workflows/agent-o2switch.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: agent-o2switch
+  cancel-in-progress: true
+
+jobs:
+  paquet:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - name: Assemblage
+        run: bash deploy/o2switch/paquet.sh "$RUNNER_TEMP/agent-o2switch.tar.gz"
+      - name: Publication
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release view agent-o2switch >/dev/null 2>&1 || gh release create agent-o2switch \
+            --prerelease --target "$GITHUB_SHA" --title "Agent IA pour o2switch" \
+            --notes "Paquet prêt à installer avec deploy/o2switch/installer.sh, mis à jour à chaque modification de l'agent."
+          gh release upload agent-o2switch "$RUNNER_TEMP/agent-o2switch.tar.gz" --clobber

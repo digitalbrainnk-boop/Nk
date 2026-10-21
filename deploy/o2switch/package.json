@@ -1,0 +1,6 @@
+{
+  "name": "nk-agent-o2switch",
+  "private": true,
+  "description": "Démarrage de l'agent chez o2switch (le code est dans « actuelle »)",
+  "type": "commonjs"
+}

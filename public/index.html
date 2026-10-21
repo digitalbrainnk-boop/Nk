@@ -300,6 +300,10 @@
           <div class="pair"><input type="number" id="open_hour" min="0" max="23" /><input type="number" id="close_hour" min="0" max="23" /></div></div>
         <div class="row"><label>Quand tu réponds toi-même, l'agent se tait pendant (heures)</label><input type="number" id="owner_takeover_hours" /></div>
         <div class="row"><label>Nombre de messages d'historique lus par l'agent</label><input type="number" id="history_messages" /></div>
+        <h2>💾 Sauvegarde</h2>
+        <p class="muted">Télécharge une copie de tout (clients, conversations, mémoire, commandes, réglages et clés). Pour passer du téléphone au serveur : télécharge la sauvegarde ici sur le téléphone, puis restaure-la sur le tableau de bord du serveur (WhatsApp sera à reconnecter là-bas).</p>
+        <div class="btns"><a class="button small" href="/api/backup" download>⬇️ Télécharger la sauvegarde</a>
+          <input type="file" id="restore-file" accept=".db" style="width:auto" /><button class="small" id="restore-btn">⬆️ Restaurer</button></div>
         <h2>🚫 Ne jamais répondre à ces numéros</h2>
         <p class="muted">Un numéro par ligne, avec ou sans indicatif (ex : 22670123456). Pour Telegram, tu peux mettre le @pseudo. L'agent garde leurs messages mais ne leur répond jamais : famille, amis, collègues… Tu peux aussi le faire depuis une conversation (bouton « 🚫 Ne jamais répondre »).</p>
         <textarea id="ignored_list" rows="5" placeholder="22670123456&#10;22566554433&#10;@monpote"></textarea>
