@@ -717,8 +717,15 @@ export async function startComposition(contactId) {
   emit("order", { contact_id: contactId });
   const brief = { title: order.song_title || order.title || "Chanson", style: order.song_style, lyrics: order.lyrics };
   try {
-    if (!s.song_two_versions) return await createSong(contactId, brief, { orderId: order.id, autoSend: !!s.song_auto_send });
-    return await composeTwoVersions(contactId, brief, { orderId: order.id, autoSend: !!s.song_auto_send });
+    // Par défaut : UNE création Suno, qui donne 2 versions du même texte (envoyées toutes les deux).
+    const jobs =
+      s.song_versions === "two_styles"
+        ? [
+            { style: rhythmicStyle(brief.style), labels: ["version rythmée"] },
+            { style: acousticStyle(brief.style), labels: ["version acoustique"] },
+          ]
+        : [{ style: brief.style, labels: ["version 1", "version 2"] }];
+    return await composeVersions(contactId, brief, jobs, { orderId: order.id, autoSend: !!s.song_auto_send });
   } catch (e) {
     // Suno n'a pas pu démarrer (crédit, clé…) : on revient à « validé » pour pouvoir relancer.
     saveOrder({ id: order.id, lyrics_status: "validated" });
@@ -734,63 +741,77 @@ export const acousticStyle = (style) =>
   ["acoustic unplugged version, acoustic guitar, soft percussion, warm and intimate", voiceOf(style)].filter(Boolean).join(", ");
 
 /**
- * La chanson en 2 versions : rythmée et acoustique. Suno renvoie 2 essais par
- * version : on garde le premier de chaque, et le client reçoit les deux ensemble.
+ * Composition d'une chanson. Chaque « création » Suno donne 2 versions du même texte :
+ * - réglage par défaut : 1 création, les 2 versions sont envoyées (version 1 et version 2) ;
+ * - « rythmée + acoustique » : 2 créations (une par style), on garde la 1re version de chacune.
  * Une version ratée n'est jamais recomposée automatiquement (tu es prévenu).
  */
-async function composeTwoVersions(contactId, brief, { orderId, autoSend }) {
+async function composeVersions(contactId, brief, jobs, { orderId, autoSend }) {
   const { startSong, waitSong } = await import("./suno.js");
   const { downloadToMedia } = await import("./media.js");
   const { getBalance } = await import("./credits.js");
-  const versions = [
-    { label: "version rythmée", style: rhythmicStyle(brief.style) },
-    { label: "version acoustique", style: acousticStyle(brief.style) },
-  ];
   const balanceBefore = await getBalance();
   const started = [];
-  for (const v of versions) {
+  const failed = [];
+  for (const job of jobs) {
     try {
-      const taskId = await startSong({ ...brief, style: v.style });
-      const placeholder = addMessage(contactId, {
-        author: "agent",
-        kind: "audio",
-        text: `🎵 « ${brief.title} » (${v.label}) : création en cours avec Suno… (1 à 5 minutes)`,
-        status: "generating",
+      const taskId = await startSong({ ...brief, style: job.style });
+      // Une ligne par version attendue (elles s'affichent au fur et à mesure dans la conversation).
+      const placeholders = job.labels.map((label) => {
+        const p = addMessage(contactId, {
+          author: "agent",
+          kind: "audio",
+          text: `🎵 « ${brief.title} » (${label}) : création en cours avec Suno… (1 à 5 minutes)`,
+          status: "generating",
+        });
+        emit("message", { contact_id: contactId, message: p });
+        return { label, id: p.id };
       });
-      emit("message", { contact_id: contactId, message: placeholder });
-      started.push({ ...v, taskId, placeholder });
+      started.push({ ...job, taskId, placeholders });
     } catch (e) {
       if (!started.length) throw e; // rien n'a démarré : l'appelant remet la commande en « validé »
-      v.error = e.message;
+      failed.push(`${job.labels.join(" + ")} : ${e.message}`);
     }
   }
   (async () => {
     const results = await Promise.allSettled(
-      started.map(async (v) => {
-        const tracks = await waitSong(v.taskId);
-        const t = tracks[0];
-        const media = await downloadToMedia(t.audioUrl);
-        const mime = media.mime.startsWith("audio/") ? media.mime : "audio/mpeg";
-        updateMessage(v.placeholder.id, {
-          text: `🎵 ${brief.title} — ${v.label}`,
-          media_path: media.path,
-          media_type: mime,
-          media_url: t.audioUrl,
-          status: "draft",
-        });
-        emit("message", { contact_id: contactId, message: getMessage(v.placeholder.id) });
-        return getMessage(v.placeholder.id);
+      started.map(async (job) => {
+        const tracks = await waitSong(job.taskId);
+        const out = [];
+        for (const [i, p] of job.placeholders.entries()) {
+          const t = tracks[i];
+          if (!t) {
+            updateMessage(p.id, { text: `❌ ${brief.title} (${p.label}) : Suno n'a pas rendu cette version`, status: "rejected" });
+            emit("message", { contact_id: contactId, message: getMessage(p.id) });
+            failed.push(`${p.label} : version manquante`);
+            continue;
+          }
+          const media = await downloadToMedia(t.audioUrl);
+          const mime = media.mime.startsWith("audio/") ? media.mime : "audio/mpeg";
+          updateMessage(p.id, {
+            text: `🎵 ${brief.title} — ${p.label}`,
+            media_path: media.path,
+            media_type: mime,
+            media_url: t.audioUrl,
+            status: "draft",
+          });
+          emit("message", { contact_id: contactId, message: getMessage(p.id) });
+          out.push(getMessage(p.id));
+        }
+        return out;
       }),
     );
     const ready = [];
-    const failed = versions.filter((v) => v.error).map((v) => `${v.label} : ${v.error}`);
     results.forEach((r, i) => {
-      const v = started[i];
-      if (r.status === "fulfilled") ready.push(r.value);
+      const job = started[i];
+      if (r.status === "fulfilled") ready.push(...r.value);
       else {
-        failed.push(`${v.label} : ${r.reason?.message || r.reason}`);
-        updateMessage(v.placeholder.id, { text: `❌ ${brief.title} (${v.label}) : ${r.reason?.message || r.reason}`, status: "rejected" });
-        emit("message", { contact_id: contactId, message: getMessage(v.placeholder.id) });
+        const why = r.reason?.message || String(r.reason);
+        failed.push(`${job.labels.join(" + ")} : ${why}`);
+        for (const p of job.placeholders) {
+          updateMessage(p.id, { text: `❌ ${brief.title} (${p.label}) : ${why}`, status: "rejected" });
+          emit("message", { contact_id: contactId, message: getMessage(p.id) });
+        }
       }
     });
     const after = await getBalance();
@@ -818,11 +839,14 @@ async function composeTwoVersions(contactId, brief, { orderId, autoSend }) {
     }
     if (autoSend) {
       const contact = getContact(contactId);
+      const twoStyles = jobs.length > 1 && ready.length > 1;
       await deliver(
         contact,
-        ready.length > 1
+        twoStyles
           ? "🎶 Voici ta chanson en 2 versions : une version rythmée et une version acoustique. J'espère qu'elle te plaira !"
-          : "🎶 Voici ta chanson, j'espère qu'elle te plaira !",
+          : ready.length > 1
+            ? "🎶 Voici ta chanson en 2 versions, choisis celle que tu préfères ! J'espère qu'elle te plaira 😊"
+            : "🎶 Voici ta chanson, j'espère qu'elle te plaira !",
         "agent",
       ).catch(() => {});
       for (const m of ready) await sendSong(getContact(contactId), m); // en cas de coupure : file d'envoi
@@ -835,7 +859,7 @@ async function composeTwoVersions(contactId, brief, { orderId, autoSend }) {
     }
     emit("contact", { contact_id: contactId });
   })().catch((e) => console.error("Composition :", e.message));
-  return { taskIds: started.map((v) => v.taskId), message_ids: started.map((v) => v.placeholder.id) };
+  return { taskIds: started.map((j) => j.taskId), message_ids: started.flatMap((j) => j.placeholders.map((p) => p.id)) };
 }
 
 /**

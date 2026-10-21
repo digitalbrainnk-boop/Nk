@@ -204,7 +204,9 @@ export const DEFAULT_SETTINGS = {
   song_flow: true, // l'agent propose le texte, le client valide, puis Suno compose
   compose_requires_payment: true, // composer seulement après TA confirmation du paiement
   song_auto_send: true,
-  song_two_versions: true, // chaque chanson en 2 versions : rythmée et acoustique
+  // Versions envoyées au client : "one" = 1 création Suno (Suno donne toujours 2 versions du
+  // même texte, même style) ; "two_styles" = 2 créations (rythmée + acoustique garanties, 2× le prix).
+  song_versions: "one",
   max_lyrics_versions: 5, // au-delà, les corrections passent par toi
   daily_credit_limit: 1000, // plafond de crédits Kie par jour (≈ 5 $ ; 0 = pas de plafond)
   low_credit_alert: 200, // te prévenir quand le solde Kie passe sous ce nombre
@@ -805,4 +807,24 @@ export function scheduleRestore(buffer) {
     throw new Error("Ce fichier n'est pas une sauvegarde de l'agent (.db).");
   }
   fs.writeFileSync(PENDING, buffer);
+}
+
+// ---------- Fiche « Nos tarifs » (ajoutée une seule fois ; tu peux la modifier ou la supprimer) ----------
+export const TARIFS = `Nos tarifs 💰
+• 🎼 Chanson personnalisée unique : 1 200 F
+• 🎤 Chanson + vidéo lyrics : 3 000 F
+• 🖼️ Chanson + affiche anniversaire : 3 250 F
+• 🎬 Chanson + montage vidéo : 4 000 F
+• 📽️ Chanson + montage vidéo lyrics : 6 000 F
+
+À savoir :
+- Chez nous, chaque chanson est unique : elle est écrite et composée spécialement pour la personne (prénoms, histoire, occasion).
+- La chanson est livrée en 2 versions, pour que le client choisisse celle qu'il préfère.
+- La chanson personnalisée seule (1 200 F) est gérée de bout en bout par l'agent : texte, corrections, paiement, livraison.
+- Les formules avec vidéo lyrics, affiche ou montage vidéo : on donne le prix, puis c'est le propriétaire qui s'en occupe personnellement.
+- Ces prix sont fixes : jamais d'autre prix ni de réduction promise (une demande de rabais est transmise au propriétaire).`;
+if (!getSettings().tarifs_seeded) {
+  const has = db.prepare("SELECT 1 FROM knowledge WHERE lower(title) LIKE '%tarif%'").get();
+  if (!has) saveKnowledge({ title: "Nos tarifs", content: TARIFS });
+  setSettings({ tarifs_seeded: true });
 }

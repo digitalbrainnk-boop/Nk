@@ -27,7 +27,7 @@ globalThis.fetch = async (url, init = {}) => {
   if (u.endsWith("/api/v1/generate"))
     return sunoDown ? Response.json({ code: 402, msg: "crédit insuffisant" }) : Response.json({ code: 200, data: { taskId: "s1" } });
   if (u.includes("/generate/record-info"))
-    return Response.json({ code: 200, data: { status: "SUCCESS", response: { sunoData: [{ audioUrl: "https://cdn.x/f.mp3", title: "Pour Fatou" }] } } });
+    return Response.json({ code: 200, data: { status: "SUCCESS", response: { sunoData: [{ audioUrl: "https://cdn.x/f.mp3", title: "Pour Fatou" }, { audioUrl: "https://cdn.x/f.mp3", title: "Pour Fatou" }] } } });
   if (u === "https://cdn.x/f.mp3") return new Response(new Uint8Array([1]), { headers: { "content-type": "audio/mpeg" } });
   if (u.endsWith("/chat/credit")) return Response.json({ code: 200, data: 100 });
   throw new Error(`appel inattendu ${u}`);
@@ -164,13 +164,13 @@ test("6. envoi raté (WhatsApp coupé) : rien n'est recomposé, les 2 versions r
   assert.equal(db.activeOrder(c.id).lyrics_status, "composed");
   db.db.prepare("UPDATE messages SET created_at = ? WHERE contact_id = ?").run(Date.now() - 15 * MIN, c.id);
   for (let i = 0; i < 3; i++) await runWatchdog();
-  assert.equal(generations, before + 2); // une seule composition (2 versions), jamais refaite
+  assert.equal(generations, before + 1); // une seule création (2 versions), jamais refaite
   assert.ok(owner.some((t) => /n'ont pas pu partir/.test(t)));
   down = false;
   await router.flushOutbox();
   assert.equal(audios.filter((x) => x === "f1").length, 2);
   assert.ok(sent.some((x) => x.to === "f1" && /2 versions/.test(x.t)));
-  assert.equal(generations, before + 2);
+  assert.equal(generations, before + 1);
   await runWatchdog();
   assert.ok(owner.some((t) => /✅ Réglé/.test(t) && /Issa/.test(t)));
 });

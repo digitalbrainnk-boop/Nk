@@ -34,7 +34,7 @@ globalThis.fetch = async (url, init = {}) => {
     return Response.json({ code: 200, data: { taskId: "s1" } });
   }
   if (u.includes("/generate/record-info"))
-    return Response.json({ code: 200, data: { status: "SUCCESS", response: { sunoData: [{ audioUrl: "https://cdn.x/song.mp3", title: "Pour Ibrahim" }] } } });
+    return Response.json({ code: 200, data: { status: "SUCCESS", response: { sunoData: [{ audioUrl: "https://cdn.x/song.mp3", title: "Pour Ibrahim" }, { audioUrl: "https://cdn.x/song.mp3", title: "Pour Ibrahim" }] } } });
   if (u === "https://cdn.x/song.mp3") return new Response(new Uint8Array([1, 2]), { headers: { "content-type": "audio/mpeg" } });
   if (u.endsWith("/chat/credit")) return Response.json({ code: 200, data: 100 });
   throw new Error(`appel inattendu ${u}`);
@@ -96,19 +96,17 @@ test("2. le client demande un changement : nouvelle version à partir de la pré
   assert.match(sent.at(-1), /version corrigée/);
 });
 
-test("3. le client valide : Suno compose le texte validé en 2 versions (rythmée + acoustique)", async () => {
+test("3. le client valide : UNE création Suno, les 2 versions du même texte sont gardées", async () => {
   router.setReplyGenerator(async () => reply({ messages: ["Super ! Je lance la composition 🎶"], song_step: "client_validated" }));
   await router.handleIncoming({ channel: "fake3", externalId: "c1", text: "Oui c'est parfait !", externalMsgId: "3" });
   await waitFor(() => db.activeOrder(contact().id)?.lyrics_status === "composed");
-  assert.equal(sunoBodies.length, 2); // une version rythmée + une version acoustique
+  assert.equal(sunoBodies.length, 1); // une seule création (crédits)
   assert.match(sunoBodies[0].prompt, /\(v2\)/); // la version validée
-  assert.match(sunoBodies[1].prompt, /\(v2\)/);
-  assert.match(sunoBodies[0].style, /^zouglou, festif, upbeat/);
-  assert.match(sunoBodies[1].style, /acoustic/);
+  assert.equal(sunoBodies[0].style, "zouglou, festif");
   const songs = db.listMessages(contact().id).filter((m) => m.kind === "audio" && m.status === "draft");
   assert.equal(songs.length, 2); // envoi automatique désactivé : tu les écoutes avant
-  assert.match(songs[0].text, /version rythmée/);
-  assert.match(songs[1].text, /version acoustique/);
+  assert.match(songs[0].text, /version 1/);
+  assert.match(songs[1].text, /version 2/);
   assert.equal(db.getContact(contact().id).needs_human, 1);
   assert.equal(db.activeOrder(contact().id).stage, "creation");
 });
@@ -158,7 +156,7 @@ test("7. TA réaction 👍 sur le message de l'agent : composition puis livraiso
   const before = sunoBodies.length;
   const done = await router.handleOwnerReaction({ channel: "whatsapp", chatJid: "moi", targetId: payNote, emoji: "👍🏽", ownerChat: true });
   assert.ok(done);
-  assert.equal(sunoBodies.length, before + 2);
+  assert.equal(sunoBodies.length, before + 1);
   assert.match(sunoBodies.at(-1).prompt, /Moussa/);
   await waitFor(() => audios.filter((a) => a.to === "c2").length === 2); // les 2 versions
   assert.ok(sent.some((t) => /Paiement bien reçu/.test(t)));
@@ -179,4 +177,19 @@ test("8. texte envoyé avec un délai « humain » (12 min max)", async () => {
   assert.equal(await router.runLyricsQueue(Date.now() + 6 * 60_000), 1);
   assert.equal(db.activeOrder(c.id).lyrics_status, "proposed");
   assert.match(sent.at(-1), /Dis-moi si ce texte te plaît/);
+});
+
+test("9. réglage « rythmée + acoustique » : 2 créations, la 1re version de chacune", async () => {
+  db.setSettings({ song_versions: "two_styles", song_auto_send: false, compose_requires_payment: false });
+  const c = db.upsertContact("fake3", "c9", "Ali");
+  db.saveOrder({ contact_id: c.id, stage: "devis", song_style: "afro pop, male vocals", lyrics: "[Chorus] Ali", lyrics_status: "validated" });
+  const before = sunoBodies.length;
+  await router.startComposition(c.id);
+  await waitFor(() => db.activeOrder(c.id)?.lyrics_status === "composed");
+  assert.equal(sunoBodies.length, before + 2);
+  assert.match(sunoBodies.at(-2).style, /upbeat/);
+  assert.match(sunoBodies.at(-1).style, /acoustic.*male vocals/);
+  const songs = db.listMessages(c.id).filter((m) => m.kind === "audio" && m.status === "draft");
+  assert.deepEqual(songs.map((m) => m.text.split("— ")[1]), ["version rythmée", "version acoustique"]);
+  db.setSettings({ song_versions: "one" });
 });
