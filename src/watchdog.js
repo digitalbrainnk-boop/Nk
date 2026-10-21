@@ -231,6 +231,14 @@ async function check(s, now) {
 
   // 9. Solde Kie bas : une alerte par jour (vérifié toutes les 30 minutes).
   await lowCreditAlert(s, now);
+  // 10. Plafond de crédits du jour atteint : une alerte par jour.
+  const { budgetReached } = await import("./credits.js");
+  if (budgetReached() && s.budget_alert_day !== dayKey(new Date(now))) {
+    const ok = await messageOwner(
+      `💰 Plafond de ${s.daily_credit_limit} crédits Kie atteint aujourd'hui : plus de chansons, d'images ni de vocaux jusqu'à demain. Tu peux l'augmenter dans Réglages → Maîtrise des coûts.`,
+    ).catch(() => null);
+    if (ok) setSettings({ budget_alert_day: dayKey(new Date(now)) });
+  }
 
   // Ce qui n'est plus vu est réglé : on te le dit si on t'avait prévenu.
   for (const i of resolveIncidentsExcept(seen)) {

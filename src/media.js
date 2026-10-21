@@ -15,6 +15,9 @@ const EXT = {
   "audio/x-wav": "wav",
   "audio/x-m4a": "m4a",
   "audio/webm": "webm",
+  "audio/opus": "opus",
+  "audio/amr": "amr",
+  "video/mp4": "mp4",
   "image/jpeg": "jpg",
   "image/png": "png",
   "image/webp": "webp",
@@ -22,18 +25,31 @@ const EXT = {
 };
 
 export function saveMedia(buffer, mime) {
-  const clean = (mime || "application/octet-stream").split(";")[0].trim();
+  // Seuls les types connus (sons, images) sont gardés tels quels : jamais de « text/html ».
+  let clean = (mime || "application/octet-stream").split(";")[0].trim().toLowerCase();
+  if (!EXT[clean]) clean = "application/octet-stream";
   const ext = EXT[clean] || "bin";
   const file = path.join(DATA_DIR, "media", `${Date.now()}-${crypto.randomBytes(4).toString("hex")}.${ext}`);
   fs.writeFileSync(file, buffer);
   return { path: file, mime: clean };
 }
 
+const MAX_DOWNLOAD = 60 * 1024 * 1024;
 export async function downloadToMedia(url, headers = {}) {
-  const res = await fetch(url, { headers });
+  if (!/^https:\/\//i.test(String(url))) throw new Error("Adresse de fichier refusée (https uniquement).");
+  const res = await fetch(url, { headers, signal: AbortSignal.timeout(120_000) });
   if (!res.ok) throw new Error(`Téléchargement impossible (${res.status})`);
+  if (Number(res.headers.get("content-length")) > MAX_DOWNLOAD) throw new Error("Fichier trop gros.");
+  // Lecture bornée : on s'arrête au-delà de 60 Mo.
+  const chunks = [];
+  let size = 0;
+  for await (const chunk of res.body) {
+    size += chunk.length;
+    if (size > MAX_DOWNLOAD) throw new Error("Fichier trop gros.");
+    chunks.push(chunk);
+  }
   const mime = res.headers.get("content-type") || "application/octet-stream";
-  return saveMedia(Buffer.from(await res.arrayBuffer()), mime);
+  return saveMedia(Buffer.concat(chunks), mime);
 }
 
 /**

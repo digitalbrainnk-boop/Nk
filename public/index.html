@@ -201,7 +201,7 @@
           <p class="muted">Nécessite une app sur developers.facebook.com reliée à ta Page (voir le guide dans le README).</p>
           <div id="meta-status"></div>
           <div class="row"><label>Jeton d'accès de la Page</label><input id="facebook_page_token" /></div>
-          <div class="row"><label>Clé secrète de l'app</label><input id="facebook_app_secret" /></div>
+          <div class="row"><label>Clé secrète de l'app (obligatoire : sans elle, les messages Facebook sont refusés par sécurité)</label><input id="facebook_app_secret" /></div>
           <div class="row"><label>Jeton de vérification (invente un mot)</label><input id="facebook_verify_token" /></div>
           <label class="check"><input type="checkbox" id="facebook_reply_comments" /> Répondre aux commentaires de la Page</label>
           <div class="row"><label>Lien envoyé aux clients contents pour laisser un commentaire : ta publication Facebook (colle son lien) ou ta page (rempli tout seul quand la page est connectée)</label><input id="facebook_page_url" placeholder="https://www.facebook.com/…" /></div>
@@ -304,6 +304,8 @@
         <p class="muted">Télécharge une copie de tout (clients, conversations, mémoire, commandes, réglages et clés). Pour passer du téléphone au serveur : télécharge la sauvegarde ici sur le téléphone, puis restaure-la sur le tableau de bord du serveur (WhatsApp sera à reconnecter là-bas).</p>
         <div class="btns"><a class="button small" href="/api/backup" download>⬇️ Télécharger la sauvegarde</a>
           <input type="file" id="restore-file" accept=".db" style="width:auto" /><button class="small" id="restore-btn">⬆️ Restaurer</button></div>
+        <h2>🔐 Connexion</h2>
+        <div class="btns"><button class="small" id="logout">Me déconnecter</button><button class="small danger" id="logout-all">Déconnecter tous les appareils</button></div>
         <h2>🚫 Ne jamais répondre à ces numéros</h2>
         <p class="muted">Un numéro par ligne, avec ou sans indicatif (ex : 22670123456). Pour Telegram, tu peux mettre le @pseudo. L'agent garde leurs messages mais ne leur répond jamais : famille, amis, collègues… Tu peux aussi le faire depuis une conversation (bouton « 🚫 Ne jamais répondre »).</p>
         <textarea id="ignored_list" rows="5" placeholder="22670123456&#10;22566554433&#10;@monpote"></textarea>

@@ -1052,6 +1052,15 @@ $("#tts-preview").addEventListener("click", async () => {
   }
 });
 
+// ---------- Connexion ----------
+for (const [id, everywhere] of [["#logout", false], ["#logout-all", true]]) {
+  $(id).addEventListener("click", async () => {
+    if (everywhere && !confirm("Déconnecter le tableau de bord sur TOUS tes appareils ?")) return;
+    await api("/api/logout", { method: "POST", body: { everywhere } }).catch(() => {});
+    location.reload();
+  });
+}
+
 // ---------- Sauvegarde ----------
 $("#restore-btn").addEventListener("click", async () => {
   const f = $("#restore-file").files[0];

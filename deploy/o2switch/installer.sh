@@ -32,7 +32,7 @@ NOUVEAU=0
 if [ ! -f "$APP/.env" ]; then
   NOUVEAU=1
   cp "$VERSION/o2switch/env.example" "$APP/.env"
-  MDP=$(tr -dc '0-9' < /dev/urandom | head -c 8 || true)
+  MDP=$(tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 16 || true)
   sed -i -e "s|^ADMIN_PASSWORD=.*|ADMIN_PASSWORD=$MDP|" -e "s|^DATA_DIR=.*|DATA_DIR=$DONNEES|" "$APP/.env"
 fi
 chmod 600 "$APP/.env"

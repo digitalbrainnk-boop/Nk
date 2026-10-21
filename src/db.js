@@ -206,7 +206,7 @@ export const DEFAULT_SETTINGS = {
   song_auto_send: true,
   song_two_versions: true, // chaque chanson en 2 versions : rythmée et acoustique
   max_lyrics_versions: 5, // au-delà, les corrections passent par toi
-  daily_credit_limit: 0, // plafond de crédits Kie par jour (0 = pas de plafond)
+  daily_credit_limit: 1000, // plafond de crédits Kie par jour (≈ 5 $ ; 0 = pas de plafond)
   low_credit_alert: 200, // te prévenir quand le solde Kie passe sous ce nombre
   max_replies_per_hour: 30, // protection : au-delà, l'agent se tait avec ce client et te prévient // livrer la chanson dès qu'elle est prête (le paiement a déjà été vérifié par toi)
   lyrics_delay_min: 3, // le texte est envoyé entre 3 et 10 minutes après la confirmation des infos

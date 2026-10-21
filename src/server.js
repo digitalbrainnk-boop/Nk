@@ -68,30 +68,81 @@ import { backupDatabase, scheduleRestore } from "./db.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
-app.set("trust proxy", true);
+// Un seul relais (Apache/Passenger chez l'hébergeur) : l'adresse du visiteur ne peut pas être inventée.
+app.set("trust proxy", 1);
+app.disable("x-powered-by");
+const PROD = process.env.NODE_ENV === "production";
+
+// ---------- En-têtes de sécurité ----------
+app.use((req, res, next) => {
+  res.setHeader(
+    "Content-Security-Policy",
+    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; " +
+      "media-src 'self' blob: https:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'self'; " +
+      "form-action 'self'; frame-ancestors 'none'",
+  );
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("Referrer-Policy", "no-referrer");
+  res.setHeader("Permissions-Policy", "camera=(), geolocation=(), microphone=(self)");
+  if (PROD) res.setHeader("Strict-Transport-Security", "max-age=31536000");
+  next();
+});
 
 // ---------- Authentification du tableau de bord ----------
 let password = (process.env.ADMIN_PASSWORD || getSettings().admin_password || "").trim();
 if (!password) {
-  password = String(crypto.randomInt(100000, 1000000)); // 6 chiffres, facile à taper
+  // 12 caractères aléatoires : impossible à deviner (tu le retrouves dans MOT-DE-PASSE.txt).
+  password = crypto.randomBytes(9).toString("base64url");
   setSettings({ admin_password: password });
 }
-// Le mot de passe est aussi écrit dans un fichier bien visible du dossier du projet.
-const passwordFile = path.join(here, "..", "MOT-DE-PASSE.txt");
-try {
-  fs.writeFileSync(
-    passwordFile,
-    `Mot de passe du tableau de bord : ${password}\r\n\r\nAdresse : http://localhost:${process.env.PORT || 3000}\r\n` +
-      `Pour le changer : ouvre le fichier .env et écris ADMIN_PASSWORD=ton_mot_de_passe\r\n`,
-  );
-} catch {}
-const secret = process.env.SESSION_SECRET || crypto.createHash("sha256").update("nk:" + password).digest("hex");
-const sessionToken = crypto.createHmac("sha256", secret).update("admin").digest("hex");
+// Sur le téléphone, le mot de passe est aussi écrit dans un fichier bien visible du dossier
+// du projet (jamais chez l'hébergeur : là-bas, « nk motdepasse » l'affiche).
+if (!PROD) {
+  try {
+    fs.writeFileSync(
+      path.join(here, "..", "MOT-DE-PASSE.txt"),
+      `Mot de passe du tableau de bord : ${password}\r\n\r\nAdresse : http://localhost:${process.env.PORT || 3000}\r\n` +
+        `Pour le changer : ouvre le fichier .env et écris ADMIN_PASSWORD=ton_mot_de_passe\r\n`,
+    );
+  } catch {}
+}
 
+// Sessions : un jeton aléatoire par connexion (30 jours), gardé côté serveur sous forme d'empreinte.
+const SESSION_DAYS = 30;
+const hashToken = (t) => crypto.createHash("sha256").update(t).digest("hex");
+function sessions() {
+  const now = Date.now();
+  return Object.fromEntries(Object.entries(getSettings().sessions || {}).filter(([, exp]) => exp > now));
+}
+function readCookie(req) {
+  const c = (req.headers.cookie || "").split(";").map((x) => x.trim()).find((x) => x.startsWith("nk_session="));
+  return c?.slice("nk_session=".length) || "";
+}
 function isAuthed(req) {
-  const cookie = (req.headers.cookie || "").split(";").map((c) => c.trim()).find((c) => c.startsWith("nk_session="));
-  const val = cookie?.slice("nk_session=".length) || "";
-  return val.length === sessionToken.length && crypto.timingSafeEqual(Buffer.from(val), Buffer.from(sessionToken));
+  const t = readCookie(req);
+  return t.length >= 32 && !!sessions()[hashToken(t)];
+}
+const cookieFlags = (req) => `HttpOnly; SameSite=Strict; Path=/${PROD || req.secure ? "; Secure" : ""}`;
+
+// Anti-devinette : 5 erreurs par adresse puis attente qui double (jusqu'à 1 h), et au plus
+// 30 erreurs par heure au total (même si l'attaquant change d'adresse).
+const failures = new Map();
+let globalFails = [];
+function loginBlocked(ip) {
+  const now = Date.now();
+  globalFails = globalFails.filter((t) => now - t < 3600_000);
+  if (globalFails.length >= 30) return Math.ceil((globalFails[0] + 3600_000 - now) / 1000);
+  const f = failures.get(ip);
+  return f && f.until > now ? Math.ceil((f.until - now) / 1000) : 0;
+}
+function loginFailed(ip) {
+  const f = failures.get(ip) || { n: 0, until: 0 };
+  f.n++;
+  if (f.n >= 5) f.until = Date.now() + Math.min(3600_000, 30_000 * 2 ** (f.n - 5));
+  failures.set(ip, f);
+  globalFails.push(Date.now());
+  if (failures.size > 5000) failures.clear();
 }
 
 // Webhooks publics (Meta) avant le JSON/auth.
@@ -100,13 +151,50 @@ app.use(metaRouter);
 app.get("/health", (req, res) => res.json({ ok: true }));
 app.use(express.json({ limit: "2mb" }));
 
+// Les demandes qui modifient quelque chose doivent venir du tableau de bord lui-même
+// (protection contre les sites piégés, même sur un autre sous-domaine).
+app.use("/api", (req, res, next) => {
+  if (["GET", "HEAD", "OPTIONS"].includes(req.method)) return next();
+  const site = req.get("sec-fetch-site");
+  if (site && !["same-origin", "none"].includes(site)) return res.status(403).json({ error: "Requête refusée" });
+  const origin = req.get("origin");
+  if (origin && origin !== "null") {
+    try {
+      if (new URL(origin).host !== req.get("host")) return res.status(403).json({ error: "Requête refusée" });
+    } catch {
+      return res.status(403).json({ error: "Requête refusée" });
+    }
+  }
+  next();
+});
+
 app.post("/api/login", (req, res) => {
+  const ip = req.ip || "?";
+  const wait = loginBlocked(ip);
+  if (wait) return res.status(429).json({ error: `Trop d'essais : réessaie dans ${Math.ceil(wait / 60)} minute(s).` });
   const given = String(req.body?.password || "").trim();
-  const ok =
-    given.length === password.length && crypto.timingSafeEqual(Buffer.from(given), Buffer.from(password));
-  if (!ok) return res.status(401).json({ error: "Mot de passe incorrect" });
-  const secure = req.secure ? "; Secure" : "";
-  res.setHeader("Set-Cookie", `nk_session=${sessionToken}; HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000${secure}`);
+  const a = crypto.createHash("sha256").update(given).digest();
+  const b = crypto.createHash("sha256").update(password).digest();
+  if (!crypto.timingSafeEqual(a, b)) {
+    loginFailed(ip);
+    return res.status(401).json({ error: "Mot de passe incorrect" });
+  }
+  failures.delete(ip);
+  const token = crypto.randomBytes(32).toString("hex");
+  const all = sessions();
+  all[hashToken(token)] = Date.now() + SESSION_DAYS * 86400_000;
+  // On garde les 20 connexions les plus récentes.
+  const kept = Object.fromEntries(Object.entries(all).sort((x, y) => y[1] - x[1]).slice(0, 20));
+  setSettings({ sessions: kept });
+  res.setHeader("Set-Cookie", `nk_session=${token}; ${cookieFlags(req)}; Max-Age=${SESSION_DAYS * 86400}`);
+  res.json({ ok: true });
+});
+app.post("/api/logout", (req, res) => {
+  const all = sessions();
+  delete all[hashToken(readCookie(req))];
+  if (req.body?.everywhere && isAuthed(req)) for (const k of Object.keys(all)) delete all[k];
+  setSettings({ sessions: all });
+  res.setHeader("Set-Cookie", `nk_session=; ${cookieFlags(req)}; Max-Age=0`);
   res.json({ ok: true });
 });
 
@@ -191,8 +279,14 @@ app.post("/api/contacts/:id/regenerate", (req, res) => {
 });
 app.get("/api/media/:id", (req, res) => {
   const m = getMessage(Number(req.params.id));
-  if (!m?.media_path) return res.sendStatus(404);
-  res.type(m.media_type || "application/octet-stream").sendFile(m.media_path);
+  const file = m?.media_path ? path.resolve(m.media_path) : "";
+  if (!file || !file.startsWith(path.resolve(DATA_DIR, "media") + path.sep) || !fs.existsSync(file)) return res.sendStatus(404);
+  // Seuls les images et sons s'affichent ; tout le reste est proposé en téléchargement.
+  const type = String(m.media_type || "").split(";")[0].trim().toLowerCase();
+  const safe = /^(image\/(jpeg|png|webp|gif)|audio\/[a-z0-9.+-]+|video\/mp4)$/.test(type);
+  res.type(safe ? type : "application/octet-stream");
+  if (!safe) res.setHeader("Content-Disposition", "attachment");
+  res.sendFile(file);
 });
 // ---------- Commandes & ventes ----------
 app.get("/api/orders", (req, res) => res.json(listOrders({ contactId: Number(req.query.contact) || undefined })));
@@ -397,6 +491,8 @@ app.get("/api/settings", (req, res) => {
   // Applications connectées : gérées par /api/integrations (elles contiennent des clés).
   delete s.webhooks;
   delete s.agent_actions;
+  delete s.sessions;
+  delete s.owner_notes;
   s.env = {
     kie_api_key: !!process.env.KIE_API_KEY,
     anthropic_api_key: !!process.env.ANTHROPIC_API_KEY,
@@ -410,6 +506,8 @@ app.put("/api/settings", wrap(async (req, res) => {
   delete patch.admin_password;
   delete patch.webhooks;
   delete patch.agent_actions;
+  delete patch.sessions;
+  delete patch.owner_notes;
   for (const k of SECRET_KEYS) if (typeof patch[k] === "string" && patch[k].startsWith("••••••")) delete patch[k];
   // Une clé collée dans la case Claude qui n'est pas une clé Claude (sk-ant-…)
   // est très probablement une clé Kie.ai : on la range au bon endroit.
@@ -453,7 +551,7 @@ app.delete("/api/knowledge/:id", (req, res) => {
 });
 
 // ---------- Apprentissage ----------
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024, files: 10 } });
 function readExport(file) {
   if (/\.zip$/i.test(file.originalname) || file.buffer.subarray(0, 2).toString() === "PK") {
     const files = unzipSync(new Uint8Array(file.buffer));
@@ -543,8 +641,11 @@ app.use(express.static(path.join(here, "..", "public")));
 const port = Number(process.env.PORT || 3000);
 app.listen(port, () => {
   console.log(`\n✅ Agent démarré : http://localhost:${port}`);
-  console.log(`\n🔑 MOT DE PASSE : ${password}`);
-  console.log(`   (il est aussi écrit dans le fichier MOT-DE-PASSE.txt du dossier du projet)\n`);
+  // Le mot de passe n'est jamais écrit dans le journal du serveur (chez l'hébergeur : « nk motdepasse »).
+  if (!PROD) {
+    console.log(`\n🔑 MOT DE PASSE : ${password}`);
+    console.log(`   (il est aussi écrit dans le fichier MOT-DE-PASSE.txt du dossier du projet)\n`);
+  }
   const st = getSettings();
   if (!process.env.ANTHROPIC_API_KEY && !st.anthropic_api_key && !process.env.KIE_API_KEY && !st.kie_api_key) {
     console.log("⚠️  Ajoute ta clé Kie.ai (Réglages du tableau de bord).");

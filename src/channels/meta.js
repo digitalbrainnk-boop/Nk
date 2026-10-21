@@ -111,9 +111,12 @@ async function onWhatsAppCloud(value) {
       meta: { phone: m.from },
     };
     const mediaObj = m.audio || m.voice || m.image;
-    if (mediaObj?.id) {
+    if (mediaObj?.id && /^\d+$/.test(String(mediaObj.id))) {
       const { waToken } = cfg();
       const info = await graph(mediaObj.id, { token: waToken });
+      // Le jeton n'est envoyé qu'aux serveurs de Meta.
+      const host = new URL(info.url).hostname;
+      if (!/(^|\.)(fbsbx\.com|whatsapp\.net|facebook\.com|fbcdn\.net)$/.test(host)) throw new Error(`Adresse de média inattendue : ${host}`);
       const media = await downloadToMedia(info.url, { Authorization: `Bearer ${waToken}` });
       media.mime = (info.mime_type || media.mime).split(";")[0];
       await handleIncoming({ ...base, kind: m.image ? "image" : "audio", text: m.image?.caption || "", media });
@@ -137,13 +140,17 @@ metaRouter.get("/webhooks/meta", (req, res) => {
 });
 
 metaRouter.post("/webhooks/meta", express.raw({ type: "*/*", limit: "5mb" }), async (req, res) => {
+  // Signature obligatoire : sans la clé secrète de l'app, on refuse tout (sinon n'importe qui
+  // pourrait envoyer de faux messages et dépenser tes crédits).
   const { appSecret } = cfg();
-  if (appSecret) {
-    const sig = req.get("x-hub-signature-256") || "";
-    const expected = "sha256=" + crypto.createHmac("sha256", appSecret).update(req.body).digest("hex");
-    if (sig.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) {
-      return res.sendStatus(401);
-    }
+  if (!appSecret) {
+    stats.error = "Clé secrète de l'app Facebook manquante (Canaux → Facebook) : messages refusés.";
+    return res.sendStatus(401);
+  }
+  const sig = req.get("x-hub-signature-256") || "";
+  const expected = "sha256=" + crypto.createHmac("sha256", appSecret).update(req.body || Buffer.alloc(0)).digest("hex");
+  if (sig.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) {
+    return res.sendStatus(401);
   }
   res.sendStatus(200); // Meta veut une réponse rapide
   let body;

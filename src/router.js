@@ -91,7 +91,12 @@ export async function handleIncoming(input) {
 
   let text = input.text || "";
   let kind = input.kind || "text";
-  if (kind === "audio" && input.media) {
+  // Un client qui inonde l'agent n'obtient plus de transcriptions (protection des crédits).
+  const flooding = (Number(getSettings().max_replies_per_hour) || 0) > 0 &&
+    agentRepliesSince(contact.id, Date.now() - 3600_000) >= Number(getSettings().max_replies_per_hour);
+  if (kind === "audio" && input.media && flooding) {
+    text = "(vocal non transcrit : trop de messages de ce client en une heure)";
+  } else if (kind === "audio" && input.media) {
     const t = await transcribe(input.media.path, input.media.mime, { contactId: contact.id }).catch((e) => {
       console.error("Transcription :", e.message);
       return null;
@@ -306,13 +311,22 @@ function noteAction(contactId, r) {
 /** Enregistre la commande proposée par l'agent (jamais les paiements). */
 function applyOrder(contactId, o) {
   if (!o) return;
-  const clean = Object.fromEntries(Object.entries(o).filter(([, v]) => v !== null && v !== undefined && v !== ""));
+  // Seuls ces champs viennent de l'IA (jamais le montant payé, le texte ou le statut).
+  const ALLOWED = ["stage", "title", "occasion", "price", "due_date"];
+  const clean = Object.fromEntries(
+    Object.entries(o).filter(([k, v]) => ALLOWED.includes(k) && v !== null && v !== undefined && v !== ""),
+  );
+  if (clean.stage && !["nouveau", "devis"].includes(clean.stage)) delete clean.stage;
+  if (clean.price !== undefined && !(Number(clean.price) > 0)) delete clean.price;
   if (!Object.keys(clean).length) return;
   const cur = activeOrder(contactId);
   if (cur) {
     // L'agent ne fait jamais reculer une commande déjà payée ou en création.
     if (clean.stage && ["acompte", "creation"].includes(cur.stage)) delete clean.stage;
     if (clean.stage === "nouveau" && cur.stage === "devis") delete clean.stage;
+    // Un client ne peut pas faire baisser le prix en discutant avec l'agent : seul toi
+    // (tableau de bord) peux baisser un prix déjà annoncé ; et rien ne change après paiement.
+    if (clean.price !== undefined && cur.price > 0 && (Number(clean.price) < cur.price || isPaid(cur))) delete clean.price;
     saveOrder({ id: cur.id, ...clean });
   } else {
     saveOrder({ contact_id: contactId, stage: clean.stage || "nouveau", ...clean });
@@ -969,6 +983,14 @@ async function handleSongStep(contactId, reply, mode) {
       return;
     }
     const revise = reply.song_step === "revise_lyrics";
+    if (revise && current && (current.compose_tries > 0 || ["composing", "composed"].includes(current.lyrics_status))) {
+      // La chanson est déjà composée (et payée) : une nouvelle version coûte une nouvelle composition.
+      const reason = `✍️ Le client veut modifier sa chanson déjà composée : ${reply.revision_notes || "voir la conversation"}. À toi de décider (nouvelle composition = nouveaux crédits).`;
+      updateContact(contactId, { needs_human: 1, needs_human_reason: reason });
+      emit("contact", { contact_id: contactId });
+      await notifyOwner(contact, reason, { plain: true }).catch(() => {});
+      return;
+    }
     if (revise && (current?.lyrics_version || 0) >= (Number(s.max_lyrics_versions) || 5)) {
       // Beaucoup de corrections : c'est toi qui prends la main (et ça évite de dépenser sans fin).
       const reason = `✍️ Le client demande encore des corrections après ${current.lyrics_version} versions du texte : ${reply.revision_notes || "voir la conversation"}`;
