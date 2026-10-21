@@ -72,6 +72,10 @@ CREATE TABLE IF NOT EXISTS knowledge (
 // Migrations légères pour les bases créées par une version précédente.
 for (const sql of [
   "ALTER TABLE messages ADD COLUMN media_url TEXT",
+  // File d'envoi : un message qui n'a pas pu partir (WhatsApp coupé…) reste « pending »
+  // et repart tel quel à la reconnexion (rien n'est régénéré).
+  "ALTER TABLE messages ADD COLUMN tries INTEGER NOT NULL DEFAULT 0",
+  "ALTER TABLE messages ADD COLUMN error TEXT",
   "ALTER TABLE contacts ADD COLUMN followups INTEGER NOT NULL DEFAULT 0",
   "ALTER TABLE contacts ADD COLUMN last_followup_at INTEGER NOT NULL DEFAULT 0",
   "ALTER TABLE contacts ADD COLUMN demo_at INTEGER NOT NULL DEFAULT 0",
@@ -199,7 +203,12 @@ export const DEFAULT_SETTINGS = {
   auto_demo: false,
   song_flow: true, // l'agent propose le texte, le client valide, puis Suno compose
   compose_requires_payment: true, // composer seulement après TA confirmation du paiement
-  song_auto_send: true, // livrer la chanson dès qu'elle est prête (le paiement a déjà été vérifié par toi)
+  song_auto_send: true,
+  song_two_versions: true, // chaque chanson en 2 versions : rythmée et acoustique
+  max_lyrics_versions: 5, // au-delà, les corrections passent par toi
+  daily_credit_limit: 0, // plafond de crédits Kie par jour (0 = pas de plafond)
+  low_credit_alert: 200, // te prévenir quand le solde Kie passe sous ce nombre
+  max_replies_per_hour: 30, // protection : au-delà, l'agent se tait avec ce client et te prévient // livrer la chanson dès qu'elle est prête (le paiement a déjà été vérifié par toi)
   lyrics_delay_min: 3, // le texte est envoyé entre 3 et 10 minutes après la confirmation des infos
   lyrics_delay_max: 10,
   owner_whatsapp: "", // numéro où l'agent te laisse ses messages (vide = ton propre WhatsApp)
@@ -691,6 +700,23 @@ export function lastDeliveredOrder(contactId, days = 14) {
   return db
     .prepare("SELECT * FROM orders WHERE contact_id = ? AND stage = 'livree' AND delivered_at > ? ORDER BY delivered_at DESC LIMIT 1")
     .get(contactId, now() - days * 24 * 3600_000);
+}
+
+/** Messages en attente d'envoi (ordre d'origine). */
+export function pendingMessages() {
+  return db.prepare("SELECT * FROM messages WHERE status = 'pending' ORDER BY id").all();
+}
+
+/** Crédits dépensés depuis minuit. */
+export function creditsSince(t) {
+  return db.prepare("SELECT COALESCE(SUM(credits), 0) AS n FROM credit_log WHERE created_at >= ?").get(t).n;
+}
+
+/** Réponses envoyées par l'agent à ce client depuis `since`. */
+export function agentRepliesSince(contactId, since) {
+  return db
+    .prepare("SELECT COUNT(*) AS n FROM messages WHERE contact_id = ? AND author = 'agent' AND created_at >= ?")
+    .get(contactId, since).n;
 }
 
 /** Paiement vérifié par toi (ou montant payé noté dans la commande). */

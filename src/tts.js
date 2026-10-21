@@ -6,8 +6,10 @@
 // Si ffmpeg est installé, le MP3 est converti en OGG/Opus pour s'afficher
 // comme une vraie note vocale sur WhatsApp et Telegram.
 import fs from "node:fs";
+import path from "node:path";
+import crypto from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { getSettings } from "./db.js";
+import { DATA_DIR, getSettings } from "./db.js";
 import { kieKey } from "./openai-compat.js";
 import { downloadToMedia, saveMedia } from "./media.js";
 
@@ -61,7 +63,24 @@ function toVoiceNote(media) {
  * @returns {Promise<{path: string, mime: string, url: string, voiceNote: boolean}>}
  */
 export async function textToSpeech(text) {
+  // Cache : la même phrase avec la même voix n'est jamais payée deux fois
+  // (ex : « Paiement bien reçu, merci 🙏 »).
   const s = getSettings();
+  const voice = s.voice_provider === "elevenlabs" ? `el:${s.elevenlabs_voice_id}` : `kie:${s.tts_voice || "Brian"}`;
+  const key = crypto.createHash("sha256").update(`${voice}\n${text.trim()}`).digest("hex").slice(0, 32);
+  const meta = path.join(DATA_DIR, "media", `tts-${key}.json`);
+  try {
+    const hit = JSON.parse(fs.readFileSync(meta, "utf8"));
+    if (fs.existsSync(hit.path)) return hit;
+  } catch {}
+  const audio = await synthesize(text, s);
+  try {
+    fs.writeFileSync(meta, JSON.stringify(audio));
+  } catch {}
+  return audio;
+}
+
+async function synthesize(text, s) {
   if (s.voice_provider === "elevenlabs") return myVoice(text);
   const data = await kie("/jobs/createTask", {
     method: "POST",

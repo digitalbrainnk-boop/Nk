@@ -140,11 +140,15 @@ globalThis.fetch = async (url, init) => {
   return realFetch(url, init);
 };
 
-test("6. envoi raté (WhatsApp coupé) : la chanson n'est PAS recomposée, seul l'envoi est retenté", async () => {
+test("6. envoi raté (WhatsApp coupé) : rien n'est recomposé, les 2 versions repartent telles quelles", async () => {
   let down = true;
   router.registerAdapter({
     channel: "fake6",
-    send: async (c, t) => (sent.push({ to: c.external_id, t }), `m${sent.length}`),
+    send: async (c, t) => {
+      if (down) throw new Error("WhatsApp n'est pas connecté");
+      sent.push({ to: c.external_id, t });
+      return `m${sent.length}`;
+    },
     sendAudio: async (c) => {
       if (down) throw new Error("WhatsApp n'est pas connecté");
       audios.push(c.external_id);
@@ -156,17 +160,19 @@ test("6. envoi raté (WhatsApp coupé) : la chanson n'est PAS recomposée, seul 
   db.saveOrder({ contact_id: c.id, stage: "acompte", price: 5000, paid: 5000, lyrics: "[Chorus] Issa", lyrics_status: "validated" });
   const before = generations;
   await router.startComposition(c.id);
-  await waitFor(() => db.activeOrder(c.id)?.lyrics_status === "composed");
-  await new Promise((r) => setTimeout(r, 50));
-  db.db.prepare("UPDATE orders SET updated_at = ? WHERE contact_id = ?").run(Date.now() - 10 * MIN, c.id);
+  await waitFor(() => db.listMessages(c.id).filter((m) => m.status === "pending").length === 3); // annonce + 2 versions
+  assert.equal(db.activeOrder(c.id).lyrics_status, "composed");
+  db.db.prepare("UPDATE messages SET created_at = ? WHERE contact_id = ?").run(Date.now() - 15 * MIN, c.id);
   for (let i = 0; i < 3; i++) await runWatchdog();
-  assert.equal(generations, before + 1); // une seule composition
-  assert.ok(owner.some((t) => /pas pu être envoyée/.test(t)));
+  assert.equal(generations, before + 2); // une seule composition (2 versions), jamais refaite
+  assert.ok(owner.some((t) => /n'ont pas pu partir/.test(t)));
   down = false;
-  db.db.prepare("UPDATE incidents SET attempts = 4 WHERE key LIKE 'deliver:%'").run(); // prochain essai = tour n°5
+  await router.flushOutbox();
+  assert.equal(audios.filter((x) => x === "f1").length, 2);
+  assert.ok(sent.some((x) => x.to === "f1" && /2 versions/.test(x.t)));
+  assert.equal(generations, before + 2);
   await runWatchdog();
-  await waitFor(() => audios.includes("f1"));
-  assert.equal(generations, before + 1);
+  assert.ok(owner.some((t) => /✅ Réglé/.test(t) && /Issa/.test(t)));
 });
 
 test("7. paiement confirmé sans prix noté, AVANT la validation du texte : la chanson part quand il valide", async () => {
@@ -181,12 +187,12 @@ test("7. paiement confirmé sans prix noté, AVANT la validation du texte : la c
   await waitFor(() => generations > before);
 });
 
-test("8. la file des textes ne l'envoie qu'une fois, et un envoi raté est renvoyé sans réécrire le texte", async () => {
+test("8. la file des textes ne l'envoie qu'une fois ; un envoi raté repart tel quel (sans réécrire le texte)", async () => {
   let fail = true;
   router.registerAdapter({
     channel: "fake7",
     send: async (c, t) => {
-      if (fail && /Dis-moi si ce texte/.test(t)) throw new Error("coupure");
+      if (fail) throw new Error("coupure");
       sent.push({ to: c.external_id, t });
       return "x";
     },
@@ -195,14 +201,12 @@ test("8. la file des textes ne l'envoie qu'une fois, et un envoi raté est renvo
   const o = db.saveOrder({ contact_id: c.id, stage: "nouveau" });
   db.saveOrder({ id: o.id, lyrics_status: "writing", lyrics_due_at: Date.now() - 1000, lyrics_notes: "{}" });
   await Promise.all([router.runLyricsQueue(), router.runLyricsQueue()]);
-  const v1 = db.getOrder(o.id);
-  assert.equal(v1.lyrics_version, 1);
-  assert.equal(v1.lyrics_status, "writing"); // envoi raté : nouvel essai prévu
+  assert.equal(db.getOrder(o.id).lyrics_version, 1);
+  assert.equal(db.getOrder(o.id).lyrics_status, "proposed");
+  assert.equal(db.listMessages(c.id).filter((m) => m.status === "pending").length, 1);
   fail = false;
-  await router.runLyricsQueue(Date.now() + 2 * MIN);
-  const v2 = db.getOrder(o.id);
-  assert.equal(v2.lyrics_status, "proposed");
-  assert.equal(v2.lyrics_version, 1); // même texte, l'IA n'a pas été repayée
+  await router.flushOutbox();
+  assert.equal(db.getOrder(o.id).lyrics_version, 1); // même texte, l'IA n'a pas été repayée
   assert.equal(sent.filter((x) => x.to === "h1").length, 1);
 });
 

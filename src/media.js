@@ -43,6 +43,8 @@ export async function downloadToMedia(url, headers = {}) {
  */
 export async function transcribe(filePath, mime, { contactId } = {}) {
   const s = getSettings();
+  // Un vocal de plus de ~15 Mo (plus de 15 minutes) n'est pas transcrit : coût et abus.
+  if (fs.statSync(filePath).size > 15 * 1024 * 1024) return "(vocal très long, non transcrit : le propriétaire l'écoutera)";
   const key = s.transcription_api_key || process.env.TRANSCRIPTION_API_KEY;
   const { elevenKey, transcribeWithEleven } = await import("./elevenlabs.js");
   if (!key && elevenKey()) {

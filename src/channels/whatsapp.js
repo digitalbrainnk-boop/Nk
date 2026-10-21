@@ -19,7 +19,7 @@ import {
 } from "baileys";
 import { DATA_DIR, addExamples, getSettings, setSettings } from "../db.js";
 import { saveMedia } from "../media.js";
-import { handleIncoming, handleOwnerMessage, handleOwnerReaction, registerAdapter } from "../router.js";
+import { flushOutbox, handleIncoming, handleOwnerMessage, handleOwnerReaction, registerAdapter } from "../router.js";
 import { buildPairs } from "../learning.js";
 import { emit } from "../events.js";
 
@@ -261,6 +261,8 @@ export async function startWhatsApp({ phone } = {}) {
       pairingPhone = null;
       setState({ status: "connecté", qr: null, pairingCode: null, error: null, me: sock.user?.id?.split(":")[0] || sock.user?.id });
       console.log("✅ WhatsApp connecté à l'agent");
+      // Ce qui n'a pas pu partir pendant la coupure repart tel quel.
+      setTimeout(() => flushOutbox().catch((e) => console.error("File d'envoi :", e.message)), 3000);
     }
     if (u.connection === "close") {
       const code = u.lastDisconnect?.error?.output?.statusCode;

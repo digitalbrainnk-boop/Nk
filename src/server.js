@@ -48,6 +48,7 @@ import {
   messageOwner,
   runLyricsQueue,
   runReminders,
+  flushOutbox,
   schedule,
   sendManual,
   startComposition,
@@ -560,6 +561,8 @@ whenLeader(() => {
   setInterval(() => runReminders().catch((e) => console.error("Relances prévues :", e.message)), 5 * 60_000);
   // Textes de chansons à envoyer (délai « humain », 12 minutes max) : toutes les 30 secondes.
   setInterval(() => runLyricsQueue().catch((e) => console.error("Textes :", e.message)), 30_000);
+  // File d'envoi : ce qui n'a pas pu partir repart tel quel dès que possible (toutes les minutes).
+  setInterval(() => flushOutbox().catch((e) => console.error("File d'envoi :", e.message)), 60_000);
   // Surveillance : chaque minute, on relance ce qui est bloqué et on te prévient ; bilan du soir.
   setInterval(() => runWatchdog().catch((e) => console.error("Surveillance :", e.message)), 60_000);
   // Publication automatique sur ta page (si tu l'as activée) : vérifiée chaque minute.

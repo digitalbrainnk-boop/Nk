@@ -96,15 +96,19 @@ test("2. le client demande un changement : nouvelle version à partir de la pré
   assert.match(sent.at(-1), /version corrigée/);
 });
 
-test("3. le client valide : Suno compose avec le texte validé, chanson prête à écouter", async () => {
+test("3. le client valide : Suno compose le texte validé en 2 versions (rythmée + acoustique)", async () => {
   router.setReplyGenerator(async () => reply({ messages: ["Super ! Je lance la composition 🎶"], song_step: "client_validated" }));
   await router.handleIncoming({ channel: "fake3", externalId: "c1", text: "Oui c'est parfait !", externalMsgId: "3" });
   await waitFor(() => db.activeOrder(contact().id)?.lyrics_status === "composed");
-  assert.equal(sunoBodies.length, 1);
+  assert.equal(sunoBodies.length, 2); // une version rythmée + une version acoustique
   assert.match(sunoBodies[0].prompt, /\(v2\)/); // la version validée
-  assert.equal(sunoBodies[0].style, "zouglou, festif");
-  const song = db.listMessages(contact().id).find((m) => m.kind === "audio");
-  assert.equal(song.status, "draft"); // envoi automatique désactivé : tu l'écoutes avant
+  assert.match(sunoBodies[1].prompt, /\(v2\)/);
+  assert.match(sunoBodies[0].style, /^zouglou, festif, upbeat/);
+  assert.match(sunoBodies[1].style, /acoustic/);
+  const songs = db.listMessages(contact().id).filter((m) => m.kind === "audio" && m.status === "draft");
+  assert.equal(songs.length, 2); // envoi automatique désactivé : tu les écoutes avant
+  assert.match(songs[0].text, /version rythmée/);
+  assert.match(songs[1].text, /version acoustique/);
   assert.equal(db.getContact(contact().id).needs_human, 1);
   assert.equal(db.activeOrder(contact().id).stage, "creation");
 });
@@ -154,9 +158,9 @@ test("7. TA réaction 👍 sur le message de l'agent : composition puis livraiso
   const before = sunoBodies.length;
   const done = await router.handleOwnerReaction({ channel: "whatsapp", chatJid: "moi", targetId: payNote, emoji: "👍🏽", ownerChat: true });
   assert.ok(done);
-  assert.equal(sunoBodies.length, before + 1);
+  assert.equal(sunoBodies.length, before + 2);
   assert.match(sunoBodies.at(-1).prompt, /Moussa/);
-  await waitFor(() => audios.some((a) => a.to === "c2"));
+  await waitFor(() => audios.filter((a) => a.to === "c2").length === 2); // les 2 versions
   assert.ok(sent.some((t) => /Paiement bien reçu/.test(t)));
   const o = db.activeOrder(c.id) || db.listOrders({ contactId: c.id })[0];
   assert.equal(o.stage, "livree");

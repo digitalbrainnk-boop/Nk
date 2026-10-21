@@ -20,6 +20,7 @@ import {
 } from "./db.js";
 import {
   channelMode,
+  flushOutbox,
   isBusy,
   isOpen,
   messageOwner,
@@ -211,6 +212,26 @@ async function check(s, now) {
     }
   }
 
+  // 8. Messages, vocaux ou chansons qui attendent de partir (WhatsApp coupé…) : on retente
+  //    tels quels (sans rien régénérer) et on te prévient si ça dure plus de 10 minutes.
+  await flushOutbox().catch(() => {});
+  const stuck = db
+    .prepare("SELECT contact_id, COUNT(*) AS n, MIN(created_at) AS first, MAX(error) AS error FROM messages WHERE status = 'pending' GROUP BY contact_id")
+    .all();
+  for (const p of stuck) {
+    if (now - p.first < 10 * MIN || testIds.has(p.contact_id)) continue;
+    await flag({
+      key: `outbox:${p.contact_id}`,
+      contactId: p.contact_id,
+      kind: "livraison",
+      text: `${p.n} message(s) n'ont pas pu partir (${p.error || "canal coupé"}). Ils partiront tels quels dès que la connexion revient.`,
+      notifyAfter: 1,
+    });
+  }
+
+  // 9. Solde Kie bas : une alerte par jour (vérifié toutes les 30 minutes).
+  await lowCreditAlert(s, now);
+
   // Ce qui n'est plus vu est réglé : on te le dit si on t'avait prévenu.
   for (const i of resolveIncidentsExcept(seen)) {
     if (i.notified) await messageOwner(`✅ Réglé — ${who(getContact(i.contact_id))} : ${i.text}`).catch(() => {});
@@ -306,4 +327,19 @@ async function maybeDailyReport(at) {
   if (s.last_report_day === today || d.getHours() < hour) return;
   const ok = await messageOwner(dailyReport(today).text).catch(() => null);
   if (ok) setSettings({ last_report_day: today });
+}
+
+let lastBalanceCheck = 0;
+async function lowCreditAlert(s, now) {
+  const threshold = Number(s.low_credit_alert) || 0;
+  if (!threshold || now - lastBalanceCheck < 30 * MIN) return;
+  lastBalanceCheck = now;
+  const { getBalance } = await import("./credits.js");
+  const balance = await getBalance();
+  const today = dayKey(new Date(now));
+  if (balance === null || balance >= threshold || s.low_credit_alert_day === today) return;
+  const ok = await messageOwner(
+    `🪫 Il ne reste que ${Math.round(balance)} crédits sur ton compte Kie.ai : recharge bientôt pour que l'agent puisse continuer à composer.`,
+  ).catch(() => null);
+  if (ok) setSettings({ low_credit_alert_day: today });
 }

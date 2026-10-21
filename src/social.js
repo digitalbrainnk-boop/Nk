@@ -30,6 +30,8 @@ async function kie(path, body) {
 /** Crée une image carrée avec Kie.ai ; renvoie son adresse publique. */
 export async function createImage(prompt) {
   if (!kieKey()) throw new Error("Clé Kie.ai manquante pour créer l'image.");
+  const { assertBudget } = await import("./credits.js");
+  assertBudget("image");
   const task = await kie("/jobs/createTask", { model: IMAGE_MODEL, input: { prompt, output_format: "png", image_size: "1:1" } });
   if (!task?.taskId) throw new Error("Image : pas de numéro de tâche.");
   const until = Date.now() + 4 * 60_000;

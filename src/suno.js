@@ -49,10 +49,16 @@ export async function startSong({ title, style, lyrics, instrumental = false, ca
   return data.taskId;
 }
 
-/** Attend la fin (1 à 5 minutes en général) et renvoie les morceaux créés. */
+/**
+ * Attend la fin (1 à 5 minutes en général) et renvoie les morceaux créés.
+ * Interrogation économe : rien pendant les 20 premières secondes (une chanson n'est
+ * jamais prête avant), puis toutes les 6 s, en ralentissant jusqu'à 15 s.
+ */
 export async function waitSong(taskId, { onStatus, timeoutMs = 12 * 60_000 } = {}) {
   const until = Date.now() + timeoutMs;
   let last = null;
+  let wait = POLL_MS;
+  await sleep(Math.min(20_000, POLL_MS * 4));
   while (Date.now() < until) {
     const d = await kie(`/generate/record-info?taskId=${encodeURIComponent(taskId)}`);
     const status = String(d?.status || "PENDING").toUpperCase();
@@ -63,7 +69,8 @@ export async function waitSong(taskId, { onStatus, timeoutMs = 12 * 60_000 } = {
     }
     const tracks = (d?.response?.sunoData || []).filter((t) => t.audioUrl);
     if (status === "SUCCESS" && tracks.length) return tracks;
-    await sleep(POLL_MS);
+    await sleep(wait);
+    wait = Math.min(wait * 1.25, POLL_MS * 2.5);
   }
   throw new Error("Suno met trop de temps : réessaie plus tard.");
 }

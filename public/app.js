@@ -130,7 +130,9 @@ function bubble(m, { actions = true } = {}) {
            <button class="small danger" data-act="reject">Rejeter</button></div>`
       : "";
   return `<div class="bubble ${cls}">${media}${label}${esc(m.text)}
-    <div class="meta">${AUTHORS[m.author] || m.author}${m.status === "draft" ? " · brouillon" : ""} · ${time(m.created_at)}</div>${draftUi}</div>`;
+    <div class="meta">${AUTHORS[m.author] || m.author}${m.status === "draft" ? " · brouillon" : ""}${
+      m.status === "pending" ? ` · ⏳ en attente d'envoi (repartira tel quel)${m.error ? ` — ${esc(m.error)}` : ""}` : m.status === "failed" ? " · ❌ pas parti" : ""
+    } · ${time(m.created_at)}</div>${draftUi}</div>`;
 }
 
 async function openContact(id) {

@@ -2,7 +2,7 @@
 // (réponse, vocal, chanson) et on enregistre la différence. 1 crédit ≈ 0,005 $.
 // C'est une estimation : si deux clients sont servis en même temps, le coût
 // peut être partagé entre eux.
-import { getSettings, logCredits } from "./db.js";
+import { creditsSince, getSettings, logCredits } from "./db.js";
 import { kieKey } from "./openai-compat.js";
 
 export const USD_PER_CREDIT = 0.005;
@@ -49,4 +49,25 @@ export async function withCredits({ contactId, kind }, fn) {
     })().catch(() => {});
   }
   return result;
+}
+
+const midnight = () => new Date(new Date().setHours(0, 0, 0, 0)).getTime();
+
+/** Crédits Kie dépensés aujourd'hui (mesurés). */
+export const spentToday = () => creditsSince(midnight());
+
+/**
+ * Plafond de dépenses par jour (Réglages). Les opérations chères (chansons, images,
+ * vocaux) vérifient ce plafond avant de dépenser ; les réponses écrites continuent.
+ */
+export function budgetReached() {
+  const limit = Number(getSettings().daily_credit_limit) || 0;
+  return limit > 0 && spentToday() >= limit;
+}
+export function assertBudget(what) {
+  if (budgetReached()) {
+    const err = new Error(`Plafond de crédits du jour atteint (${getSettings().daily_credit_limit}) : ${what} reporté(e). Augmente le plafond dans Réglages si besoin.`);
+    err.budget = true;
+    throw err;
+  }
 }

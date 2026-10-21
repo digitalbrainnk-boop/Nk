@@ -6,6 +6,8 @@ import {
   addExamples,
   dueLyrics,
   dueReminders,
+  pendingMessages,
+  agentRepliesSince,
   getOrder,
   isPaid,
   findContactByOwnerNote,
@@ -226,6 +228,18 @@ async function runAgent(contactId) {
   }
   const pending = unansweredClientMessages(contactId);
   if (!pending.length) return;
+  // Protection : un client (ou un robot) qui envoie des messages sans arrêt ne vide pas tes crédits.
+  const maxPerHour = Number(getSettings().max_replies_per_hour) || 0;
+  if (contact.channel !== "test" && maxPerHour > 0 && agentRepliesSince(contactId, Date.now() - 3600_000) >= maxPerHour) {
+    markAnswered(contactId);
+    if (!String(contact.needs_human_reason || "").startsWith("🛑")) {
+      const reason = `🛑 Ce client a reçu ${maxPerHour} réponses en une heure : l'agent fait une pause avec lui (protection de tes crédits). Réponds-lui toi-même si besoin.`;
+      updateContact(contactId, { needs_human: 1, needs_human_reason: reason });
+      emit("contact", { contact_id: contactId });
+      notifyOwner(contact, reason, { plain: true }).catch(() => {});
+    }
+    return;
+  }
   // Hors des heures d'ouverture : on répondra à l'ouverture (avec un petit décalage, comme un humain).
   if (contact.channel !== "test" && !isOpen()) {
     schedule(contactId, Math.round(msUntilOpen() / 1000 + rand(1, 15) * 60));
@@ -386,13 +400,20 @@ async function applyReply(contact, reply, mode, { clientSentVoice = false, follo
 /** Crée la voix d'un texte puis l'envoie comme note vocale. */
 async function sendVoiceText(contact, text, existingMessageId) {
   const { textToSpeech } = await import("./tts.js");
-  const audio = await withCredits({ contactId: contact.id, kind: "voice" }, () => textToSpeech(text));
+  const { assertBudget } = await import("./credits.js");
+  assertBudget("vocal");
   const adapter = adapters.get(contact.channel);
+  if (contact.channel !== "test" && !adapter?.sendAudio) throw new Error("Ce canal ne permet pas d'envoyer un vocal.");
+  const audio = await withCredits({ contactId: contact.id, kind: "voice" }, () => textToSpeech(text));
   let externalMsgId = null;
+  let error = null;
   if (contact.channel !== "test") {
-    if (!adapter?.sendAudio) throw new Error("Ce canal ne permet pas d'envoyer un vocal.");
-    externalMsgId = await adapter.sendAudio(contact, { ...audio, voice: true });
-    if (externalMsgId) rememberSent(contact.channel, contact.external_id, "", externalMsgId);
+    try {
+      externalMsgId = await adapter.sendAudio(contact, { ...audio, voice: true });
+      if (externalMsgId) rememberSent(contact.channel, contact.external_id, "", externalMsgId);
+    } catch (e) {
+      error = e.message; // le vocal est gardé et repartira tel quel à la reconnexion
+    }
   }
   const fields = {
     kind: "voice",
@@ -400,7 +421,8 @@ async function sendVoiceText(contact, text, existingMessageId) {
     media_path: audio.path,
     media_type: audio.mime,
     media_url: audio.url,
-    status: "sent",
+    status: error ? "pending" : "sent",
+    error,
     external_id: externalMsgId,
   };
   let msg;
@@ -416,12 +438,21 @@ async function sendVoiceText(contact, text, existingMessageId) {
 
 async function deliver(contact, text, author) {
   const adapter = adapters.get(contact.channel);
-  if (!adapter && contact.channel !== "test") throw new Error(`Canal ${contact.channel} non connecté`);
   rememberSent(contact.channel, contact.external_id, text);
-  const externalMsgId = contact.channel === "test" ? null : await adapter.send(contact, text);
+  let externalMsgId = null;
+  let error = null;
+  if (contact.channel !== "test") {
+    try {
+      if (!adapter) throw new Error(`Canal ${contact.channel} non connecté`);
+      externalMsgId = await adapter.send(contact, text);
+    } catch (e) {
+      error = e.message; // gardé dans la file d'envoi : il repartira tel quel à la reconnexion
+    }
+  }
   if (externalMsgId) rememberSent(contact.channel, contact.external_id, text, externalMsgId);
-  const msg = addMessage(contact.id, { author, text, status: "sent", external_id: externalMsgId });
-  emit("message", { contact_id: contact.id, message: msg });
+  const msg = addMessage(contact.id, { author, text, status: error ? "pending" : "sent", external_id: externalMsgId });
+  if (error) updateMessage(msg.id, { error });
+  emit("message", { contact_id: contact.id, message: getMessage(msg.id) });
   emitHook("message.sent", { contact: who(contact), message: { id: msg.id, author, text } });
   return msg;
 }
@@ -457,22 +488,30 @@ export async function approveDraft(messageId, editedText) {
 
 // ---------- Chansons (Suno) ----------
 
-export async function sendSong(contact, m) {
+export async function sendSong(contact, m, { queue = true } = {}) {
   const adapter = adapters.get(contact.channel);
-  if (!adapter && contact.channel !== "test") throw new Error(`Canal ${contact.channel} non connecté`);
   let externalMsgId = null;
   if (contact.channel !== "test") {
-    if (adapter.sendAudio) {
-      externalMsgId = await adapter.sendAudio(contact, { path: m.media_path, mime: m.media_type, url: m.media_url, title: m.text });
-    } else if (m.media_url) {
-      // Canal sans envoi de fichier (ex. commentaire public) : on envoie le lien.
-      externalMsgId = await adapter.send(contact, `${m.text}\n${m.media_url}`);
-    } else {
-      throw new Error("Ce canal ne permet pas d'envoyer un fichier audio.");
+    try {
+      if (!adapter) throw new Error(`Canal ${contact.channel} non connecté`);
+      if (adapter.sendAudio) {
+        externalMsgId = await adapter.sendAudio(contact, { path: m.media_path, mime: m.media_type, url: m.media_url, title: m.text });
+      } else if (m.media_url) {
+        // Canal sans envoi de fichier (ex. commentaire public) : on envoie le lien.
+        externalMsgId = await adapter.send(contact, `${m.text}\n${m.media_url}`);
+      } else {
+        throw new Error("Ce canal ne permet pas d'envoyer un fichier audio.");
+      }
+    } catch (e) {
+      if (!queue) throw e;
+      // La chanson est gardée telle quelle et repartira à la reconnexion (jamais recomposée).
+      updateMessage(m.id, { status: "pending", error: e.message });
+      emit("message", { contact_id: contact.id, message: getMessage(m.id) });
+      return false;
     }
   }
   if (externalMsgId) rememberSent(contact.channel, contact.external_id, "", externalMsgId);
-  updateMessage(m.id, { status: "sent", external_id: externalMsgId, created_at: Date.now() });
+  updateMessage(m.id, { status: "sent", external_id: externalMsgId, error: null, created_at: Date.now() });
   emit("message", { contact_id: contact.id, message: getMessage(m.id) });
   // Chanson envoyée après paiement : la commande passe en « livrée ».
   const order = activeOrder(contact.id);
@@ -480,6 +519,53 @@ export async function sendSong(contact, m) {
     saveOrder({ id: order.id, stage: "livree" });
     emit("order", { contact_id: contact.id });
   }
+  return true;
+}
+
+/**
+ * File d'envoi : renvoie, dans l'ordre et TELS QUELS, les messages, vocaux et
+ * chansons qui n'ont pas pu partir (WhatsApp coupé…). Rien n'est régénéré.
+ * Appelée à la reconnexion de WhatsApp et chaque minute.
+ */
+let flushing = false;
+export async function flushOutbox() {
+  if (flushing) return 0;
+  flushing = true;
+  let n = 0;
+  const down = new Set(); // canal encore coupé : on garde l'ordre des messages
+  try {
+    for (const m of pendingMessages()) {
+      const contact = getContact(m.contact_id);
+      if (!contact || down.has(contact.channel)) continue;
+      if (Date.now() - m.created_at > 48 * 3600_000) {
+        updateMessage(m.id, { status: "failed" }); // trop vieux : la surveillance te l'a signalé
+        emit("message", { contact_id: contact.id, message: getMessage(m.id) });
+        continue;
+      }
+      try {
+        const adapter = adapters.get(contact.channel);
+        if (!adapter) throw new Error(`Canal ${contact.channel} non connecté`);
+        if (m.kind === "audio") {
+          await sendSong(contact, m, { queue: false });
+        } else {
+          const id =
+            m.kind === "voice"
+              ? await adapter.sendAudio(contact, { path: m.media_path, mime: m.media_type, url: m.media_url, voice: true })
+              : await adapter.send(contact, m.text);
+          if (id) rememberSent(contact.channel, contact.external_id, m.kind === "voice" ? "" : m.text, id);
+          updateMessage(m.id, { status: "sent", external_id: id || null, error: null });
+          emit("message", { contact_id: contact.id, message: getMessage(m.id) });
+        }
+        n++;
+      } catch (e) {
+        updateMessage(m.id, { tries: (m.tries || 0) + 1, error: e.message });
+        down.add(contact.channel);
+      }
+    }
+  } finally {
+    flushing = false;
+  }
+  return n;
 }
 
 /**
@@ -487,6 +573,8 @@ export async function sendSong(contact, m) {
  * audio que le propriétaire écoute puis envoie (ou rejette).
  */
 export async function createSong(contactId, brief, { orderId, autoSend = false } = {}) {
+  const { assertBudget } = await import("./credits.js");
+  assertBudget("chanson");
   const { startSong, waitSong } = await import("./suno.js");
   const { downloadToMedia } = await import("./media.js");
   const title = brief.title || "Chanson";
@@ -603,6 +691,8 @@ export async function proposeLyrics(contactId, { revise = false, notes = "", mod
 export async function startComposition(contactId) {
   const order = activeOrder(contactId);
   if (!order?.lyrics) throw new Error("Aucun texte validé pour ce client.");
+  const { assertBudget } = await import("./credits.js");
+  assertBudget("composition");
   const s = getSettings();
   saveOrder({
     id: order.id,
@@ -611,18 +701,127 @@ export async function startComposition(contactId) {
     stage: ["nouveau", "devis", "acompte"].includes(order.stage) ? "creation" : order.stage,
   });
   emit("order", { contact_id: contactId });
+  const brief = { title: order.song_title || order.title || "Chanson", style: order.song_style, lyrics: order.lyrics };
   try {
-    return await createSong(
-      contactId,
-      { title: order.song_title || order.title || "Chanson", style: order.song_style, lyrics: order.lyrics },
-      { orderId: order.id, autoSend: !!s.song_auto_send },
-    );
+    if (!s.song_two_versions) return await createSong(contactId, brief, { orderId: order.id, autoSend: !!s.song_auto_send });
+    return await composeTwoVersions(contactId, brief, { orderId: order.id, autoSend: !!s.song_auto_send });
   } catch (e) {
     // Suno n'a pas pu démarrer (crédit, clé…) : on revient à « validé » pour pouvoir relancer.
     saveOrder({ id: order.id, lyrics_status: "validated" });
     emit("order", { contact_id: contactId });
     throw e;
   }
+}
+
+// Styles des deux versions, à partir du style choisi pour la chanson.
+const voiceOf = (style) => (String(style).match(/\b(fe)?male (vocals?|voice)\b/i) || [""])[0];
+export const rhythmicStyle = (style) => [style, "upbeat, rhythmic, danceable groove"].filter(Boolean).join(", ");
+export const acousticStyle = (style) =>
+  ["acoustic unplugged version, acoustic guitar, soft percussion, warm and intimate", voiceOf(style)].filter(Boolean).join(", ");
+
+/**
+ * La chanson en 2 versions : rythmée et acoustique. Suno renvoie 2 essais par
+ * version : on garde le premier de chaque, et le client reçoit les deux ensemble.
+ * Une version ratée n'est jamais recomposée automatiquement (tu es prévenu).
+ */
+async function composeTwoVersions(contactId, brief, { orderId, autoSend }) {
+  const { startSong, waitSong } = await import("./suno.js");
+  const { downloadToMedia } = await import("./media.js");
+  const { getBalance } = await import("./credits.js");
+  const versions = [
+    { label: "version rythmée", style: rhythmicStyle(brief.style) },
+    { label: "version acoustique", style: acousticStyle(brief.style) },
+  ];
+  const balanceBefore = await getBalance();
+  const started = [];
+  for (const v of versions) {
+    try {
+      const taskId = await startSong({ ...brief, style: v.style });
+      const placeholder = addMessage(contactId, {
+        author: "agent",
+        kind: "audio",
+        text: `🎵 « ${brief.title} » (${v.label}) : création en cours avec Suno… (1 à 5 minutes)`,
+        status: "generating",
+      });
+      emit("message", { contact_id: contactId, message: placeholder });
+      started.push({ ...v, taskId, placeholder });
+    } catch (e) {
+      if (!started.length) throw e; // rien n'a démarré : l'appelant remet la commande en « validé »
+      v.error = e.message;
+    }
+  }
+  (async () => {
+    const results = await Promise.allSettled(
+      started.map(async (v) => {
+        const tracks = await waitSong(v.taskId);
+        const t = tracks[0];
+        const media = await downloadToMedia(t.audioUrl);
+        const mime = media.mime.startsWith("audio/") ? media.mime : "audio/mpeg";
+        updateMessage(v.placeholder.id, {
+          text: `🎵 ${brief.title} — ${v.label}`,
+          media_path: media.path,
+          media_type: mime,
+          media_url: t.audioUrl,
+          status: "draft",
+        });
+        emit("message", { contact_id: contactId, message: getMessage(v.placeholder.id) });
+        return getMessage(v.placeholder.id);
+      }),
+    );
+    const ready = [];
+    const failed = versions.filter((v) => v.error).map((v) => `${v.label} : ${v.error}`);
+    results.forEach((r, i) => {
+      const v = started[i];
+      if (r.status === "fulfilled") ready.push(r.value);
+      else {
+        failed.push(`${v.label} : ${r.reason?.message || r.reason}`);
+        updateMessage(v.placeholder.id, { text: `❌ ${brief.title} (${v.label}) : ${r.reason?.message || r.reason}`, status: "rejected" });
+        emit("message", { contact_id: contactId, message: getMessage(v.placeholder.id) });
+      }
+    });
+    const after = await getBalance();
+    if (balanceBefore !== null && after !== null && balanceBefore > after) {
+      logCredits({ contactId, kind: "song", credits: Math.round((balanceBefore - after) * 100) / 100, balanceAfter: after });
+    }
+    if (!ready.length) {
+      saveOrder({ id: orderId, lyrics_status: "validated" });
+      updateContact(contactId, { needs_human: 1, needs_human_reason: `La composition a échoué : ${failed.join(" ; ")}` });
+      emit("order", { contact_id: contactId });
+      emit("contact", { contact_id: contactId });
+      return;
+    }
+    saveOrder({ id: orderId, lyrics_status: "composed" });
+    emit("order", { contact_id: contactId });
+    emitHook("song.ready", {
+      contact: who(getContact(contactId)),
+      title: brief.title,
+      tracks: ready.map((m) => ({ title: m.text, url: m.media_url })),
+    });
+    if (failed.length) {
+      const reason = `🎵 Une version n'a pas pu être créée (${failed.join(" ; ")}). ${ready.length ? "Le client reçoit l'autre." : ""}`;
+      updateContact(contactId, { needs_human: 1, needs_human_reason: reason });
+      notifyOwner(getContact(contactId), reason, { plain: true }).catch(() => {});
+    }
+    if (autoSend) {
+      const contact = getContact(contactId);
+      await deliver(
+        contact,
+        ready.length > 1
+          ? "🎶 Voici ta chanson en 2 versions : une version rythmée et une version acoustique. J'espère qu'elle te plaira !"
+          : "🎶 Voici ta chanson, j'espère qu'elle te plaira !",
+        "agent",
+      ).catch(() => {});
+      for (const m of ready) await sendSong(getContact(contactId), m); // en cas de coupure : file d'envoi
+    } else {
+      updateContact(contactId, {
+        needs_human: 1,
+        needs_human_reason: "🎵 La chanson est prête (2 versions) : écoute-les et clique « Envoyer au client ».",
+      });
+      notifyOwner(getContact(contactId), "chanson prête à écouter (2 versions)").catch(() => {});
+    }
+    emit("contact", { contact_id: contactId });
+  })().catch((e) => console.error("Composition :", e.message));
+  return { taskIds: started.map((v) => v.taskId), message_ids: started.map((v) => v.placeholder.id) };
 }
 
 /**
@@ -754,7 +953,30 @@ async function handleSongStep(contactId, reply, mode) {
   if (activeOrder(contactId)?.special) return; // commande spéciale : tu la gères toi-même
   const contact = getContact(contactId);
   if (reply.song_step === "propose_lyrics" || reply.song_step === "revise_lyrics") {
+    const current = activeOrder(contactId);
+    // UN seul texte : on n'en écrit pas un autre tant que le client n'a pas demandé de correction.
+    if (reply.song_step === "propose_lyrics" && current?.lyrics && ["proposed", "validated", "payment_claimed", "composing", "composed"].includes(current.lyrics_status)) return;
+    if (current?.lyrics_status === "writing") {
+      // Déjà en cours d'écriture : on ajoute seulement les corrections demandées entre-temps.
+      if (reply.revision_notes) {
+        let opts = {};
+        try {
+          opts = JSON.parse(current.lyrics_notes || "{}");
+        } catch {}
+        const notes = [opts.notes, reply.revision_notes].filter(Boolean).join(" ; ");
+        saveOrder({ id: current.id, lyrics_notes: JSON.stringify({ ...opts, notes, revise: opts.revise || !!current.lyrics }) });
+      }
+      return;
+    }
     const revise = reply.song_step === "revise_lyrics";
+    if (revise && (current?.lyrics_version || 0) >= (Number(s.max_lyrics_versions) || 5)) {
+      // Beaucoup de corrections : c'est toi qui prends la main (et ça évite de dépenser sans fin).
+      const reason = `✍️ Le client demande encore des corrections après ${current.lyrics_version} versions du texte : ${reply.revision_notes || "voir la conversation"}`;
+      updateContact(contactId, { needs_human: 1, needs_human_reason: reason });
+      emit("contact", { contact_id: contactId });
+      await notifyOwner(contact, reason, { plain: true }).catch(() => {});
+      return;
+    }
     if (contact.channel === "test" || !(Number(s.lyrics_delay_max) > 0)) {
       await proposeLyrics(contactId, { revise, notes: reply.revision_notes, mode });
     } else {
