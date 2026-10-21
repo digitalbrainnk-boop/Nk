@@ -835,7 +835,52 @@ $("#save-business").addEventListener("click", () =>
 );
 
 // ---------- Canaux ----------
+async function loadSocial() {
+  const posts = await api("/api/social/posts").catch(() => []);
+  $("#social-posts").innerHTML = posts.length
+    ? posts
+        .map(
+          (p) => `<div class="post"><div class="muted">${new Date(p.created_at).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" })} —
+            ${p.status === "published" ? `✅ publiée${p.ig_id ? " (Facebook + Instagram)" : ""}` : `❌ échec : ${esc(p.error || "")}`}</div>
+            ${p.image_url ? `<img src="${esc(p.image_url)}" alt="" />` : ""}<p>${esc(p.text).replace(/\n/g, "<br>")}</p></div>`,
+        )
+        .join("")
+    : "Aucune publication pour l'instant.";
+}
+const showDraft = (p, note) =>
+  ($("#social-draft").innerHTML = `<div class="post">${note ? `<div class="muted">${note}</div>` : ""}${p.image_url ? `<img src="${esc(p.image_url)}" alt="" />` : ""}<p>${esc(p.text).replace(/\n/g, "<br>")}</p></div>`);
+$("#social-preview").addEventListener("click", async () => {
+  const btn = $("#social-preview");
+  btn.disabled = true;
+  btn.textContent = "L'IA écrit…";
+  try {
+    showDraft(await api("/api/social/preview", { method: "POST" }), "Exemple (non publié)");
+  } catch (err) {
+    toast(err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "👀 Voir un exemple (sans publier)";
+  }
+});
+$("#social-publish").addEventListener("click", async () => {
+  if (!confirm("Écrire et publier une publication sur ta page maintenant ?")) return;
+  const btn = $("#social-publish");
+  btn.disabled = true;
+  btn.textContent = "Publication…";
+  try {
+    showDraft(await api("/api/social/publish", { method: "POST" }), "✅ Publiée");
+    toast("Publié sur ta page ✓");
+  } catch (err) {
+    toast(err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "📣 Publier maintenant";
+    loadSocial();
+  }
+});
+
 async function loadChannels() {
+  loadSocial();
   const ch = await api("/api/channels");
   const wa = ch.whatsapp;
   $("#wa-status").innerHTML = `<span class="status ${wa.status === "connecté" ? "ok" : ""}">${esc(wa.status)}</span> ${wa.me ? `<span class="muted">+${esc(wa.me)}</span>` : ""}

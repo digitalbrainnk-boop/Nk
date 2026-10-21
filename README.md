@@ -80,6 +80,10 @@ Si l'agent ne comprend pas un message, il te laisse aussi un message sur ton Wha
 - **Chaque soir** (21 h par défaut), il t'envoie le **bilan du jour** : nombre et liste des clients à qui une chanson a été composée et envoyée, ce qui est en cours (texte, paiement, composition), les demandes à faire par toi et les problèmes du jour. Aussi visible dans l'onglet **Ventes** (avec la liste des problèmes).
 - **Chanson + vidéo lyrics / montage / clip** : l'agent ne le fait pas. Il dit au client que tu t'en occupes personnellement, te prévient et ne lance rien automatiquement pour cette commande (champ « Demande spéciale » du panneau Commande).
 
+### Publications automatiques sur ta page Facebook (et Instagram)
+
+Onglet **Canaux → 📣 Publications automatiques** (désactivé par défaut) : coche « Activer », choisis tous les combien de jours (3 par défaut) et l'heure. L'agent écrit une publication dans ton style (occasions du moment, infos de tes fiches, sans inventer de prix ni de témoignage), crée une image avec ta clé Kie.ai, la publie **sans te demander**, puis t'envoie le texte sur WhatsApp. Boutons « Voir un exemple (sans publier) » et « Publier maintenant ». Le jeton de la Page doit avoir la permission `pages_manage_posts` (et `instagram_content_publish` pour Instagram). En cas d'échec, tu es prévenu et il réessaie 3 heures plus tard.
+
 ### Numéros ignorés, vocaux et crédits
 
 - **Ne jamais répondre** : Réglages → liste de numéros (avec ou sans indicatif, ou @pseudo Telegram), ou bouton « 🚫 Ne jamais répondre » dans une conversation. Les messages sont gardés, l'agent ne répond pas.

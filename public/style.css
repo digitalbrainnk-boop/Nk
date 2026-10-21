@@ -178,3 +178,6 @@ details.advanced summary { cursor: pointer; font-weight: 600; }
 .key-banner .pair { gap: 8px; }
 .key-banner button { white-space: nowrap; }
 .report { white-space: pre-wrap; font-family: inherit; font-size: 14px; line-height: 1.5; background: var(--bg); padding: 12px; border-radius: 8px; margin: 0; }
+.post { border: 1px solid var(--line, #ddd); border-radius: 8px; padding: 10px; margin: 8px 0; }
+.post img { max-width: 220px; border-radius: 6px; display: block; margin: 6px 0; }
+.post p { margin: 6px 0 0; white-space: normal; }

@@ -532,3 +532,57 @@ ${notes || "(voir la conversation)"}`
   if (!response.parsed_output) throw new Error("L'IA n'a pas renvoyé de paroles lisibles, réessaie.");
   return response.parsed_output;
 }
+
+const SocialPost = z.object({
+  text: z.string().describe("Texte de la publication, prêt à publier tel quel."),
+  image_prompt: z.string().describe("Description en anglais d'une image d'illustration (sans texte écrit dans l'image)."),
+});
+
+/** Écrit une publication pour la page Facebook / Instagram, dans le style du propriétaire. */
+export async function writeSocialPost({ recent = [], guidelines = "", date = new Date() } = {}) {
+  const s = getSettings();
+  const owner = s.owner_name || "le propriétaire";
+  const knowledge = listKnowledge()
+    .map((k) => `### ${k.title}\n${k.content}`)
+    .join("\n\n");
+  const instructions = `Tu gères la page Facebook de ${owner}. Écris UNE nouvelle publication pour donner envie de commander une chanson personnalisée.
+Date du jour : ${date.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" })} (pense aux fêtes et occasions proches : anniversaires, mariages, fête des mères, Saint-Valentin, Noël, Tabaski, Ramadan…).
+
+Activité :
+${s.business_description || "(non décrite)"}
+
+Façon d'écrire de ${owner} :
+${s.style_profile || "chaleureuse, simple, naturelle"}
+
+Connaissances (prix, délais, contacts…) :
+${knowledge || "(aucune)"}
+${guidelines ? `\nConsignes de ${owner} pour ses publications :\n${guidelines}\n` : ""}
+Publications récentes (ne les répète pas, change d'angle : émotion, occasion, coulisses, offre, question au public…) :
+${recent.length ? recent.map((t, i) => `${i + 1}. ${t.slice(0, 400)}`).join("\n") : "(aucune)"}
+
+Règles :
+- 40 à 120 mots, ton humain et chaleureux, 2 à 5 emojis, 2 à 4 hashtags à la fin, une invitation claire à écrire en message privé pour commander.
+- N'invente jamais de prix, de promotion, de témoignage de client ni de nom de client : utilise seulement ce qui est dans les connaissances.
+- image_prompt : une image chaleureuse liée au sujet (musique, fête, émotion), en anglais, sans texte ni logo dans l'image.`;
+
+  if (useCompat()) {
+    const r = await chatJSON({
+      system: "Tu écris des publications pour les réseaux sociaux d'un artiste.",
+      turns: [{ role: "user", content: [{ type: "text", text: instructions }] }],
+      schema: SocialPost,
+      shape: `{"text": "texte de la publication", "image_prompt": "warm photo of ..."}`,
+    });
+    if (!r.ok || !r.data.text?.trim()) throw new Error("L'IA n'a pas renvoyé de publication lisible, réessaie.");
+    return r.data;
+  }
+  const response = await getClient().beta.messages.parse({
+    model: s.model || "claude-opus-5-5",
+    max_tokens: 4000,
+    betas: ["server-side-fallback-2026-07-01"],
+    fallbacks: "default",
+    output_config: { effort: "low", format: betaZodOutputFormat(SocialPost) },
+    messages: [{ role: "user", content: instructions }],
+  });
+  if (!response.parsed_output?.text?.trim()) throw new Error("L'IA n'a pas renvoyé de publication lisible, réessaie.");
+  return response.parsed_output;
+}

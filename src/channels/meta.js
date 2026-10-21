@@ -11,7 +11,7 @@ const GRAPH = `https://graph.facebook.com/${process.env.GRAPH_VERSION || "v23.0"
 let pageId = null;
 let stats = { last_event: null, error: null };
 
-function cfg() {
+export function cfg() {
   const s = getSettings();
   return {
     pageToken: s.facebook_page_token || process.env.FACEBOOK_PAGE_TOKEN,
@@ -23,7 +23,7 @@ function cfg() {
   };
 }
 
-async function graph(pathname, { method = "GET", token, body } = {}) {
+export async function graph(pathname, { method = "GET", token, body } = {}) {
   const res = await fetch(`${GRAPH}/${pathname}`, {
     method,
     headers: { Authorization: `Bearer ${token}`, ...(body ? { "Content-Type": "application/json" } : {}) },
@@ -34,7 +34,7 @@ async function graph(pathname, { method = "GET", token, body } = {}) {
   return data;
 }
 
-async function getPageId() {
+export async function getPageId() {
   if (pageId) return pageId;
   const { pageToken } = cfg();
   if (!pageToken) return null;

@@ -208,6 +208,25 @@
         </div>
 
         <div class="card">
+          <h2>📣 Publications automatiques</h2>
+          <p class="muted">L'agent écrit une publication dans ton style (occasions du moment, tes prix et tes infos des fiches), l'illustre avec une image créée par l'IA (ta clé Kie.ai), la publie sur ta page <b>sans te demander</b>, puis t'envoie le texte sur WhatsApp. Le jeton de la Page doit avoir les permissions <code>pages_manage_posts</code> (et <code>instagram_content_publish</code> pour Instagram).</p>
+          <label class="check"><input type="checkbox" id="social_enabled" /> <b>Activer la publication automatique sur les réseaux sociaux</b></label>
+          <div class="row"><label>Publier tous les … jours</label><input type="number" id="social_every_days" min="1" max="30" /></div>
+          <div class="row"><label>À partir de quelle heure (0 à 23)</label><input type="number" id="social_hour" min="0" max="23" /></div>
+          <label class="check"><input type="checkbox" id="social_images" /> Ajouter une image créée par l'IA</label>
+          <label class="check"><input type="checkbox" id="social_instagram" /> Publier aussi sur Instagram (compte professionnel relié à la page)</label>
+          <div class="row"><label>Tes consignes (sujets, ton, numéro à mettre, ce qu'il ne faut pas dire…)</label><textarea id="social_guidelines" rows="3" placeholder="Ex : toujours finir par « Écris-moi sur WhatsApp au 226… ». Parler surtout des anniversaires et mariages."></textarea></div>
+          <div class="btns">
+            <button class="primary save-settings" data-keys="social_enabled,social_every_days,social_hour,social_images,social_instagram,social_guidelines">Enregistrer</button>
+            <button class="small" id="social-preview">👀 Voir un exemple (sans publier)</button>
+            <button class="small" id="social-publish">📣 Publier maintenant</button>
+          </div>
+          <div id="social-draft"></div>
+          <h3>Dernières publications</h3>
+          <div id="social-posts" class="muted">—</div>
+        </div>
+
+        <div class="card">
           <h2>WhatsApp Business (API officielle)</h2>
           <p class="muted">Alternative officielle (numéro dédié via Meta). Même webhook que Facebook.</p>
           <div class="row"><label>Jeton d'accès</label><input id="wa_cloud_token" /></div>

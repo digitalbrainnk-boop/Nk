@@ -137,6 +137,20 @@ CREATE TABLE IF NOT EXISTS incidents (
 );
 `);
 
+// Publications automatiques sur la page Facebook / Instagram.
+db.exec(`
+CREATE TABLE IF NOT EXISTS social_posts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  text TEXT NOT NULL,
+  image_url TEXT,
+  fb_id TEXT,
+  ig_id TEXT,
+  status TEXT NOT NULL, -- published | failed | preview
+  error TEXT,
+  created_at INTEGER NOT NULL
+);
+`);
+
 const now = () => Date.now();
 
 // ---------- Réglages ----------
@@ -169,6 +183,12 @@ export const DEFAULT_SETTINGS = {
   lyrics_delay_max: 10,
   owner_whatsapp: "", // numéro où l'agent te laisse ses messages (vide = ton propre WhatsApp)
   payment_confirm_emoji: "✅", // ta réaction pour confirmer un paiement
+  social_enabled: false, // publier tout seul sur ta page Facebook (désactivé tant que tu ne l'actives pas)
+  social_every_days: 3,
+  social_hour: 10, // publier à partir de cette heure (heure du téléphone)
+  social_instagram: false, // publier aussi sur Instagram (nécessite une image)
+  social_images: true, // illustrer avec une image créée par l'IA (Kie.ai)
+  social_guidelines: "", // tes consignes pour les publications
   watchdog_enabled: true, // vérification automatique toutes les minutes (blocages, erreurs)
   daily_report_enabled: true, // bilan de la journée sur ton WhatsApp
   daily_report_hour: 21, // heure du bilan (heure du téléphone)
@@ -683,4 +703,18 @@ export function listIncidents({ since = 0 } = {}) {
        LEFT JOIN contacts c ON c.id = i.contact_id WHERE i.updated_at >= ? ORDER BY i.updated_at DESC LIMIT 200`,
     )
     .all(since);
+}
+
+// ---------- Publications ----------
+export function addSocialPost(p) {
+  const r = db
+    .prepare("INSERT INTO social_posts(text, image_url, fb_id, ig_id, status, error, created_at) VALUES(?,?,?,?,?,?,?)")
+    .run(p.text, p.image_url || null, p.fb_id || null, p.ig_id || null, p.status, p.error || null, now());
+  return db.prepare("SELECT * FROM social_posts WHERE id = ?").get(Number(r.lastInsertRowid));
+}
+export function listSocialPosts(limit = 30) {
+  return db.prepare("SELECT * FROM social_posts ORDER BY id DESC LIMIT ?").all(limit);
+}
+export function lastPublishedPost() {
+  return db.prepare("SELECT * FROM social_posts WHERE status = 'published' ORDER BY id DESC LIMIT 1").get();
 }

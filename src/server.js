@@ -33,6 +33,7 @@ import {
   updateMessage,
   upsertContact,
   listIncidents,
+  listSocialPosts,
   DATA_DIR,
 } from "./db.js";
 import { bus } from "./events.js";
@@ -52,6 +53,7 @@ import {
 } from "./router.js";
 import { TTS_VOICES } from "./tts.js";
 import { dailyReport, runWatchdog } from "./watchdog.js";
+import { draftPost, publishNow, runSocial } from "./social.js";
 import { HOOK_EVENTS, deliveryLog, emitHook, runAction, testHook } from "./integrations.js";
 import { buildStyleProfile, friendlyError, songBrief } from "./agent.js";
 import { chatText, probeKie } from "./openai-compat.js";
@@ -222,6 +224,22 @@ app.post("/api/report/send", wrap(async (req, res) => {
 }));
 app.get("/api/incidents", (req, res) => res.json(listIncidents({ since: Date.now() - 7 * 24 * 3600_000 })));
 app.post("/api/watchdog/run", wrap(async (req, res) => res.json({ found: (await runWatchdog()).length })));
+// Publications automatiques (page Facebook / Instagram).
+app.get("/api/social/posts", (req, res) => res.json(listSocialPosts(20)));
+app.post("/api/social/preview", wrap(async (req, res) => {
+  try {
+    res.json(await draftPost());
+  } catch (e) {
+    res.status(400).json({ error: friendlyError(e) });
+  }
+}));
+app.post("/api/social/publish", wrap(async (req, res) => {
+  try {
+    res.json(await publishNow());
+  } catch (e) {
+    res.status(400).json({ error: friendlyError(e) });
+  }
+}));
 app.post("/api/followups/run", wrap(async (req, res) => res.json({ sent: await runFollowups() })));
 // ---------- Applications connectées ----------
 app.get("/api/integrations", (req, res) => {
@@ -519,4 +537,6 @@ app.listen(port, () => {
   setInterval(() => runLyricsQueue().catch((e) => console.error("Textes :", e.message)), 30_000);
   // Surveillance : chaque minute, on relance ce qui est bloqué et on te prévient ; bilan du soir.
   setInterval(() => runWatchdog().catch((e) => console.error("Surveillance :", e.message)), 60_000);
+  // Publication automatique sur ta page (si tu l'as activée) : vérifiée chaque minute.
+  setInterval(() => runSocial().catch((e) => console.error("Publication :", e.message)), 60_000);
 });
