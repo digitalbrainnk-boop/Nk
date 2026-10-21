@@ -6,6 +6,7 @@
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../core/constantes.dart';
 import '../modeles/appareil.dart';
 import '../modeles/commande.dart';
 import '../modeles/etat_appareil.dart';
@@ -216,6 +217,34 @@ class ServiceFirestore {
         .limit(50)
         .snapshots()
         .map((snap) => snap.docs.map(Commande.depuisDoc).toList());
+  }
+
+  /// Flux des commandes NON ENCORE traitées (status == pending). L'agent
+  /// l'écoute pour réagir en temps réel (faire sonner, verrouiller...).
+  Stream<List<Commande>> fluxCommandesEnAttente(String uid, String deviceId) {
+    return _refAppareils(uid)
+        .doc(deviceId)
+        .collection('commands')
+        .where('status', isEqualTo: StatutsCommande.enAttente)
+        .snapshots()
+        .map((snap) => snap.docs.map(Commande.depuisDoc).toList());
+  }
+
+  /// Met à jour le statut d'une commande (ex. passer à "done" après exécution).
+  Future<void> majStatutCommande({
+    required String uid,
+    required String deviceId,
+    required String commandId,
+    required String statut,
+  }) async {
+    await _refAppareils(uid)
+        .doc(deviceId)
+        .collection('commands')
+        .doc(commandId)
+        .set(
+      {'status': statut, 'resolvedAt': FieldValue.serverTimestamp()},
+      SetOptions(merge: true),
+    );
   }
 
   // ----------------------------------------------------------------

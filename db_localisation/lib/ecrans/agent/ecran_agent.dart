@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../modeles/position.dart';
+import '../../services/service_commandes.dart';
 import '../../services/service_consentement.dart';
 import '../../services/service_installation.dart';
 import '../../services/service_suivi.dart';
@@ -26,6 +27,7 @@ class EcranAgent extends StatefulWidget {
 class _EcranAgentState extends State<EcranAgent> {
   final _consentement = ServiceConsentement();
   final _suivi = ServiceSuivi.instance;
+  final _commandes = ServiceCommandes.instance;
   String? _deviceId;
   bool _chargement = true;
 
@@ -42,6 +44,11 @@ class _EcranAgentState extends State<EcranAgent> {
       _deviceId = id;
       _chargement = false;
     });
+    // Écoute des commandes à distance dès que cet appareil est connu
+    // (faire sonner, verrouiller...), même sans avoir démarré le suivi.
+    if (id != null) {
+      _commandes.demarrerEcoute(uid: widget.uid, deviceId: id);
+    }
   }
 
   Future<void> _basculerSuivi() async {
@@ -92,11 +99,36 @@ class _EcranAgentState extends State<EcranAgent> {
 
     return Scaffold(
       appBar: AppBar(title: const Text('Agent — appareil protégé')),
-      body: _chargement
+      body: Stack(
+        children: [
+          _chargement
           ? const Center(child: CircularProgressIndicator())
           : ListView(
               padding: const EdgeInsets.all(16),
               children: [
+                // Bannière d'alarme (quand on fait sonner le téléphone).
+                ValueListenableBuilder<bool>(
+                  valueListenable: _commandes.alarmeActive,
+                  builder: (context, actif, _) => actif
+                      ? Card(
+                          color: Colors.red.shade100,
+                          child: Padding(
+                            padding: const EdgeInsets.all(12),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.volume_up, color: Colors.red),
+                                const SizedBox(width: 12),
+                                const Expanded(child: Text('Alarme en cours !')),
+                                FilledButton(
+                                  onPressed: _commandes.arreterAlarme,
+                                  child: const Text('Arrêter'),
+                                ),
+                              ],
+                            ),
+                          ),
+                        )
+                      : const SizedBox.shrink(),
+                ),
                 // Bandeau "visible et consenti".
                 Card(
                   color: Colors.blue.shade50,
@@ -152,14 +184,15 @@ class _EcranAgentState extends State<EcranAgent> {
                 const Text('Prochaines fonctions :',
                     style: TextStyle(fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),
+                _ligne(Icons.volume_up, 'Faire sonner à distance', 'Actif ✓'),
                 if (!estIos) ...[
                   _ligne(Icons.restart_alt, 'Démarrage au boot', 'Étape 2bis'),
                   _ligne(Icons.battery_alert, 'Exclusion batterie', 'Étape 2bis'),
                   _ligne(Icons.sms, 'Mode SMS (code secret)', 'Étape 5'),
                   _ligne(Icons.sim_card, 'Alerte changement de SIM', 'Étape 5'),
-                  _ligne(Icons.lock, 'Device Admin (verrouillage)', 'Étape 4'),
+                  _ligne(Icons.lock, 'Verrouillage OS (Device Admin)',
+                      'Étape 4bis'),
                 ],
-                _ligne(Icons.volume_up, 'Alarme à distance', 'Étape 4'),
 
                 const SizedBox(height: 24),
                 if (kDebugMode)
@@ -167,6 +200,43 @@ class _EcranAgentState extends State<EcranAgent> {
                       style: const TextStyle(fontSize: 11, color: Colors.grey)),
               ],
             ),
+          // Overlay de verrouillage plein écran (message « téléphone perdu »).
+          ValueListenableBuilder<String?>(
+            valueListenable: _commandes.messageVerrou,
+            builder: (context, message, _) => message == null
+                ? const SizedBox.shrink()
+                : _overlayVerrou(message),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Overlay plein écran affiché quand la console envoie « Verrouiller ».
+  /// MVP : verrou applicatif (message visible). Le verrouillage au niveau du
+  /// système (impossible à contourner) viendra avec Device Admin (étape 4bis).
+  Widget _overlayVerrou(String message) {
+    return Container(
+      color: Colors.black.withValues(alpha: 0.92),
+      padding: const EdgeInsets.all(32),
+      alignment: Alignment.center,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.lock, color: Colors.white, size: 72),
+          const SizedBox(height: 24),
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: Colors.white, fontSize: 20),
+          ),
+          const SizedBox(height: 32),
+          TextButton(
+            onPressed: _commandes.fermerVerrou,
+            child: const Text('Fermer', style: TextStyle(color: Colors.white70)),
+          ),
+        ],
+      ),
     );
   }
 

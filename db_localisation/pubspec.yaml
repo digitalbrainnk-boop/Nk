@@ -45,8 +45,12 @@ dependencies:
   battery_plus: ^7.1.2   # Niveau de batterie / en charge pour l'état.
   geolocator_android: ^5.2.1
   geolocator_apple: ^2.4.2
-  flutter_map: ^8.3.2
+  # --- Carte console (étape 3) ---
+  flutter_map: ^8.3.2    # Carte OpenStreetMap, sans clé API.
   latlong2: ^0.10.1
+
+  # --- Commandes à distance (étape 4) ---
+  flutter_ringtone_player: ^4.0.0+4   # Faire sonner (alarme système, fort).
 
 dev_dependencies:
   flutter_lints: ^4.0.0

@@ -117,8 +117,10 @@ Voir `docs/02-cle-google-maps.md` et `docs/03-builder-et-tester.md`.
    en ligne). Reste pour l'étape 2bis : relance au boot, exclusion batterie.
 3. ✅ **Console** : carte (OpenStreetMap, sans clé) + dernière position +
    cercle de précision « ±X m » + historique + état.
-4. ⏳ **Commandes à distance** : localiser / alarme / verrouiller (FCM + Cloud
-   Functions + Device Admin).
+4. 🔄 **Commandes à distance** (en cours) : **faire sonner** (alarme système,
+   même en silencieux) + **verrouiller** (message plein écran) via écoute
+   Firestore temps réel. Reste étape 4bis : verrouillage OS (Device Admin) et
+   réveil de l'app fermée (FCM).
 5. ⏳ **Mode SMS** sans data (code secret) + **alerte changement de SIM**.
 6. ⏳ **Portage** console iOS/desktop ; agent iOS limité.
 
@@ -161,3 +163,14 @@ Voir `docs/02-cle-google-maps.md` et `docs/03-builder-et-tester.md`.
 - Panneau d'état temps réel : dernière connexion, batterie (+ charge),
   en ligne / hors ligne.
 - La console liste les appareils ; un appui ouvre la carte de l'appareil.
+
+### Étape 4 (en cours) — ce qui est livré
+- Commandes à distance **sans serveur** : l'agent écoute Firestore en temps réel
+  (`lib/services/service_commandes.dart`) et exécute les commandes « pending ».
+- **Faire sonner** : joue l'alarme système (fort, même en silencieux), avec un
+  bouton « Arrêter » sur l'appareil.
+- **Verrouiller** : affiche un message plein écran (« Téléphone perdu… »).
+  Le verrouillage OS incontournable viendra avec Device Admin (étape 4bis).
+- Console : boutons **Faire sonner** et **Verrouiller** sur la carte de l'appareil.
+- Note : l'agent réagit quand le suivi est actif ou l'écran Agent ouvert ;
+  réagir quand l'app est totalement fermée nécessitera FCM (étape 4bis).

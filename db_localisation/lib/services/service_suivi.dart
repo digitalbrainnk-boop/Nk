@@ -22,6 +22,7 @@ import 'package:geolocator_apple/geolocator_apple.dart' as geo_apple;
 import '../core/constantes.dart';
 import '../modeles/etat_appareil.dart';
 import '../modeles/position.dart';
+import 'service_commandes.dart';
 import 'service_firestore.dart';
 
 class ServiceSuivi {
@@ -104,6 +105,10 @@ class ServiceSuivi {
         .listen((p) => _traiterPosition(uid, deviceId, p),
             onError: (e) => erreur.value = 'Erreur de localisation : $e');
     actif.value = true;
+
+    // Pendant que le suivi tourne (service de premier plan actif), on écoute
+    // aussi les commandes à distance (faire sonner, verrouiller...).
+    ServiceCommandes.instance.demarrerEcoute(uid: uid, deviceId: deviceId);
   }
 
   /// Traite une position reçue : met à jour l'UI, envoie à Firestore + état.

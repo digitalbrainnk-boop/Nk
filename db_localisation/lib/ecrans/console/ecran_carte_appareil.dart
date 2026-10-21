@@ -11,6 +11,8 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../../core/constantes.dart';
+import '../../modeles/commande.dart';
 import '../../modeles/etat_appareil.dart';
 import '../../modeles/position.dart';
 import '../../services/service_firestore.dart';
@@ -134,6 +136,54 @@ class _EcranCarteAppareilState extends State<EcranCarteAppareil> {
     );
   }
 
+  /// Envoie une commande à distance à l'appareil (via Firestore).
+  Future<void> _envoyerCommande(String type,
+      {Map<String, dynamic> payload = const {}}) async {
+    await _firestore.envoyerCommande(
+      uid: widget.uid,
+      deviceId: widget.deviceId,
+      commande: Commande(
+        id: '',
+        type: type,
+        payload: payload,
+        statut: StatutsCommande.enAttente,
+      ),
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Commande envoyée à l\'appareil.')),
+    );
+  }
+
+  /// Demande un message puis envoie la commande de verrouillage.
+  Future<void> _verrouiller() async {
+    final c = TextEditingController(
+        text: 'Téléphone perdu. Merci d\'appeler le ...');
+    final message = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Verrouiller / message'),
+        content: TextField(
+          controller: c,
+          maxLines: 2,
+          decoration: const InputDecoration(labelText: 'Message à afficher'),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Annuler')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, c.text.trim()),
+              child: const Text('Verrouiller')),
+        ],
+      ),
+    );
+    if (message != null && message.isNotEmpty) {
+      await _envoyerCommande(TypesCommande.verrouiller,
+          payload: {'message': message});
+    }
+  }
+
   /// Panneau d'état sous la carte : précision, heure, batterie, en ligne.
   Widget _panneauEtat(Position derniere) {
     final precision = derniere.precision == null
@@ -181,6 +231,27 @@ class _EcranCarteAppareilState extends State<EcranCarteAppareil> {
                   ],
                 );
               },
+            ),
+            const Divider(height: 20),
+            // Commandes à distance (l'appareil doit être allumé et en ligne).
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton.tonalIcon(
+                    onPressed: () => _envoyerCommande(TypesCommande.alarme),
+                    icon: const Icon(Icons.volume_up),
+                    label: const Text('Faire sonner'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: FilledButton.tonalIcon(
+                    onPressed: _verrouiller,
+                    icon: const Icon(Icons.lock),
+                    label: const Text('Verrouiller'),
+                  ),
+                ),
+              ],
             ),
           ],
         ),
