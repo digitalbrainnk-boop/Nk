@@ -63,6 +63,34 @@ class _EcranConnexionState extends State<EcranConnexion> {
     setState(() { _occupe = false; _erreur = r.succes ? null : r.messageErreur; });
   }
 
+  Future<void> _motDePasseOublie() async {
+    // La réinitialisation par e-mail n'a de sens que pour un identifiant e-mail.
+    if (_type == TypeIdentifiant.telephone) {
+      setState(() => _erreur =
+          'Réinitialisation indisponible pour un identifiant téléphone. '
+          'Utilisez un identifiant e-mail.');
+      return;
+    }
+    if (_identifiant.text.trim().isEmpty) {
+      setState(() => _erreur = 'Entrez d\'abord votre adresse e-mail.');
+      return;
+    }
+    setState(() { _occupe = true; _erreur = null; });
+    final r = await _auth.reinitialiserMotDePasse(
+        identifiant: _identifiant.text, type: _type);
+    if (!mounted) return;
+    setState(() {
+      _occupe = false;
+      _erreur = r.succes ? null : r.messageErreur;
+    });
+    if (r.succes) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text(
+            'E-mail de réinitialisation envoyé (pensez à vérifier vos spams).'),
+      ));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -128,6 +156,10 @@ class _EcranConnexionState extends State<EcranConnexion> {
                     onPressed: _occupe ? null : _connecterGoogle,
                     icon: const Icon(Icons.g_mobiledata),
                     label: const Text('Continuer avec Google'),
+                  ),
+                  TextButton(
+                    onPressed: _occupe ? null : _motDePasseOublie,
+                    child: const Text('Mot de passe oublié ?'),
                   ),
                   TextButton(
                     onPressed: _occupe

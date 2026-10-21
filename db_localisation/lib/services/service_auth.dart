@@ -94,6 +94,33 @@ class ServiceAuth {
     }
   }
 
+  /// Envoie un e-mail de réinitialisation de mot de passe.
+  /// Disponible uniquement pour les comptes identifiés par E-MAIL : un compte
+  /// « téléphone » utilise une adresse technique interne qui ne reçoit pas de
+  /// courriel (une réinitialisation par SMS serait une évolution ultérieure).
+  Future<ResultatAuth> reinitialiserMotDePasse({
+    required String identifiant,
+    required TypeIdentifiant type,
+  }) async {
+    if (type == TypeIdentifiant.telephone) {
+      return const ResultatAuth(
+        succes: false,
+        messageErreur:
+            'Réinitialisation par e-mail indisponible pour un identifiant '
+            'téléphone. Utilisez un identifiant e-mail.',
+      );
+    }
+    try {
+      final email = identifiantVersEmail(identifiant, type);
+      await _auth.sendPasswordResetEmail(email: email);
+      return const ResultatAuth(succes: true);
+    } on FirebaseAuthException catch (e) {
+      return ResultatAuth(succes: false, messageErreur: _messageFr(e));
+    } catch (e) {
+      return ResultatAuth(succes: false, messageErreur: 'Erreur : $e');
+    }
+  }
+
   /// Connexion via Google (supportée sur mobile et web).
   Future<ResultatAuth> connecterAvecGoogle() async {
     try {
