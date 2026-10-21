@@ -78,15 +78,14 @@
             android:name="flutterEmbedding"
             android:value="2" />
 
-        <!-- ============================================================
-             À ACTIVER — ÉTAPE 2 : service de premier plan + boot receiver.
-             Décommentez une fois les classes Kotlin créées.
-             ============================================================
-        <service
-            android:name=".suivi.ServiceSuiviLocalisation"
-            android:exported="false"
-            android:foregroundServiceType="location" />
+        <!-- ÉTAPE 2 (suivi GPS) : le SERVICE DE PREMIER PLAN avec notification
+             est fourni automatiquement par le plugin geolocator_android (via
+             AndroidSettings.foregroundNotificationConfig dans service_suivi.dart).
+             Aucune classe de service à déclarer ici.
 
+             À ACTIVER — ÉTAPE 2bis : démarrage au boot (relance du suivi après
+             redémarrage). Décommentez une fois la classe Kotlin créée.
+             ============================================================
         <receiver
             android:name=".suivi.RecepteurDemarrage"
             android:exported="true">

@@ -1,18 +1,58 @@
-// Écran AGENT — squelette d'étape 1 (appareil protégé).
+// Écran AGENT — appareil protégé (étape 2 : suivi GPS).
 //
-// Rappel honnête des capacités par plateforme :
-//  - Android : service de premier plan + notification permanente, boot,
-//    exclusion batterie, mode SMS, commandes, Device Admin (étapes 2, 4, 5).
-//  - iOS : version LIMITÉE (localisation arrière-plan autorisée, mode perdu,
-//    alarme via notifications). Apple interdit SMS/boot/service caché.
+// Capacités par plateforme (rappel honnête) :
+//  - Android : suivi via service de premier plan + notification VISIBLE mais
+//    discrète ; boot, exclusion batterie, SMS, Device Admin aux étapes 2bis/4/5.
+//  - iOS : suivi en arrière-plan autorisé (indicateur système visible), mode
+//    perdu, alarme via notifications. Pas de SMS/boot/service caché (Apple).
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
+import '../../modeles/position.dart';
+import '../../services/service_consentement.dart';
 import '../../services/service_installation.dart';
+import '../../services/service_suivi.dart';
 
-class EcranAgent extends StatelessWidget {
+class EcranAgent extends StatefulWidget {
   final String uid;
   const EcranAgent({super.key, required this.uid});
+
+  @override
+  State<EcranAgent> createState() => _EcranAgentState();
+}
+
+class _EcranAgentState extends State<EcranAgent> {
+  final _consentement = ServiceConsentement();
+  final _suivi = ServiceSuivi.instance;
+  String? _deviceId;
+  bool _chargement = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _chargerDeviceId();
+  }
+
+  Future<void> _chargerDeviceId() async {
+    final id = await _consentement.deviceIdEnregistre();
+    if (!mounted) return;
+    setState(() {
+      _deviceId = id;
+      _chargement = false;
+    });
+  }
+
+  Future<void> _basculerSuivi() async {
+    final deviceId = _deviceId;
+    if (deviceId == null) return;
+    if (_suivi.actif.value) {
+      await _suivi.arreter(uid: widget.uid, deviceId: deviceId);
+    } else {
+      await _suivi.demarrer(uid: widget.uid, deviceId: deviceId);
+    }
+    if (mounted) setState(() {});
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -21,71 +61,149 @@ class EcranAgent extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(title: const Text('Agent — appareil protégé')),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          // Bandeau "visible et consenti".
-          Card(
-            color: Colors.blue.shade50,
-            child: const Padding(
-              padding: EdgeInsets.all(16),
-              child: Row(
-                children: [
-                  Icon(Icons.visibility),
-                  SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      'Cet appareil est protégé. Le suivi est VISIBLE : une '
-                      'notification permanente l\'indiquera quand le service '
-                      'tournera (étape 2).',
+      body: _chargement
+          ? const Center(child: CircularProgressIndicator())
+          : ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                // Bandeau "visible et consenti".
+                Card(
+                  color: Colors.blue.shade50,
+                  child: const Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Row(
+                      children: [
+                        Icon(Icons.visibility),
+                        SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            'Suivi VISIBLE : quand il est actif, une notification '
+                            'permanente « Localisation active » l\'indique. Rien '
+                            'n\'est caché.',
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          // Avertissement iOS honnête (règle non-négociable : l'indiquer).
-          if (estIos)
-            Card(
-              color: Colors.orange.shade50,
-              child: const Padding(
-                padding: EdgeInsets.all(16),
-                child: Text(
-                  'Sur iPhone / iPad, la protection est LIMITÉE : localisation '
-                  'en arrière-plan autorisée, mode perdu et alarme via '
-                  'notifications. Apple interdit la lecture des SMS, le '
-                  'démarrage au boot et les services cachés.',
                 ),
-              ),
+                const SizedBox(height: 16),
+
+                // Avertissement iOS honnête.
+                if (estIos)
+                  Card(
+                    color: Colors.orange.shade50,
+                    child: const Padding(
+                      padding: EdgeInsets.all(16),
+                      child: Text(
+                        'Sur iPhone / iPad : suivi en arrière-plan autorisé '
+                        '(indicateur système visible), mode perdu et alarme via '
+                        'notifications. Pas de SMS, boot ni service caché (Apple).',
+                      ),
+                    ),
+                  ),
+
+                if (_deviceId == null)
+                  Card(
+                    color: Colors.red.shade50,
+                    child: const Padding(
+                      padding: EdgeInsets.all(16),
+                      child: Text(
+                        'Cet appareil n\'est pas encore enregistré. Revenez à '
+                        'l\'accueil et appuyez sur « Enregistrer cet appareil » '
+                        'avant de démarrer le suivi.',
+                      ),
+                    ),
+                  )
+                else
+                  _blocSuivi(),
+
+                const SizedBox(height: 24),
+                const Text('Prochaines fonctions :',
+                    style: TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                if (!estIos) ...[
+                  _ligne(Icons.restart_alt, 'Démarrage au boot', 'Étape 2bis'),
+                  _ligne(Icons.battery_alert, 'Exclusion batterie', 'Étape 2bis'),
+                  _ligne(Icons.sms, 'Mode SMS (code secret)', 'Étape 5'),
+                  _ligne(Icons.sim_card, 'Alerte changement de SIM', 'Étape 5'),
+                  _ligne(Icons.lock, 'Device Admin (verrouillage)', 'Étape 4'),
+                ],
+                _ligne(Icons.volume_up, 'Alarme à distance', 'Étape 4'),
+
+                const SizedBox(height: 24),
+                if (kDebugMode)
+                  Text('UID : ${widget.uid}',
+                      style: const TextStyle(fontSize: 11, color: Colors.grey)),
+              ],
             ),
-
-          const SizedBox(height: 16),
-          const Text('Fonctions à activer (prochaines étapes) :',
-              style: TextStyle(fontWeight: FontWeight.bold)),
-          const SizedBox(height: 8),
-
-          _ligneFonction(Icons.my_location, 'Suivi de position périodique', 'Étape 2'),
-          if (!estIos) ...[
-            _ligneFonction(Icons.restart_alt, 'Démarrage au boot', 'Étape 2'),
-            _ligneFonction(Icons.battery_alert, 'Exclusion batterie', 'Étape 2'),
-            _ligneFonction(Icons.sms, 'Mode SMS (code secret)', 'Étape 5'),
-            _ligneFonction(Icons.sim_card, 'Alerte changement de SIM', 'Étape 5'),
-            _ligneFonction(Icons.lock, 'Device Admin (verrouillage)', 'Étape 4'),
-          ],
-          _ligneFonction(Icons.volume_up, 'Alarme à distance', 'Étape 4'),
-
-          const SizedBox(height: 24),
-          if (kDebugMode)
-            Text('UID du compte : $uid',
-                style: const TextStyle(fontSize: 11, color: Colors.grey)),
-        ],
-      ),
     );
   }
 
-  Widget _ligneFonction(IconData icone, String libelle, String etape) {
+  /// Bloc de pilotage du suivi + affichage de la dernière position.
+  Widget _blocSuivi() {
+    return Column(
+      children: [
+        // Bouton démarrer / arrêter (réagit à l'état du service).
+        ValueListenableBuilder<bool>(
+          valueListenable: _suivi.actif,
+          builder: (context, actif, _) {
+            return FilledButton.icon(
+              onPressed: _basculerSuivi,
+              icon: Icon(actif ? Icons.stop : Icons.play_arrow),
+              label: Text(actif ? 'Arrêter le suivi' : 'Démarrer le suivi'),
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(48),
+                backgroundColor: actif ? Colors.red : null,
+              ),
+            );
+          },
+        ),
+        const SizedBox(height: 12),
+
+        // Message d'erreur éventuel (permission, hors ligne...).
+        ValueListenableBuilder<String?>(
+          valueListenable: _suivi.erreur,
+          builder: (context, err, _) => err == null
+              ? const SizedBox.shrink()
+              : Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Text(err, style: const TextStyle(color: Colors.red)),
+                ),
+        ),
+
+        // Dernière position connue + rayon de précision RÉEL.
+        ValueListenableBuilder<Position?>(
+          valueListenable: _suivi.dernierePosition,
+          builder: (context, pos, _) {
+            if (pos == null) {
+              return const Card(
+                child: ListTile(
+                  leading: Icon(Icons.location_searching),
+                  title: Text('Aucune position encore'),
+                  subtitle: Text('Démarrez le suivi pour envoyer la position.'),
+                ),
+              );
+            }
+            final precision = pos.precision == null
+                ? 'précision inconnue'
+                : 'précis à ±${pos.precision!.toStringAsFixed(0)} m';
+            final heure = DateFormat('HH:mm:ss').format(DateTime.now());
+            return Card(
+              child: ListTile(
+                leading: const Icon(Icons.my_location, color: Colors.green),
+                title: Text(
+                    '${pos.lat.toStringAsFixed(6)}, ${pos.lng.toStringAsFixed(6)}'),
+                subtitle: Text(
+                    '$precision • batterie ${pos.batterie ?? '?'}% • $heure'),
+              ),
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _ligne(IconData icone, String libelle, String etape) {
     return ListTile(
       dense: true,
       leading: Icon(icone),

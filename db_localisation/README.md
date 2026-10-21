@@ -111,9 +111,10 @@ Voir `docs/02-cle-google-maps.md` et `docs/03-builder-et-tester.md`.
 
 ## Ordre de construction
 
-1. ✅ **Socle + Auth + enregistrement appareil + consentement** (CETTE ÉTAPE).
-2. ⏳ **Suivi GPS** : service premier plan + notification, position périodique →
-   Firestore, boot receiver, exclusion batterie.
+1. ✅ **Socle + Auth + enregistrement appareil + consentement**.
+2. 🔄 **Suivi GPS** (en cours) : position haute précision + service de premier
+   plan (notification discrète) + envoi périodique → Firestore + état (batterie,
+   en ligne). Reste pour l'étape 2bis : relance au boot, exclusion batterie.
 3. ⏳ **Console** : carte Google Maps + dernière position + historique + état.
 4. ⏳ **Commandes à distance** : localiser / alarme / verrouiller (FCM + Cloud
    Functions + Device Admin).
@@ -139,3 +140,14 @@ Voir `docs/02-cle-google-maps.md` et `docs/03-builder-et-tester.md`.
   IMEI côté opérateur le font.
 - `AndroidManifest.xml` complet, `firestore.rules`, et les 3 guides.
 - Tests unitaires de la logique pure (`test/logique_test.dart`).
+
+### Étape 2 (en cours) — ce qui est livré
+- Service de suivi GPS (`lib/services/service_suivi.dart`) : permissions,
+  position **haute précision** (`LocationAccuracy.best`), service de premier
+  plan Android avec **notification discrète « Localisation active »**, envoi
+  périodique vers Firestore + état (batterie, en charge, en ligne).
+- Écran agent : boutons **Démarrer / Arrêter le suivi**, affichage de la
+  dernière position avec son **rayon de précision réel** (« ±X m »), honnête.
+- Reste à l'étape 2bis : relance au boot, exclusion de l'optimisation batterie,
+  et le suivi en isolat dédié (survie à la fermeture de l'app) à tester sur
+  appareil.

@@ -40,6 +40,12 @@ dependencies:
   # --- Ouverture de liens externes (réglages natifs, iCloud, Find My Device) ---
   url_launcher: ^6.3.1
 
+  # --- Suivi GPS (étape 2) ---
+  geolocator: ^14.0.2    # Position haute précision + service de premier plan.
+  battery_plus: ^7.1.2   # Niveau de batterie / en charge pour l'état.
+  geolocator_android: ^5.2.1
+  geolocator_apple: ^2.4.2
+
 dev_dependencies:
   flutter_lints: ^4.0.0
   flutter_test:
