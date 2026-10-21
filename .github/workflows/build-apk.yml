@@ -52,11 +52,15 @@ jobs:
       - name: Récupérer les dépendances
         run: flutter pub get
 
-      - name: Construire l'APK (debug, directement installable)
-        run: flutter build apk --debug
+      - name: Construire les APK (debug, un par architecture = plus légers)
+        run: flutter build apk --debug --split-per-abi
 
-      - name: Renommer l'APK (nom lisible)
-        run: cp build/app/outputs/flutter-apk/app-debug.apk DB-Localisation.apk
+      - name: Renommer les APK (noms lisibles)
+        run: |
+          # arm64-v8a = quasi tous les téléphones depuis ~2016 (fichier principal).
+          cp build/app/outputs/flutter-apk/app-arm64-v8a-debug.apk DB-Localisation.apk
+          # armeabi-v7a = secours pour les téléphones plus anciens (32 bits).
+          cp build/app/outputs/flutter-apk/app-armeabi-v7a-debug.apk DB-Localisation-ancien-telephone.apk
 
       - name: Publier l'APK comme artefact téléchargeable (.zip)
         uses: actions/upload-artifact@v4
@@ -65,12 +69,13 @@ jobs:
           path: db_localisation/DB-Localisation.apk
           if-no-files-found: error
 
-      - name: Publier l'APK en Release (lien direct, le plus simple)
+      - name: Publier les APK en Release (lien direct, le plus simple)
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           # Release "rolling" : on remplace à chaque build pour garder un lien stable.
           gh release delete apk-latest --yes --cleanup-tag 2>/dev/null || true
-          gh release create apk-latest DB-Localisation.apk \
+          gh release create apk-latest \
+            DB-Localisation.apk DB-Localisation-ancien-telephone.apk \
             --title "APK (dernier build) — DB Localisation" \
-            --notes "Dernier APK de test. Télécharge le fichier DB-Localisation.apk et installe-le sur ton téléphone Android."
+            --notes "APK de test. Essaie d'abord DB-Localisation.apk. Si ton téléphone est ancien (32 bits) et refuse, prends DB-Localisation-ancien-telephone.apk."
