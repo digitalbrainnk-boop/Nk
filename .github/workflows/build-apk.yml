@@ -1,0 +1,57 @@
+# Build automatique de l'APK Android de DB Localisation, dans le cloud GitHub.
+# But : permettre de tester sans ordinateur. À chaque push (ou lancement manuel),
+# GitHub compile l'APK et le met à télécharger dans l'onglet "Actions" du dépôt.
+#
+# Récupérer l'APK : dépôt GitHub -> onglet "Actions" -> dernier run ->
+# section "Artifacts" -> "db-localisation-apk" (fichier .apk à installer sur le
+# téléphone, en autorisant "installer des applis de sources inconnues").
+
+name: Build APK (DB Localisation)
+
+on:
+  push:
+    branches: ["ccr-12782980-j0gzjj"]
+    paths:
+      - "db_localisation/**"
+      - ".github/workflows/build-apk.yml"
+  workflow_dispatch: # bouton "Run workflow" dans l'onglet Actions.
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: db_localisation
+    steps:
+      - name: Récupérer le code
+        uses: actions/checkout@v4
+
+      - name: Installer Java 17 (requis par le build Android)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Installer Flutter (canal stable)
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Générer la scaffolding Android (android/ gradle, etc.)
+        run: flutter create . --platforms=android --org com.dblocalisation --project-name db_localisation
+
+      - name: Restaurer notre AndroidManifest (permissions + queries)
+        run: git checkout -- android/app/src/main/AndroidManifest.xml
+
+      - name: Récupérer les dépendances
+        run: flutter pub get
+
+      - name: Construire l'APK (debug, directement installable)
+        run: flutter build apk --debug
+
+      - name: Publier l'APK comme artefact téléchargeable
+        uses: actions/upload-artifact@v4
+        with:
+          name: db-localisation-apk
+          path: db_localisation/build/app/outputs/flutter-apk/app-debug.apk
+          if-no-files-found: error
