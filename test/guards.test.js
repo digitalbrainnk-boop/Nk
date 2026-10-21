@@ -112,3 +112,25 @@ test("vocaux : la même phrase avec la même voix n'est payée qu'une fois", asy
   await textToSpeech("Autre phrase");
   assert.equal(ttsTasks, before + 2);
 });
+
+test("profil d'écriture : si Kie a un souci passager, l'agent réessaie avec moins d'échanges", async () => {
+  const { buildStyleProfile } = await import("../src/agent.js");
+  db.addExamples([{ client_text: "Bonjour", owner_reply: "Salut 😊 ça va ?" }], "import");
+  const real = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async (url, init) => {
+    if (String(url).includes("/chat/completions")) {
+      calls++;
+      if (calls === 1) return Response.json({ code: 500, msg: "Server exception, please try again later" });
+      return Response.json({ choices: [{ message: { content: JSON.stringify({ style_profile: "Chaleureux, tutoie", business_facts: [] }) } }] });
+    }
+    return real(url, init);
+  };
+  try {
+    const r = await buildStyleProfile("Nk");
+    assert.equal(r.style_profile, "Chaleureux, tutoie");
+    assert.equal(calls, 2);
+  } finally {
+    globalThis.fetch = real;
+  }
+});

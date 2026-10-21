@@ -608,9 +608,13 @@ app.delete("/api/learn/examples", (req, res) => {
 });
 app.post("/api/learn/profile", wrap(async (req, res) => {
   const s = getSettings();
-  const result = await buildStyleProfile(s.owner_name || "le propriétaire");
-  setSettings({ style_profile: result.style_profile });
-  res.json(result);
+  try {
+    const result = await buildStyleProfile(s.owner_name || "le propriétaire");
+    setSettings({ style_profile: result.style_profile });
+    res.json(result);
+  } catch (e) {
+    res.status(502).json({ error: friendlyError(e) });
+  }
 }));
 
 // ---------- Canaux ----------

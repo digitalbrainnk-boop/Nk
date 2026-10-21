@@ -431,6 +431,9 @@ export function friendlyError(e) {
     if (e.status === 401 || e.status === 403) return `Clé refusée par le service IA (Réglages → Cerveau) : ${e.message}`;
     if (e.status === 402 || /credit|balance|insufficient/i.test(e.message)) return `Crédit épuisé sur le service IA : ${e.message}`;
     if (e.status === 404) return `Adresse ou modèle introuvable (Réglages → Cerveau) : ${e.message}`;
+    if ((e.status >= 500 && e.status < 600) || /server exception|try again later|timeout|overloaded/i.test(e.message)) {
+      return "Le service Kie.ai a un souci passager (pas ton agent) : réessaie dans quelques minutes.";
+    }
     return `Service IA : ${e.message}`;
   }
   if (e instanceof Anthropic.AuthenticationError) {
@@ -457,10 +460,17 @@ export async function buildStyleProfile(ownerName) {
   const s = getSettings();
   const examples = allExamples();
   if (!examples.length) throw new Error("Importe d'abord des conversations.");
-  const sample = [...examples].sort(() => Math.random() - 0.5).slice(0, 250);
-  const corpus = sample
-    .map((e) => `Client : ${e.client_text}\n${ownerName} : ${e.owner_reply}`)
-    .join("\n---\n");
+  const shuffled = [...examples].sort(() => Math.random() - 0.5);
+  // Échantillon borné (messages raccourcis) : un texte trop long fait échouer certains services.
+  const corpusOf = (n, maxChars) => {
+    let out = "";
+    for (const e of shuffled.slice(0, n)) {
+      const pair = `Client : ${e.client_text.slice(0, 400)}\n${ownerName} : ${e.owner_reply.slice(0, 400)}\n---\n`;
+      if (out.length + pair.length > maxChars) break;
+      out += pair;
+    }
+    return out;
+  };
 
   const Profile = z.object({
     style_profile: z.string().describe("Portrait détaillé de la façon d'écrire, en français, prêt à servir de consigne."),
@@ -469,7 +479,7 @@ export async function buildStyleProfile(ownerName) {
       .describe("Faits sur l'activité repérés dans les échanges (prix, délais, process, moyens de paiement...)."),
   });
 
-  const instructions = `Voici des échanges réels entre ${ownerName} (compositeur de chansons personnalisées) et ses clients.
+  const instructionsFor = (corpus) => `Voici des échanges réels entre ${ownerName} (compositeur de chansons personnalisées) et ses clients.
 
 <echanges>
 ${corpus}
@@ -479,15 +489,26 @@ ${corpus}
 2. Liste les faits sur l'activité que tu peux déduire (prix, délais, étapes, moyens de paiement, ce qui est inclus). Ne retiens que ce qui est clairement présent dans les échanges.`;
 
   if (useCompat()) {
-    const r = await chatJSON({
-      system: "Tu analyses des conversations commerciales et tu réponds en français.",
-      turns: [{ role: "user", content: [{ type: "text", text: instructions }] }],
-      schema: Profile,
-      shape: `{"style_profile": "portrait détaillé de la façon d'écrire", "business_facts": [{"title": "Tarifs", "content": "..."}]}`,
-    });
-    if (!r.ok) throw new Error("L'IA n'a pas renvoyé un profil lisible, réessaie.");
-    return r.data;
+    // Si le service a un souci (texte trop long, surcharge), on réessaie avec moins d'échanges.
+    let lastError;
+    for (const [n, maxChars] of [[150, 40_000], [80, 20_000], [40, 10_000]]) {
+      try {
+        const r = await chatJSON({
+          system: "Tu analyses des conversations commerciales et tu réponds en français.",
+          turns: [{ role: "user", content: [{ type: "text", text: instructionsFor(corpusOf(n, maxChars)) }] }],
+          schema: Profile,
+          shape: `{"style_profile": "portrait détaillé de la façon d'écrire", "business_facts": [{"title": "Tarifs", "content": "..."}]}`,
+        });
+        if (r.ok) return r.data;
+        lastError = new Error("L'IA n'a pas renvoyé un profil lisible, réessaie.");
+      } catch (e) {
+        lastError = e;
+        if (e instanceof LLMError && [400, 401, 402, 403, 404].includes(e.status)) break; // inutile de réessayer
+      }
+    }
+    throw lastError;
   }
+  const instructions = instructionsFor(corpusOf(250, 120_000));
 
   const stream = getClient().beta.messages.stream({
     model: s.model || "claude-opus-5-5",
