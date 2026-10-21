@@ -72,6 +72,8 @@ Dans une conversation, bouton **🎵 Créer la chanson** : l'IA écrit titre, st
 6. Tu vérifies ton compte et **réagis à ce message avec ton emoji** (✅ par défaut, Réglages → Vérification des paiements) — ou bouton « ✅ Paiement vérifié » dans le panneau Commande. Seule **ta** réaction compte : un client qui réagit avec le même emoji ne déclenche rien.
 7. Suno compose et la chanson est **livrée au client automatiquement** (~10 minutes).
 
+Après la livraison : quand le client remercie, l'agent lui demande s'il a aimé ; s'il a aimé, il lui demande gentiment (une seule fois) de laisser un commentaire sous une publication de ta page Facebook et lui envoie le lien (Canaux → Facebook, rempli tout seul quand la page est connectée). S'il n'a pas aimé, l'agent s'excuse et te prévient.
+
 Si l'agent ne comprend pas un message, il te laisse aussi un message sur ton WhatsApp (ton numéro réglé dans Réglages, ou ta discussion « moi »).
 
 ### Surveillance automatique et bilan du jour

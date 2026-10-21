@@ -241,6 +241,7 @@ async function runAgent(contactId) {
   const lastPending = pending[pending.length - 1];
   await applyReply(contact, reply, mode, { clientSentVoice: lastPending.kind === "audio" });
   if (reply.special_request) await handleSpecialRequest(contactId, reply.special_request);
+  if (reply.asked_review && reply.messages.length) updateContact(contactId, { review_asked_at: Date.now() });
   if (reply.song_step && reply.song_step !== "none") {
     await handleSongStep(contactId, reply, mode).catch((e) => {
       console.error("Chanson :", e.message);
@@ -310,8 +311,10 @@ async function applyReply(contact, reply, mode, { clientSentVoice = false, follo
   }
   if (followup) updateContact(contactId, { followups: (contact.followups || 0) + 1, last_followup_at: Date.now() });
 
+  // Un lien (ex : ta page Facebook) part toujours en texte, pour être cliquable.
+  const hasLink = reply.messages.some((m) => /https?:\/\//.test(m));
   const useVoice =
-    s.voice_replies === "always" || (s.voice_replies === "mirror" && clientSentVoice && !followup);
+    !hasLink && (s.voice_replies === "always" || (s.voice_replies === "mirror" && clientSentVoice && !followup));
 
   if (mode === "draft") {
     if (useVoice) {

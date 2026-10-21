@@ -5,7 +5,7 @@ import fs from "node:fs";
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
-import { activeOrder, allExamples, getSettings, listKnowledge, listMessages } from "./db.js";
+import { activeOrder, allExamples, getSettings, lastDeliveredOrder, listKnowledge, listMessages, listSocialPosts } from "./db.js";
 import { LLMError, chatJSON } from "./openai-compat.js";
 import { actionsPrompt, enabledActions, runAction } from "./integrations.js";
 
@@ -22,6 +22,7 @@ const REPLY_SHAPE = `{"messages": ["bulle 1", "bulle 2"], "memory": "mémoire à
 - demo : true seulement si le client hésite et qu'un extrait de chanson pourrait le convaincre
 - actions : actions à lancer avant de répondre (tableau vide sinon), ex : [{"name": "Disponibilités", "input": "samedi"}]
 - song_step : "none", "propose_lyrics" (écrire et envoyer le texte), "revise_lyrics" (changements demandés, détaillés dans revision_notes), "client_validated" (le client approuve le texte) ou "payment_claimed" (le client dit avoir payé / envoie une preuve de paiement)
+- asked_review : true seulement si tu viens d'envoyer au client le lien pour laisser un commentaire sur la page Facebook
 - special_request : vide, sauf si le client demande un service vidéo (vidéo lyrics, clip, montage…) : décris-le en quelques mots`;
 
 let client = null;
@@ -62,6 +63,10 @@ const ReplySchema = z.object({
     .nullable()
     .optional()
     .describe("Informations de commande déduites de la conversation (null si le client ne commande rien)."),
+  asked_review: z
+    .boolean()
+    .optional()
+    .describe("true si, dans ce message, tu demandes au client de laisser un commentaire sur la page Facebook (avec le lien)."),
   demo: z
     .boolean()
     .optional()
@@ -267,6 +272,7 @@ export async function generateReply(contact, { followup = false, onAction } = {}
     ? `5) Dès qu'il a validé le texte, demande-lui de passer au paiement (montant${order?.price ? ` : ${order.price} ${s.currency}` : ""} et moyens de paiement indiqués dans les fiches ; s'il n'y en a pas, demande-lui comment il souhaite payer et mets needs_human à true) et de t'envoyer la capture ou la référence du paiement ; précise qu'il reçoit sa chanson environ 10 minutes après la vérification du paiement. 6) Quand le client dit avoir payé ou envoie une capture de paiement : song_step = "payment_claimed", remercie-le et dis-lui que tu vérifies le paiement et que tu lui envoies sa chanson juste après. Ne dis JAMAIS que le paiement est reçu ou vérifié, ne lance jamais la composition toi-même : seul ${s.owner_name || "le propriétaire"} confirme le paiement (une capture peut être fausse).`
     : "5) La chanson est alors composée et envoyée au client automatiquement.";
   const owner = s.owner_name || "le propriétaire";
+  const reviewHint = afterDeliveryHint(s, contact, order, owner);
   const specialHint = order?.special
     ? `
 - ⚠️ Commande spéciale (« ${order.special} ») : c'est ${owner} qui s'en occupe personnellement. Ne lance AUCUNE étape de chanson (song_step = "none") ; réponds simplement et dis que ${owner} revient vers lui.`
@@ -294,7 +300,7 @@ Exemples réels de la façon dont ${s.owner_name || "le propriétaire"} répond 
 ${formatExamples(examples)}
 
 Rappels :
-- Remplis « order » avec ce que tu sais de la commande. Ne marque jamais un paiement comme reçu : si le client dit avoir payé, mets ${s.song_flow ? 'song_step à "payment_claimed"' : "needs_human à true"} pour que ${s.owner_name || "le propriétaire"} vérifie.${demoHint}${songHint}${specialHint}
+- Remplis « order » avec ce que tu sais de la commande. Ne marque jamais un paiement comme reçu : si le client dit avoir payé, mets ${s.song_flow ? 'song_step à "payment_claimed"' : "needs_human à true"} pour que ${s.owner_name || "le propriétaire"} vérifie.${demoHint}${songHint}${specialHint}${reviewHint}
 
 ${instruction}`;
 
@@ -350,6 +356,7 @@ function salvageReply(p) {
         }
       : null,
     demo: p.demo === true,
+    asked_review: p.asked_review === true || p.asked_review === "true",
     song_step: ["propose_lyrics", "revise_lyrics", "client_validated", "payment_claimed"].includes(p.song_step) ? p.song_step : "none",
     revision_notes: str(p.revision_notes) || "",
     special_request: str(p.special_request) || "",
@@ -585,4 +592,28 @@ Règles :
   });
   if (!response.parsed_output?.text?.trim()) throw new Error("L'IA n'a pas renvoyé de publication lisible, réessaie.");
   return response.parsed_output;
+}
+
+/** Lien à donner aux clients contents : ta page, sinon ta dernière publication. */
+export function reviewLink(s = getSettings()) {
+  if (s.facebook_page_url) return s.facebook_page_url;
+  const post = listSocialPosts(10).find((p) => p.status === "published" && p.fb_id);
+  return post ? `https://www.facebook.com/${post.fb_id}` : "";
+}
+
+// Après la livraison : demander s'il a aimé, puis (s'il a aimé) un commentaire sur la page.
+function afterDeliveryHint(s, contact, order, owner) {
+  if (!s.review_request || order) return "";
+  const delivered = lastDeliveredOrder(contact.id);
+  if (!delivered) return "";
+  const link = reviewLink(s);
+  const title = delivered.song_title || delivered.title;
+  if (contact.review_asked_at) {
+    return `\n- La chanson${title ? ` « ${title} »` : ""} a été livrée et tu as déjà demandé au client de laisser un commentaire : ne le redemande pas ; remercie-le simplement s'il en parle.`;
+  }
+  return `\n- Après la livraison (la chanson${title ? ` « ${title} »` : ""} a été envoyée au client) : quand le client remercie ou réagit, demande-lui chaleureusement s'il a aimé, si tu ne l'as pas déjà fait dans la conversation.${
+    link
+      ? ` S'il dit qu'il a aimé : remercie-le du fond du cœur, puis demande-lui gentiment, si son temps le permet, de laisser un petit commentaire sous l'une des publications de la page Facebook, en lui donnant ce lien : ${link} — et mets asked_review à true. Une seule fois, sans insister.`
+      : " S'il dit qu'il a aimé, remercie-le du fond du cœur."
+  } S'il n'a pas aimé ou a une remarque : excuse-toi sincèrement, demande ce qu'il aimerait changer et mets needs_human à true pour que ${owner} s'en occupe.`;
 }

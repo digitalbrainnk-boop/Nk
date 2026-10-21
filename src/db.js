@@ -66,6 +66,8 @@ for (const sql of [
   "ALTER TABLE contacts ADD COLUMN last_followup_at INTEGER NOT NULL DEFAULT 0",
   "ALTER TABLE contacts ADD COLUMN demo_at INTEGER NOT NULL DEFAULT 0",
   "ALTER TABLE contacts ADD COLUMN credits_used REAL NOT NULL DEFAULT 0",
+  // Après la livraison : l'agent a demandé au client un commentaire sur ta page Facebook.
+  "ALTER TABLE contacts ADD COLUMN review_asked_at INTEGER NOT NULL DEFAULT 0",
 ]) {
   try {
     db.exec(sql);
@@ -183,6 +185,8 @@ export const DEFAULT_SETTINGS = {
   lyrics_delay_max: 10,
   owner_whatsapp: "", // numéro où l'agent te laisse ses messages (vide = ton propre WhatsApp)
   payment_confirm_emoji: "✅", // ta réaction pour confirmer un paiement
+  review_request: true, // après la livraison : « tu as aimé ? » puis lien pour laisser un commentaire
+  facebook_page_url: "", // lien de ta page Facebook (rempli tout seul quand la page est connectée)
   social_enabled: false, // publier tout seul sur ta page Facebook (désactivé tant que tu ne l'actives pas)
   social_every_days: 3,
   social_hour: 10, // publier à partir de cette heure (heure du téléphone)
@@ -303,6 +307,7 @@ export function updateContact(id, patch) {
     "followups",
     "last_followup_at",
     "demo_at",
+    "review_asked_at",
   ];
   const keys = Object.keys(patch).filter((k) => allowed.includes(k));
   if (!keys.length) return;
@@ -649,6 +654,13 @@ export function creditStats() {
     per_reply: replies.c ? replies.n / replies.c : 0,
     last_balance: last?.balance_after ?? null,
   };
+}
+
+/** Dernière chanson livrée à ce client (depuis moins de `days` jours). */
+export function lastDeliveredOrder(contactId, days = 14) {
+  return db
+    .prepare("SELECT * FROM orders WHERE contact_id = ? AND stage = 'livree' AND delivered_at > ? ORDER BY delivered_at DESC LIMIT 1")
+    .get(contactId, now() - days * 24 * 3600_000);
 }
 
 /** Commandes dont le texte doit être envoyé maintenant. */

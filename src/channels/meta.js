@@ -3,7 +3,7 @@
 // webhook : /webhooks/meta
 import crypto from "node:crypto";
 import express from "express";
-import { getSettings } from "../db.js";
+import { getSettings, setSettings } from "../db.js";
 import { downloadToMedia } from "../media.js";
 import { handleIncoming, handleOwnerMessage, registerAdapter } from "../router.js";
 
@@ -38,7 +38,10 @@ export async function getPageId() {
   if (pageId) return pageId;
   const { pageToken } = cfg();
   if (!pageToken) return null;
-  pageId = (await graph("me?fields=id,name", { token: pageToken })).id;
+  const me = await graph("me?fields=id,name,link", { token: pageToken });
+  pageId = me.id;
+  // Lien de ta page : l'agent l'envoie aux clients contents pour qu'ils laissent un commentaire.
+  if (!getSettings().facebook_page_url) setSettings({ facebook_page_url: me.link || `https://www.facebook.com/${me.id}` });
   return pageId;
 }
 
