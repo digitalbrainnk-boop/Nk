@@ -38,8 +38,18 @@ class ServiceAuth {
     if (type == TypeIdentifiant.email) {
       return nettoye.toLowerCase();
     }
-    // Téléphone : on garde uniquement les chiffres (et le + éventuel).
-    final chiffres = nettoye.replaceAll(RegExp(r'[^0-9]'), '');
+    // Téléphone : on ne garde que les chiffres (espaces, +, tirets retirés),
+    // puis on canonise le préfixe international : « + » et « 00 » désignent la
+    // même chose, donc +33… et 0033… donnent le MÊME identifiant. La même
+    // normalisation est appliquée à l'inscription ET à la connexion, donc
+    // l'identifiant reste stable quelle que soit la mise en forme saisie.
+    // Limite assumée : un numéro en format national (ex. 06…) et son format
+    // international (+33 6…) ne sont PAS fusionnés (cela exigerait de connaître
+    // le pays) — l'utilisateur doit saisir son numéro de façon cohérente.
+    var chiffres = nettoye.replaceAll(RegExp(r'[^0-9]'), '');
+    if (chiffres.startsWith('00')) {
+      chiffres = chiffres.substring(2); // 00 (préfixe international) == +
+    }
     return '$chiffres@$_domaineTelephone';
   }
 

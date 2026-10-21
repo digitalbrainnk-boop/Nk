@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../../core/constantes.dart';
 import '../../modeles/utilisateur.dart';
 import '../../services/service_auth.dart';
+import '../../services/service_firestore.dart';
 import '../../widgets/champ_saisie.dart';
 import 'ecran_inscription.dart';
 
@@ -19,6 +20,7 @@ class _EcranConnexionState extends State<EcranConnexion> {
   final _identifiant = TextEditingController();
   final _motDePasse = TextEditingController();
   final _auth = ServiceAuth();
+  final _firestore = ServiceFirestore();
 
   // Type d'identifiant sélectionné (e-mail par défaut).
   TypeIdentifiant _type = TypeIdentifiant.email;
@@ -48,6 +50,15 @@ class _EcranConnexionState extends State<EcranConnexion> {
   Future<void> _connecterGoogle() async {
     setState(() { _occupe = true; _erreur = null; });
     final r = await _auth.connecterAvecGoogle();
+    // À la première connexion Google, aucun profil n'a encore été créé :
+    // on en crée un minimal à partir des infos du compte Google.
+    if (r.succes && r.utilisateur != null) {
+      final u = r.utilisateur!;
+      await _firestore.assurerProfil(
+        uid: u.uid,
+        nomParDefaut: u.displayName ?? u.email ?? 'Utilisateur',
+      );
+    }
     if (!mounted) return;
     setState(() { _occupe = false; _erreur = r.succes ? null : r.messageErreur; });
   }

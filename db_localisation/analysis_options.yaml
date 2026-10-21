@@ -1,4 +1,9 @@
 # Règles d'analyse statique (lint) du projet.
+analyzer:
+  exclude:
+    - build/**
+    - android/**
+    - web/**
 include: package:flutter_lints/flutter.yaml
 
 linter:

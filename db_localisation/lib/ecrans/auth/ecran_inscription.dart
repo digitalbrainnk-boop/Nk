@@ -2,7 +2,6 @@
 // À la création du compte, on crée aussi le profil Firestore.
 import 'package:flutter/material.dart';
 
-import '../../core/constantes.dart';
 import '../../modeles/utilisateur.dart';
 import '../../services/service_auth.dart';
 import '../../services/service_firestore.dart';

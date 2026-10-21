@@ -42,6 +42,25 @@ class ServiceFirestore {
     return ProfilUtilisateur.depuisFirestore(uid, doc.data()!);
   }
 
+  /// S'assure qu'un profil existe, sans écraser un profil déjà présent.
+  /// Utile après une connexion Google : aucun formulaire d'inscription n'a été
+  /// rempli, donc on crée un profil minimal (nom = nom Google / e-mail).
+  Future<void> assurerProfil({
+    required String uid,
+    required String nomParDefaut,
+  }) async {
+    final doc = await _refUser(uid).get();
+    final profilExistant = doc.data()?['profile'];
+    if (profilExistant != null) return; // On ne touche pas à l'existant.
+    await _refUser(uid).set({
+      'profile': {
+        'name': nomParDefaut,
+        'idType': 'email',
+        'createdAt': FieldValue.serverTimestamp(),
+      },
+    }, SetOptions(merge: true));
+  }
+
   // ----------------------------------------------------------------
   // APPAREILS
   // ----------------------------------------------------------------

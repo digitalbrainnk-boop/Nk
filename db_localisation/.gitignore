@@ -13,6 +13,12 @@ pubspec.lock
 .vscode/
 *.iml
 
+# Fichiers Android générés localement (chemin SDK machine, registrant de plugins).
+android/local.properties
+android/.gradle/
+android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java
+ios/Flutter/flutter_export_environment.sh
+
 # Secrets Firebase générés par `flutterfire configure`.
 # NB : firebase_options.dart est committé avec des valeurs d'EXEMPLE pour que
 # le projet compile ; régénérez-le avec `flutterfire configure` (voir docs).

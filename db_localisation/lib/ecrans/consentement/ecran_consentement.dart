@@ -28,11 +28,11 @@ class _EcranConsentementState extends State<EcranConsentement> {
       appBar: AppBar(title: const Text('Consentement — appareil protégé')),
       body: Column(
         children: [
-          Expanded(
+          const Expanded(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.all(20),
+              padding: EdgeInsets.all(20),
               child: Text(kTexteConsentement,
-                  style: const TextStyle(height: 1.4)),
+                  style: TextStyle(height: 1.4)),
             ),
           ),
           const Divider(height: 1),
