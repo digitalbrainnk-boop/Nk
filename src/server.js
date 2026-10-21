@@ -47,6 +47,7 @@ import {
   runFollowups,
   messageOwner,
   runLyricsQueue,
+  runReminders,
   schedule,
   sendManual,
   startComposition,
@@ -533,6 +534,8 @@ app.listen(port, () => {
   maybeAutoStartWhatsApp();
   // Relances automatiques : vérification toutes les 15 minutes.
   setInterval(() => runFollowups().catch((e) => console.error("Relances :", e.message)), 15 * 60_000);
+  // Relances prévues (« je reviendrai pour une autre chanson ») : toutes les 5 minutes.
+  setInterval(() => runReminders().catch((e) => console.error("Relances prévues :", e.message)), 5 * 60_000);
   // Textes de chansons à envoyer (délai « humain », 12 minutes max) : toutes les 30 secondes.
   setInterval(() => runLyricsQueue().catch((e) => console.error("Textes :", e.message)), 30_000);
   // Surveillance : chaque minute, on relance ce qui est bloqué et on te prévient ; bilan du soir.

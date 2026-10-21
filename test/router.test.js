@@ -11,7 +11,7 @@ const { pickExamples } = await import("../src/agent.js");
 
 const sent = [];
 before(() => {
-  db.setSettings({ reply_mode: "auto", debounce_seconds: 0, min_reply_delay_seconds: 0, max_reply_delay_seconds: 0, typing_chars_per_second: 1000 });
+  db.setSettings({ reply_mode: "auto", debounce_seconds: 0, open_hour: 0, close_hour: 0, min_reply_delay_seconds: 0, max_reply_delay_seconds: 0, typing_chars_per_second: 1000 });
   router.registerAdapter({ channel: "fake", send: async (c, text) => (sent.push(text), `id-${sent.length}`) });
 });
 

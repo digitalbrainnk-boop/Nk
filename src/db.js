@@ -68,6 +68,9 @@ for (const sql of [
   "ALTER TABLE contacts ADD COLUMN credits_used REAL NOT NULL DEFAULT 0",
   // Après la livraison : l'agent a demandé au client un commentaire sur ta page Facebook.
   "ALTER TABLE contacts ADD COLUMN review_asked_at INTEGER NOT NULL DEFAULT 0",
+  // Relance prévue (ex : « je reviendrai pour une autre chanson ») : quand et pourquoi.
+  "ALTER TABLE contacts ADD COLUMN remind_at INTEGER NOT NULL DEFAULT 0",
+  "ALTER TABLE contacts ADD COLUMN remind_note TEXT NOT NULL DEFAULT ''",
 ]) {
   try {
     db.exec(sql);
@@ -170,6 +173,8 @@ export const DEFAULT_SETTINGS = {
   max_reply_delay_seconds: 20,
   typing_chars_per_second: 7,
   owner_takeover_hours: 6,
+  open_hour: 5, // l'agent répond de 5 h…
+  close_hour: 0, // …à minuit (0 = minuit) ; la nuit, les messages attendent l'ouverture
   ignored_contacts: [], // numéros (ou @pseudos) auxquels l'agent ne répond jamais
   currency: "FCFA",
   followup_enabled: true,
@@ -308,6 +313,8 @@ export function updateContact(id, patch) {
     "last_followup_at",
     "demo_at",
     "review_asked_at",
+    "remind_at",
+    "remind_note",
   ];
   const keys = Object.keys(patch).filter((k) => allowed.includes(k));
   if (!keys.length) return;
@@ -654,6 +661,11 @@ export function creditStats() {
     per_reply: replies.c ? replies.n / replies.c : 0,
     last_balance: last?.balance_after ?? null,
   };
+}
+
+/** Clients à relancer maintenant (relance prévue arrivée à échéance). */
+export function dueReminders(at = now()) {
+  return db.prepare("SELECT id FROM contacts WHERE remind_at > 0 AND remind_at <= ? AND channel != 'test'").all(at).map((r) => r.id);
 }
 
 /** Dernière chanson livrée à ce client (depuis moins de `days` jours). */

@@ -20,6 +20,7 @@ import {
 import {
   channelMode,
   isBusy,
+  isOpen,
   messageOwner,
   proposeLyrics,
   schedule,
@@ -75,7 +76,8 @@ export async function runWatchdog(now = Date.now()) {
        WHERE author = 'client' AND answered = 0 AND created_at > ? GROUP BY contact_id`,
     )
     .all(now - 12 * 60 * MIN);
-  for (const p of pending) {
+  // La nuit (hors heures d'ouverture), les messages attendent : ce n'est pas un problème.
+  for (const p of isOpen(new Date(now)) ? pending : []) {
     const c = getContact(p.contact_id);
     if (skip(c) || c.paused_until > now || isBusy(c.id) || now - p.first < grace) continue;
     const err = String(c.needs_human_reason || "").startsWith("Erreur") ? ` (${c.needs_human_reason})` : "";

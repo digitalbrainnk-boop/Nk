@@ -30,7 +30,7 @@ test("numéros ignorés : avec ou sans indicatif, et @pseudo Telegram", () => {
 
 test("l'agent ne répond jamais à un numéro ignoré (mais garde le message)", async () => {
   const sent = [];
-  db.setSettings({ reply_mode: "auto", debounce_seconds: 0, min_reply_delay_seconds: 0, max_reply_delay_seconds: 0, ignored_contacts: ["22670000001"] });
+  db.setSettings({ reply_mode: "auto", debounce_seconds: 0, open_hour: 0, close_hour: 0, min_reply_delay_seconds: 0, max_reply_delay_seconds: 0, ignored_contacts: ["22670000001"] });
   router.registerAdapter({ channel: "fake2", send: async (c, t) => (sent.push(t), "x") });
   let called = 0;
   router.setReplyGenerator(async () => (called++, { messages: ["Bonjour"], memory: "", needs_human: false, reason: "" }));

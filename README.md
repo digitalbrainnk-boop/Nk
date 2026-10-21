@@ -72,7 +72,11 @@ Dans une conversation, bouton **🎵 Créer la chanson** : l'IA écrit titre, st
 6. Tu vérifies ton compte et **réagis à ce message avec ton emoji** (✅ par défaut, Réglages → Vérification des paiements) — ou bouton « ✅ Paiement vérifié » dans le panneau Commande. Seule **ta** réaction compte : un client qui réagit avec le même emoji ne déclenche rien.
 7. Suno compose et la chanson est **livrée au client automatiquement** (~10 minutes).
 
-Après la livraison : quand le client remercie, l'agent lui demande s'il a aimé ; s'il a aimé, il lui demande gentiment (une seule fois) de laisser un commentaire sous une publication de ta page Facebook et lui envoie le lien (Canaux → Facebook, rempli tout seul quand la page est connectée). S'il n'a pas aimé, l'agent s'excuse et te prévient.
+Après la livraison : quand le client remercie (il est content), l'agent l'invite une seule fois à laisser un commentaire sous ta publication Facebook et lui envoie le lien (Canaux → Facebook). S'il se plaint, l'agent s'excuse et te prévient.
+
+- **Rabais** : l'agent ne promet ni ne refuse rien ; il dit au client qu'il revient vers lui et te prévient sur WhatsApp (ce qu'il demande, pourquoi, le prix annoncé).
+- **« Je reviendrai pour une autre chanson »** : l'agent prévoit une relance (environ une semaine avant l'occasion si la date est connue, sinon 14 jours) et la fait le jour venu ; une note 🔔 apparaît dans la conversation.
+- **Heures d'ouverture** : l'agent répond de 5 h à minuit (Réglages). La nuit, les messages attendent et il y répond à l'ouverture.
 
 Si l'agent ne comprend pas un message, il te laisse aussi un message sur ton WhatsApp (ton numéro réglé dans Réglages, ou ta discussion « moi »).
 

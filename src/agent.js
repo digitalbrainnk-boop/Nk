@@ -22,6 +22,8 @@ const REPLY_SHAPE = `{"messages": ["bulle 1", "bulle 2"], "memory": "mémoire à
 - demo : true seulement si le client hésite et qu'un extrait de chanson pourrait le convaincre
 - actions : actions à lancer avant de répondre (tableau vide sinon), ex : [{"name": "Disponibilités", "input": "samedi"}]
 - song_step : "none", "propose_lyrics" (écrire et envoyer le texte), "revise_lyrics" (changements demandés, détaillés dans revision_notes), "client_validated" (le client approuve le texte) ou "payment_claimed" (le client dit avoir payé / envoie une preuve de paiement)
+- discount_request : vide, sauf si le client demande un rabais / une réduction : ce qu'il demande et pourquoi
+- remind_in_days : 0, sauf si le client dit qu'il reviendra plus tard pour une (autre) chanson : dans combien de jours le relancer ; remind_about : ce qu'il a dit
 - asked_review : true seulement si tu viens d'envoyer au client le lien pour laisser un commentaire sur la page Facebook
 - special_request : vide, sauf si le client demande un service vidéo (vidéo lyrics, clip, montage…) : décris-le en quelques mots`;
 
@@ -63,6 +65,15 @@ const ReplySchema = z.object({
     .nullable()
     .optional()
     .describe("Informations de commande déduites de la conversation (null si le client ne commande rien)."),
+  discount_request: z
+    .string()
+    .optional()
+    .describe("Si le client demande un rabais ou une réduction : ce qu'il demande et la raison qu'il donne ; vide sinon."),
+  remind_in_days: z
+    .number()
+    .optional()
+    .describe("Si le client annonce qu'il reviendra plus tard pour une (autre) chanson : dans combien de jours le relancer ; 0 sinon."),
+  remind_about: z.string().optional().describe("Ce que le client a dit sur sa prochaine commande (occasion, date…)."),
   asked_review: z
     .boolean()
     .optional()
@@ -236,7 +247,7 @@ function formatExamples(examples) {
  * Génère la réponse pour un contact.
  * @returns {Promise<{messages: string[], memory: string, needs_human: boolean, reason: string}>}
  */
-export async function generateReply(contact, { followup = false, onAction } = {}) {
+export async function generateReply(contact, { followup = false, reminder = "", onAction } = {}) {
   const s = getSettings();
   const turns = buildHistory(contact, s);
   const lastClientText = turns
@@ -251,7 +262,9 @@ export async function generateReply(contact, { followup = false, onAction } = {}
   const orderText = order
     ? `étape « ${order.stage} »${order.title ? `, « ${order.title} »` : ""}${order.occasion ? `, ${order.occasion}` : ""}${order.price ? `, prix ${order.price} ${s.currency}` : ""}${order.paid ? `, déjà payé ${order.paid} ${s.currency}` : ""}${order.due_date ? `, pour le ${order.due_date}` : ""}`
     : "aucune commande en cours";
-  const instruction = followup
+  const instruction = reminder
+    ? `Il y a quelque temps, le client avait annoncé qu'il reviendrait : « ${reminder} ». C'est le bon moment : écris UNE relance courte, chaleureuse et naturelle, dans le style de ${s.owner_name || "le propriétaire"}, qui rappelle doucement ce qu'il avait dit (ex : l'occasion qui approche) et propose de lui créer sa chanson. Jamais insistant. S'il a déjà recommandé depuis ou si la relance n'a plus de sens, renvoie messages vide.`
+    : followup
     ? `Le client n'a pas répondu depuis un moment (relance n°${(contact.followups || 0) + 1}). Écris UNE relance courte, chaleureuse et naturelle, dans le style de ${s.owner_name || "le propriétaire"}, adaptée à l'étape de la commande (ex : rappeler l'offre, demander s'il a pu réfléchir, rappeler l'acompte). Jamais insistant. Si une relance n'a pas de sens ici (conversation close, client a dit non), renvoie messages vide.`
     : "Écris maintenant la prochaine réponse au client.";
   const lyricsState = order?.lyrics
@@ -300,7 +313,9 @@ Exemples réels de la façon dont ${s.owner_name || "le propriétaire"} répond 
 ${formatExamples(examples)}
 
 Rappels :
-- Remplis « order » avec ce que tu sais de la commande. Ne marque jamais un paiement comme reçu : si le client dit avoir payé, mets ${s.song_flow ? 'song_step à "payment_claimed"' : "needs_human à true"} pour que ${s.owner_name || "le propriétaire"} vérifie.${demoHint}${songHint}${specialHint}${reviewHint}
+- Remplis « order » avec ce que tu sais de la commande. Ne marque jamais un paiement comme reçu : si le client dit avoir payé, mets ${s.song_flow ? 'song_step à "payment_claimed"' : "needs_human à true"} pour que ${s.owner_name || "le propriétaire"} vérifie.
+- Rabais : si le client demande une réduction ou un prix plus bas, n'accorde ni ne refuse rien toi-même : réponds gentiment que tu vas voir ce qui est possible et que tu reviens vers lui, et mets discount_request = ce qu'il demande et pourquoi (${s.owner_name || "le propriétaire"} est prévenu et viendra voir).
+- Prochaine commande : si le client dit qu'il reviendra plus tard pour une autre chanson (ex : « je prends deux chansons maintenant, je reviendrai pour une autre », « ce sera pour l'anniversaire de ma mère en mars »), réponds naturellement, puis mets remind_in_days = dans combien de jours le relancer (environ une semaine avant l'occasion si tu connais la date, sinon 14) et remind_about = ce qu'il a dit.${demoHint}${songHint}${specialHint}${reviewHint}
 
 ${instruction}`;
 
@@ -357,6 +372,9 @@ function salvageReply(p) {
       : null,
     demo: p.demo === true,
     asked_review: p.asked_review === true || p.asked_review === "true",
+    discount_request: str(p.discount_request) || "",
+    remind_in_days: Math.max(0, Math.min(365, Number(p.remind_in_days) || 0)),
+    remind_about: str(p.remind_about) || "",
     song_step: ["propose_lyrics", "revise_lyrics", "client_validated", "payment_claimed"].includes(p.song_step) ? p.song_step : "none",
     revision_notes: str(p.revision_notes) || "",
     special_request: str(p.special_request) || "",
@@ -601,19 +619,16 @@ export function reviewLink(s = getSettings()) {
   return post ? `https://www.facebook.com/${post.fb_id}` : "";
 }
 
-// Après la livraison : demander s'il a aimé, puis (s'il a aimé) un commentaire sur la page.
+// Après la livraison : quand le client remercie (content), l'inviter à laisser un commentaire.
 function afterDeliveryHint(s, contact, order, owner) {
   if (!s.review_request || order) return "";
   const delivered = lastDeliveredOrder(contact.id);
   if (!delivered) return "";
   const link = reviewLink(s);
   const title = delivered.song_title || delivered.title;
-  if (contact.review_asked_at) {
-    return `\n- La chanson${title ? ` « ${title} »` : ""} a été livrée et tu as déjà demandé au client de laisser un commentaire : ne le redemande pas ; remercie-le simplement s'il en parle.`;
+  const song = `la chanson${title ? ` « ${title} »` : ""}`;
+  if (contact.review_asked_at || !link) {
+    return `\n- ${song[0].toUpperCase() + song.slice(1)} a été livrée${contact.review_asked_at ? " et tu as déjà invité le client à laisser un commentaire : ne le redemande pas" : ""}. S'il remercie, remercie-le simplement ; s'il se plaint, excuse-toi sincèrement, demande ce qu'il aimerait changer et mets needs_human à true.`;
   }
-  return `\n- Après la livraison (la chanson${title ? ` « ${title} »` : ""} a été envoyée au client) : quand le client remercie ou réagit, demande-lui chaleureusement s'il a aimé, si tu ne l'as pas déjà fait dans la conversation.${
-    link
-      ? ` S'il dit qu'il a aimé : remercie-le du fond du cœur, puis demande-lui gentiment, si son temps le permet, de laisser un petit commentaire sous l'une des publications de la page Facebook, en lui donnant ce lien : ${link} — et mets asked_review à true. Une seule fois, sans insister.`
-      : " S'il dit qu'il a aimé, remercie-le du fond du cœur."
-  } S'il n'a pas aimé ou a une remarque : excuse-toi sincèrement, demande ce qu'il aimerait changer et mets needs_human à true pour que ${owner} s'en occupe.`;
+  return `\n- ${song[0].toUpperCase() + song.slice(1)} a été livrée. Si le client remercie ou montre qu'il est content (merci, il a aimé, emojis…) : remercie-le chaleureusement, puis demande-lui, s'il le veut bien et si son temps le permet, d'aller laisser un petit commentaire sous notre publication Facebook (ça nous aide vraiment), avec ce lien : ${link} — et mets asked_review à true. Une seule fois, sans insister. Ne lui demande pas « est-ce que tu as aimé ? ». S'il se plaint ou a une remarque : excuse-toi sincèrement, demande ce qu'il aimerait changer et mets needs_human à true pour que ${owner} s'en occupe.`;
 }

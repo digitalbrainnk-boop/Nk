@@ -43,6 +43,8 @@ db.setSettings({
   kie_chat_model: "gpt-5-2",
   reply_mode: "auto",
   debounce_seconds: 0,
+  open_hour: 0, // ouvert 24 h/24 pendant les tests
+  close_hour: 0,
   min_reply_delay_seconds: 0,
   max_reply_delay_seconds: 0,
   typing_chars_per_second: 1000,

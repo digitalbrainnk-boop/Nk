@@ -5,6 +5,7 @@ import {
   activeOrder,
   addExamples,
   dueLyrics,
+  dueReminders,
   findContactByOwnerNote,
   isIgnored,
   rememberOwnerNote,
@@ -176,6 +177,23 @@ function cancel(contactId) {
   timers.delete(contactId);
 }
 
+/** L'agent répond-il à cette heure ? (de open_hour à close_hour ; 0 = minuit) */
+export function isOpen(date = new Date()) {
+  const s = getSettings();
+  const open = Number(s.open_hour) || 0;
+  const close = Number(s.close_hour) || 24;
+  if (open === close % 24) return true; // ouvert 24 h/24
+  const h = date.getHours();
+  return open < close ? h >= open && h < close : h >= open || h < close;
+}
+function msUntilOpen(date = new Date()) {
+  const s = getSettings();
+  const next = new Date(date);
+  next.setHours(Number(s.open_hour) || 0, 0, 0, 0);
+  if (next <= date) next.setDate(next.getDate() + 1);
+  return next - date;
+}
+
 function rand(min, max) {
   return min + Math.random() * Math.max(0, max - min);
 }
@@ -206,6 +224,11 @@ async function runAgent(contactId) {
   }
   const pending = unansweredClientMessages(contactId);
   if (!pending.length) return;
+  // Hors des heures d'ouverture : on répondra à l'ouverture (avec un petit décalage, comme un humain).
+  if (contact.channel !== "test" && !isOpen()) {
+    schedule(contactId, Math.round(msUntilOpen() / 1000 + rand(1, 15) * 60));
+    return;
+  }
   const lastPendingId = pending[pending.length - 1].id;
 
   const s = getSettings();
@@ -242,6 +265,8 @@ async function runAgent(contactId) {
   await applyReply(contact, reply, mode, { clientSentVoice: lastPending.kind === "audio" });
   if (reply.special_request) await handleSpecialRequest(contactId, reply.special_request);
   if (reply.asked_review && reply.messages.length) updateContact(contactId, { review_asked_at: Date.now() });
+  if (reply.discount_request) await handleDiscountRequest(contactId, reply.discount_request);
+  if (reply.remind_in_days > 0) planReminder(contactId, reply.remind_in_days, reply.remind_about);
   if (reply.song_step && reply.song_step !== "none") {
     await handleSongStep(contactId, reply, mode).catch((e) => {
       console.error("Chanson :", e.message);
@@ -298,7 +323,7 @@ async function applyReply(contact, reply, mode, { clientSentVoice = false, follo
     console.error("Commande :", e.message);
   }
   // (Un paiement annoncé a son propre message pour toi, avec la capture.)
-  if (reply.needs_human && reply.song_step !== "payment_claimed" && !reply.special_request) notifyOwner(contact, reply.reason).catch(() => {});
+  if (reply.needs_human && reply.song_step !== "payment_claimed" && !reply.special_request && !reply.discount_request) notifyOwner(contact, reply.reason).catch(() => {});
   if (reply.demo) maybeAutoDemo(contactId).catch((e) => console.error("Démo :", e.message));
   if (!reply.messages.length) {
     // Silence voulu (ex. « ok merci ») ou problème : dans ce cas on l'affiche.
@@ -631,6 +656,57 @@ export async function runLyricsQueue(at = Date.now()) {
   return n;
 }
 
+/** Le client demande un rabais : TU décides, l'agent te prévient. */
+async function handleDiscountRequest(contactId, what) {
+  const reason = `💸 Demande de rabais : ${String(what).slice(0, 300)}`;
+  updateContact(contactId, { needs_human: 1, needs_human_reason: reason });
+  emit("contact", { contact_id: contactId });
+  const order = activeOrder(contactId);
+  const s = getSettings();
+  const price = order?.price ? `\nPrix annoncé : ${order.price} ${s.currency}` : "";
+  await notifyOwner(getContact(contactId), `${reason}${price}\nL'agent lui a dit qu'il revient vers lui : réponds-lui toi-même.`, { kind: "discount", plain: true }).catch(() => {});
+}
+
+/** « Je reviendrai pour une autre chanson » : relance prévue dans N jours (vers 10 h). */
+function planReminder(contactId, days, about) {
+  const when = new Date(Date.now() + days * 24 * 3600_000);
+  when.setHours(10, Math.floor(rand(0, 50)), 0, 0);
+  updateContact(contactId, { remind_at: when.getTime(), remind_note: String(about || "").slice(0, 300) });
+  const note = addMessage(contactId, {
+    author: "system",
+    kind: "note",
+    text: `🔔 Relance prévue le ${when.toLocaleDateString("fr-FR")}${about ? ` : ${about}` : ""}`,
+    status: "note",
+  });
+  emit("message", { contact_id: contactId, message: note });
+}
+
+/** Relances prévues arrivées à échéance (pendant les heures d'ouverture). */
+export async function runReminders(now = Date.now()) {
+  if (!isOpen(new Date(now))) return 0;
+  let n = 0;
+  for (const id of dueReminders(now)) {
+    const contact = getContact(id);
+    const note = contact.remind_note || "il reviendrait pour une autre chanson";
+    updateContact(id, { remind_at: 0 }); // une seule fois, même en cas d'erreur
+    const mode = channelMode(contact.channel);
+    if (mode === "off" || isIgnored(contact) || contact.paused_until > now || busy.has(id)) continue;
+    busy.add(id);
+    try {
+      const reply = await withCredits({ contactId: id, kind: "reply" }, () =>
+        replyGenerator(contact, { followup: true, reminder: note, onAction: (r) => noteAction(id, r) }),
+      );
+      if (reply.messages.length) n++;
+      await applyReply(getContact(id), reply, mode, { followup: true });
+    } catch (e) {
+      console.error(`Relance prévue (contact ${id}) :`, friendlyError(e));
+    } finally {
+      busy.delete(id);
+    }
+  }
+  return n;
+}
+
 /** Chanson + vidéo lyrics, montage… : c'est TOI qui t'en occupes. */
 async function handleSpecialRequest(contactId, what) {
   let order = activeOrder(contactId) || saveOrder({ contact_id: contactId, stage: "nouveau" });
@@ -767,7 +843,7 @@ async function maybeAutoDemo(contactId) {
  */
 export async function runFollowups(now = Date.now()) {
   const s = getSettings();
-  if (!s.followup_enabled) return 0;
+  if (!s.followup_enabled || !isOpen(new Date(now))) return 0;
   const since = now - s.followup_hours * 3600_000;
   const rows = db
     .prepare(
