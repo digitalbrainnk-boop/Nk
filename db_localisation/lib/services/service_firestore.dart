@@ -43,6 +43,31 @@ class ServiceFirestore {
     return ProfilUtilisateur.depuisFirestore(uid, doc.data()!);
   }
 
+  /// Lit les adresses e-mail de récupération du compte (0 à 3).
+  /// Ce sont des adresses de CONFIANCE choisies par l'utilisateur (la sienne,
+  /// celle d'un parent, d'un ami) pour l'aider à récupérer son accès en cas de
+  /// perte. Rien n'est caché : elles sont visibles et modifiables dans l'app.
+  Future<List<String>> lireEmailsRecuperation(String uid) async {
+    final doc = await _refUser(uid).get();
+    final profile = doc.data()?['profile'] as Map<String, dynamic>?;
+    final liste = profile?['recoveryEmails'] as List<dynamic>?;
+    return liste?.map((e) => e.toString()).toList() ?? <String>[];
+  }
+
+  /// Enregistre les adresses de récupération (maximum 3). Les valeurs sont
+  /// nettoyées, mises en minuscules et dédoublonnées ; les vides sont retirées.
+  Future<void> majEmailsRecuperation(String uid, List<String> emails) async {
+    final nettoyes = emails
+        .map((e) => e.trim().toLowerCase())
+        .where((e) => e.isNotEmpty)
+        .toSet()
+        .take(3)
+        .toList();
+    await _refUser(uid).set({
+      'profile': {'recoveryEmails': nettoyes},
+    }, SetOptions(merge: true));
+  }
+
   /// S'assure qu'un profil existe, sans écraser un profil déjà présent.
   /// Utile après une connexion Google : aucun formulaire d'inscription n'a été
   /// rempli, donc on crée un profil minimal (nom = nom Google / e-mail).

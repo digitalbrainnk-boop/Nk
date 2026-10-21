@@ -39,10 +39,19 @@ class _EcranProtectionState extends State<EcranProtection> {
   // Section C — état coché des étapes (clé -> bool), mémorisé localement.
   final Map<String, bool> _etapesCochees = {};
 
+  // Section « Récupération du compte » — jusqu'à 3 adresses de confiance.
+  final _emails = [
+    TextEditingController(),
+    TextEditingController(),
+    TextEditingController(),
+  ];
+  bool _enregistrementEmails = false;
+
   @override
   void initState() {
     super.initState();
     _chargerEtapes();
+    _chargerEmails();
   }
 
   @override
@@ -51,7 +60,44 @@ class _EcranProtectionState extends State<EcranProtection> {
     _serie.dispose();
     _contact.dispose();
     _note.dispose();
+    for (final c in _emails) {
+      c.dispose();
+    }
     super.dispose();
+  }
+
+  // --- Récupération du compte : chargement / enregistrement ---
+  Future<void> _chargerEmails() async {
+    final liste = await _firestore.lireEmailsRecuperation(widget.uid);
+    if (!mounted) return;
+    setState(() {
+      for (var i = 0; i < _emails.length; i++) {
+        _emails[i].text = i < liste.length ? liste[i] : '';
+      }
+    });
+  }
+
+  bool _emailValide(String e) =>
+      RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(e);
+
+  Future<void> _enregistrerEmails() async {
+    // On ne garde que les champs remplis ; chacun doit être un e-mail valide.
+    final saisies = _emails.map((c) => c.text.trim()).toList();
+    final nonVides = saisies.where((e) => e.isNotEmpty).toList();
+    final invalides = nonVides.where((e) => !_emailValide(e)).toList();
+    if (invalides.isNotEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Adresse invalide : ${invalides.first}')),
+      );
+      return;
+    }
+    setState(() => _enregistrementEmails = true);
+    await _firestore.majEmailsRecuperation(widget.uid, nonVides);
+    if (!mounted) return;
+    setState(() => _enregistrementEmails = false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Adresses de récupération enregistrées.')),
+    );
   }
 
   // --- Section C : persistance locale de la check-list ---
@@ -139,6 +185,10 @@ class _EcranProtectionState extends State<EcranProtection> {
           ),
           const SizedBox(height: 16),
 
+          _titreSection('Récupération du compte (optionnel)'),
+          _sectionEmailsRecuperation(),
+
+          const SizedBox(height: 24),
           _titreSection('1. Activer les protections intégrées'),
           ..._sectionProtectionsNatives(),
 
@@ -160,6 +210,57 @@ class _EcranProtectionState extends State<EcranProtection> {
             style:
                 const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
       );
+
+  // --- Section « Récupération du compte » ---
+  Widget _sectionEmailsRecuperation() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text(
+              'Adresses de confiance qui pourront aider à récupérer votre accès '
+              'en cas de perte (la vôtre, celle d\'un parent, d\'un ami). '
+              'Facultatif : laissez vide, ou remplissez 1 à 3 adresses.',
+              style: TextStyle(fontSize: 13),
+            ),
+            const SizedBox(height: 8),
+            for (var i = 0; i < _emails.length; i++)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: TextField(
+                  controller: _emails[i],
+                  keyboardType: TextInputType.emailAddress,
+                  decoration: InputDecoration(
+                    labelText: 'Adresse ${i + 1}',
+                    hintText: i == 0 ? 'votre e-mail' : 'e-mail de confiance',
+                  ),
+                ),
+              ),
+            const SizedBox(height: 8),
+            FilledButton.icon(
+              onPressed: _enregistrementEmails ? null : _enregistrerEmails,
+              icon: _enregistrementEmails
+                  ? const SizedBox(
+                      height: 18,
+                      width: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.save),
+              label: const Text('Enregistrer les adresses'),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Note : aujourd\'hui, la réinitialisation Firebase est envoyée à '
+              'l\'adresse du compte. L\'envoi automatique vers ces adresses de '
+              'confiance sera activé avec le serveur (Cloud Functions, étape 4).',
+              style: TextStyle(fontSize: 11, color: Colors.grey),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   // --- Section A ---
   List<Widget> _sectionProtectionsNatives() {
