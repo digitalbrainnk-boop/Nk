@@ -50,7 +50,7 @@ dependencies:
   latlong2: ^0.10.1
 
   # --- Commandes à distance (étape 4) ---
-  flutter_ringtone_player: ^4.0.0+4   # Faire sonner (alarme système, fort).
+  audioplayers: ^6.8.1   # Faire sonner (son d'alarme embarqué, canal alarme).
 
 dev_dependencies:
   flutter_lints: ^4.0.0
@@ -59,3 +59,5 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/alarme.wav   # Son d'alarme joué par « Faire sonner ».

@@ -8,8 +8,8 @@
 
 import 'dart:async';
 
+import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter_ringtone_player/flutter_ringtone_player.dart';
 
 import '../core/constantes.dart';
 import '../modeles/commande.dart';
@@ -20,6 +20,7 @@ class ServiceCommandes {
   static final ServiceCommandes instance = ServiceCommandes._();
 
   final ServiceFirestore _firestore = ServiceFirestore();
+  final AudioPlayer _lecteur = AudioPlayer();
   StreamSubscription<List<Commande>>? _sub;
   String? _uid;
   String? _deviceId;
@@ -82,22 +83,33 @@ class ServiceCommandes {
 
   Future<void> _jouerAlarme() async {
     try {
-      // Joue la sonnerie d'ALARME du système : forte, même en mode silencieux.
-      await FlutterRingtonePlayer().playAlarm(
-        looping: true,
-        asAlarm: true,
-        volume: 1.0,
+      // Canal ALARME d'Android : fort, et sonne même en mode silencieux.
+      await _lecteur.setAudioContext(
+        AudioContext(
+          android: const AudioContextAndroid(
+            contentType: AndroidContentType.sonification,
+            usageType: AndroidUsageType.alarm,
+            audioFocus: AndroidAudioFocus.gain,
+          ),
+          iOS: AudioContextIOS(
+            category: AVAudioSessionCategory.playback,
+            options: const {AVAudioSessionOptions.mixWithOthers},
+          ),
+        ),
       );
+      await _lecteur.setReleaseMode(ReleaseMode.loop); // En boucle.
+      await _lecteur.setVolume(1.0);
+      await _lecteur.play(AssetSource('alarme.wav'));
       alarmeActive.value = true;
     } catch (_) {
-      // Plateforme sans sonnerie (web/desktop) : on ignore proprement.
+      // Plateforme sans audio (ou erreur) : on ignore proprement.
     }
   }
 
   /// Arrête l'alarme (bouton local sur l'appareil protégé).
   Future<void> arreterAlarme() async {
     try {
-      await FlutterRingtonePlayer().stop();
+      await _lecteur.stop();
     } catch (_) {}
     alarmeActive.value = false;
   }
