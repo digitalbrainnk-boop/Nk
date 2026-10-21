@@ -16,6 +16,10 @@ class ClesStockage {
 
   /// Identifiant du document "appareil" enregistré pour cet appareil.
   static const String deviceIdEnregistre = 'db_device_id';
+
+  /// L'utilisateur a vu et accepté l'avertissement de localisation (exigé
+  /// par Google Play avant de demander la permission de localisation).
+  static const String divulgationLocalisation = 'db_divulgation_localisation';
 }
 
 /// Rôles possibles d'un appareil dans l'application.

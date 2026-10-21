@@ -29,6 +29,17 @@ class ServiceConsentement {
     await prefs.setString(ClesStockage.roleAppareil, role);
   }
 
+  /// Avertissement de localisation vu et accepté (divulgation Google Play).
+  Future<bool> divulgationLocalisationAcceptee() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(ClesStockage.divulgationLocalisation) ?? false;
+  }
+
+  Future<void> enregistrerDivulgationLocalisation(bool accepte) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(ClesStockage.divulgationLocalisation, accepte);
+  }
+
   Future<String?> deviceIdEnregistre() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString(ClesStockage.deviceIdEnregistre);

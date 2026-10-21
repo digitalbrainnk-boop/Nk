@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 
 import '../../services/service_consentement.dart';
+import '../legal/ecran_politique.dart';
 import 'texte_cgu.dart';
 
 class EcranConsentement extends StatefulWidget {
@@ -46,6 +47,15 @@ class _EcranConsentementState extends State<EcranConsentement> {
                   title: const Text(
                       'Je protège MON propre appareil et j\'accepte les conditions.'),
                   controlAffinity: ListTileControlAffinity.leading,
+                ),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton(
+                    onPressed: () => Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const EcranPolitique()),
+                    ),
+                    child: const Text('Lire la politique de confidentialité'),
+                  ),
                 ),
                 Row(
                   children: [

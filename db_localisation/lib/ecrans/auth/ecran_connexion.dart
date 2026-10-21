@@ -6,6 +6,7 @@ import '../../modeles/utilisateur.dart';
 import '../../services/service_auth.dart';
 import '../../services/service_firestore.dart';
 import '../../widgets/champ_saisie.dart';
+import '../legal/ecran_politique.dart';
 import 'ecran_inscription.dart';
 
 class EcranConnexion extends StatefulWidget {
@@ -169,6 +170,12 @@ class _EcranConnexionState extends State<EcranConnexion> {
                                   builder: (_) => const EcranInscription()),
                             ),
                     child: const Text('Créer un compte'),
+                  ),
+                  TextButton(
+                    onPressed: () => Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const EcranPolitique()),
+                    ),
+                    child: const Text('Politique de confidentialité'),
                   ),
                 ],
               ),

@@ -13,6 +13,7 @@ import '../../modeles/position.dart';
 import '../../services/service_consentement.dart';
 import '../../services/service_installation.dart';
 import '../../services/service_suivi.dart';
+import '../legal/textes_legaux.dart';
 
 class EcranAgent extends StatefulWidget {
   final String uid;
@@ -49,9 +50,39 @@ class _EcranAgentState extends State<EcranAgent> {
     if (_suivi.actif.value) {
       await _suivi.arreter(uid: widget.uid, deviceId: deviceId);
     } else {
+      // Avertissement de localisation (divulgation visible exigée par Google
+      // Play) : montré UNE FOIS, juste avant la première demande de permission.
+      if (!await _consentement.divulgationLocalisationAcceptee()) {
+        if (!mounted) return;
+        final accepte = await _afficherDivulgation();
+        if (accepte != true) return; // Refus : on ne démarre pas le suivi.
+        await _consentement.enregistrerDivulgationLocalisation(true);
+      }
       await _suivi.demarrer(uid: widget.uid, deviceId: deviceId);
     }
     if (mounted) setState(() {});
+  }
+
+  /// Boîte de dialogue d'avertissement de localisation, avec option de refus.
+  Future<bool?> _afficherDivulgation() {
+    return showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Suivi de la localisation'),
+        content: const SingleChildScrollView(
+            child: Text(kDivulgationLocalisation)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Refuser'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('J\'accepte'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
