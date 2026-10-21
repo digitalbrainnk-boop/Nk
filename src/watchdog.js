@@ -278,7 +278,8 @@ async function maybeDailyReport(at) {
   if (!s.daily_report_enabled) return;
   const d = new Date(at);
   const today = dayKey(d);
-  if (s.last_report_day === today || d.getHours() < (Number(s.daily_report_hour) || 21)) return;
+  const hour = Number.isFinite(Number(s.daily_report_hour)) && s.daily_report_hour !== "" ? Number(s.daily_report_hour) : 21;
+  if (s.last_report_day === today || d.getHours() < hour) return;
   const ok = await messageOwner(dailyReport(today).text).catch(() => null);
   if (ok) setSettings({ last_report_day: today });
 }
