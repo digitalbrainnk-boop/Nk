@@ -115,7 +115,8 @@ Voir `docs/02-cle-google-maps.md` et `docs/03-builder-et-tester.md`.
 2. 🔄 **Suivi GPS** (en cours) : position haute précision + service de premier
    plan (notification discrète) + envoi périodique → Firestore + état (batterie,
    en ligne). Reste pour l'étape 2bis : relance au boot, exclusion batterie.
-3. ⏳ **Console** : carte Google Maps + dernière position + historique + état.
+3. ✅ **Console** : carte (OpenStreetMap, sans clé) + dernière position +
+   cercle de précision « ±X m » + historique + état.
 4. ⏳ **Commandes à distance** : localiser / alarme / verrouiller (FCM + Cloud
    Functions + Device Admin).
 5. ⏳ **Mode SMS** sans data (code secret) + **alerte changement de SIM**.
@@ -151,3 +152,12 @@ Voir `docs/02-cle-google-maps.md` et `docs/03-builder-et-tester.md`.
 - Reste à l'étape 2bis : relance au boot, exclusion de l'optimisation batterie,
   et le suivi en isolat dédié (survie à la fermeture de l'app) à tester sur
   appareil.
+
+### Étape 3 — ce qui est livré
+- Écran carte (`lib/ecrans/console/ecran_carte_appareil.dart`) avec
+  **OpenStreetMap** (via `flutter_map`, **sans clé API**) : marqueur de la
+  dernière position, **cercle de précision « ±X m »** (rayon réel, honnête),
+  tracé de l'historique, bouton recentrer.
+- Panneau d'état temps réel : dernière connexion, batterie (+ charge),
+  en ligne / hors ligne.
+- La console liste les appareils ; un appui ouvre la carte de l'appareil.

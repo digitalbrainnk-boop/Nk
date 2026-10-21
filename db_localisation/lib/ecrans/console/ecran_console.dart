@@ -1,10 +1,10 @@
-// Écran CONSOLE — squelette d'étape 1.
-// La carte Google Maps, l'historique et l'état arrivent à l'étape 3 ;
-// les boutons de commande (localiser/alarme/verrouiller) à l'étape 4.
+// Écran CONSOLE — liste des appareils à suivre (étape 3).
+// Chaque appareil ouvre sa CARTE (dernière position + historique + état).
 import 'package:flutter/material.dart';
 
 import '../../modeles/appareil.dart';
 import '../../services/service_firestore.dart';
+import 'ecran_carte_appareil.dart';
 
 class EcranConsole extends StatelessWidget {
   final String uid;
@@ -32,23 +32,27 @@ class EcranConsole extends StatelessWidget {
               ),
             );
           }
-          return ListView(
-            children: [
-              const Padding(
-                padding: EdgeInsets.all(16),
-                child: Text(
-                  'À venir (étape 3-4) : carte avec dernière position et '
-                  'historique, état (dernière connexion, batterie, en/hors '
-                  'ligne), et boutons localiser / alarme / verrouiller.',
+          return ListView.separated(
+            itemCount: appareils.length,
+            separatorBuilder: (_, __) => const Divider(height: 1),
+            itemBuilder: (context, i) {
+              final a = appareils[i];
+              return ListTile(
+                leading: const Icon(Icons.location_on),
+                title: Text(a.nom),
+                subtitle: Text('${a.plateforme} • v${a.versionApp}'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => EcranCarteAppareil(
+                      uid: uid,
+                      deviceId: a.deviceId,
+                      nomAppareil: a.nom,
+                    ),
+                  ),
                 ),
-              ),
-              for (final a in appareils)
-                ListTile(
-                  leading: const Icon(Icons.location_searching),
-                  title: Text(a.nom),
-                  subtitle: Text('${a.plateforme} • v${a.versionApp}'),
-                ),
-            ],
+              );
+            },
           );
         },
       ),
