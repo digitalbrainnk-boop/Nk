@@ -9,6 +9,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../modeles/appareil.dart';
 import '../modeles/commande.dart';
 import '../modeles/etat_appareil.dart';
+import '../modeles/infos_recuperation.dart';
 import '../modeles/position.dart';
 import '../modeles/utilisateur.dart';
 
@@ -190,5 +191,31 @@ class ServiceFirestore {
         .limit(50)
         .snapshots()
         .map((snap) => snap.docs.map(Commande.depuisDoc).toList());
+  }
+
+  // ----------------------------------------------------------------
+  // INFOS DE RÉCUPÉRATION (IMEI, série, contact) — meta/recovery
+  // ----------------------------------------------------------------
+
+  DocumentReference<Map<String, dynamic>> _refRecuperation(
+          String uid, String deviceId) =>
+      _refAppareils(uid).doc(deviceId).collection('meta').doc('recovery');
+
+  Future<InfosRecuperation> lireInfosRecuperation({
+    required String uid,
+    required String deviceId,
+  }) async {
+    final doc = await _refRecuperation(uid, deviceId).get();
+    if (!doc.exists) return const InfosRecuperation();
+    return InfosRecuperation.depuisDoc(doc);
+  }
+
+  Future<void> majInfosRecuperation({
+    required String uid,
+    required String deviceId,
+    required InfosRecuperation infos,
+  }) async {
+    await _refRecuperation(uid, deviceId)
+        .set(infos.versFirestore(), SetOptions(merge: true));
   }
 }

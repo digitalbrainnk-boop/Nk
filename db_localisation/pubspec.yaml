@@ -37,6 +37,9 @@ dependencies:
   # --- Confort UI ---
   intl: ^0.19.0                # Formatage des dates/heures.
 
+  # --- Ouverture de liens externes (réglages natifs, iCloud, Find My Device) ---
+  url_launcher: ^6.3.1
+
 dev_dependencies:
   flutter_lints: ^4.0.0
   flutter_test:

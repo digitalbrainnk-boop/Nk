@@ -13,6 +13,7 @@ import '../../services/service_installation.dart';
 import '../agent/ecran_agent.dart';
 import '../console/ecran_console.dart';
 import '../consentement/ecran_consentement.dart';
+import '../protection/ecran_protection.dart';
 
 class EcranAccueil extends StatefulWidget {
   final String uid;
@@ -97,6 +98,12 @@ class _EcranAccueilState extends State<EcranAccueil> {
     );
   }
 
+  void _ouvrirProtection() {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => EcranProtection(uid: widget.uid)),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -135,6 +142,19 @@ class _EcranAccueilState extends State<EcranAccueil> {
                   ),
                 ),
               ],
+            ),
+          ),
+
+          // Accès à l'écran de renforcement (protections natives anti-reset,
+          // infos de récupération, check-list en cas de vol).
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            child: OutlinedButton.icon(
+              onPressed: _ouvrirProtection,
+              icon: const Icon(Icons.verified_user),
+              label: const Text('Renforcer la protection (anti-reset, vol)'),
+              style:
+                  OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(44)),
             ),
           ),
 

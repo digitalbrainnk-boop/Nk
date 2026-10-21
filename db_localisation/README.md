@@ -66,7 +66,8 @@ db_localisation/
 │     ├─ consentement/          # écran + texte CGU
 │     ├─ accueil/               # liste appareils + choix rôle
 │     ├─ console/               # (étape 3-4) carte, commandes
-│     └─ agent/                 # (étape 2,4,5) suivi, SMS, Device Admin
+│     ├─ agent/                 # (étape 2,4,5) suivi, SMS, Device Admin
+│     └─ protection/            # renforcer la protection (anti-reset, vol)
 ├─ android/app/src/main/AndroidManifest.xml  # permissions + receivers
 ├─ web/index.html               # emplacement clé Maps JS
 ├─ firestore.rules              # cloisonnement par utilisateur
@@ -129,4 +130,12 @@ Voir `docs/02-cle-google-maps.md` et `docs/03-builder-et-tester.md`.
 - Liste temps réel des appareils (renommer / retirer).
 - Écran de **consentement + CGU** exigé avant d'activer le rôle agent.
 - Écrans console et agent en squelette, avec l'avertissement iOS honnête.
+- Écran **« Renforcer la protection »** : (1) activer les protections natives
+  anti-reset selon la plateforme (Localiser/Verrouillage d'activation sur
+  iPhone, Find My Device + FRP sur Android), (2) enregistrer les infos de
+  récupération par appareil (IMEI, numéro de série, contact) dans Firestore,
+  (3) check-list « en cas de vol ». Rappel honnête : l'app ne survit pas à une
+  réinitialisation/un flash — seules les protections intégrées et le blocage
+  IMEI côté opérateur le font.
 - `AndroidManifest.xml` complet, `firestore.rules`, et les 3 guides.
+- Tests unitaires de la logique pure (`test/logique_test.dart`).

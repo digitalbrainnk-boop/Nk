@@ -130,11 +130,17 @@
 
     </application>
 
-    <!-- Nécessaire pour envoyer un SMS via une Intent sur Android 11+. -->
+    <!-- Visibilité des Intents sur Android 11+ (package visibility). -->
     <queries>
+        <!-- Envoyer un SMS via une Intent (mode SMS, étape 5). -->
         <intent>
             <action android:name="android.intent.action.SENDTO" />
             <data android:scheme="smsto" />
+        </intent>
+        <!-- Ouvrir des liens https (url_launcher : iCloud, Find My Device...). -->
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" />
         </intent>
     </queries>
 
