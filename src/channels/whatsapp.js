@@ -79,27 +79,44 @@ function ownerJid() {
   const d = String(getSettings().owner_whatsapp || "").replace(/\D/g, "");
   return d ? `${d}@s.whatsapp.net` : bare(sock?.user?.id);
 }
-function isOwnerChat(jid) {
+// WhatsApp désigne souvent une discussion par un identifiant « @lid » plutôt que par le
+// numéro : on retrouve celui de ton numéro « propriétaire » (gardé en mémoire).
+let ownerLid = { pn: "", lid: "" };
+async function refreshOwnerLid() {
+  const pn = getSettings().owner_whatsapp ? ownerJid() : "";
+  if (!pn || ownerLid.pn === pn) return;
+  const lid = await sock?.signalRepository?.lidMapping?.getLIDForPN?.(pn).catch(() => null);
+  ownerLid = { pn, lid: lid ? bare(lid) : "" };
+}
+/** Le numéro « propriétaire » réglé dans les Réglages (pas ton propre numéro). */
+function isOwnerNumber(...jids) {
+  if (!getSettings().owner_whatsapp) return false;
+  const pn = ownerJid();
+  return jids.some((j) => j && (bare(j) === pn || (ownerLid.pn === pn && ownerLid.lid && bare(j) === ownerLid.lid)));
+}
+function isOwnerChat(jid, alt) {
   const j = bare(jid);
-  return !!j && (j === bare(sock?.user?.id) || j === bare(sock?.user?.lid) || j === ownerJid());
+  if (!j) return false;
+  return j === bare(sock?.user?.id) || j === bare(sock?.user?.lid) || j === ownerJid() || isOwnerNumber(jid, alt);
 }
 
 const seenReactions = new Set();
-function onReaction({ chatJid, targetId, emoji, fromMe, reactionId }) {
+function onReaction({ chatJid, chatAlt, targetId, emoji, fromMe, reactionId }) {
+  // Seule TA réaction compte (depuis ton WhatsApp, ou depuis ton numéro « propriétaire »
+  // dans la discussion où l'agent te prévient) ; celle d'un client est toujours ignorée.
+  const fromOwnerNumber = isOwnerNumber(chatJid, chatAlt);
+  if (!(fromMe || fromOwnerNumber) || !emoji) return;
   const k = reactionId || `${chatJid}|${targetId}|${emoji}`;
   if (seenReactions.has(k)) return;
   seenReactions.add(k);
   if (seenReactions.size > 500) seenReactions.clear();
-  // Seule TA réaction compte (depuis ton WhatsApp, ou depuis ton numéro « propriétaire »
-  // dans la discussion où l'agent te prévient) ; celle d'un client est toujours ignorée.
-  const fromOwnerNumber = !!getSettings().owner_whatsapp && bare(chatJid) === ownerJid();
-  if (!(fromMe || fromOwnerNumber) || !emoji) return;
-  handleOwnerReaction({ channel: "whatsapp", chatJid, targetId, emoji, ownerChat: isOwnerChat(chatJid) }).catch((e) =>
+  handleOwnerReaction({ channel: "whatsapp", chatJid, targetId, emoji, ownerChat: isOwnerChat(chatJid, chatAlt) }).catch((e) =>
     console.error("Confirmation du paiement :", e.message),
   );
 }
 
 async function onUpsert({ messages, type }) {
+  await refreshOwnerLid();
   for (const msg of messages) {
     try {
       const jid = msg.key.remoteJid;
@@ -107,10 +124,10 @@ async function onUpsert({ messages, type }) {
       const content = normalizeMessageContent(msg.message);
       if (content?.reactionMessage) {
         const r = content.reactionMessage;
-        onReaction({ chatJid: jid, targetId: r.key?.id, emoji: r.text, fromMe: !!msg.key.fromMe, reactionId: msg.key.id });
+        onReaction({ chatJid: jid, chatAlt: msg.key.remoteJidAlt, targetId: r.key?.id, emoji: r.text, fromMe: !!msg.key.fromMe, reactionId: msg.key.id });
         continue;
       }
-      if (isOwnerChat(jid)) continue; // tes notes à toi-même et les messages de l'agent pour toi
+      if (isOwnerChat(jid, msg.key.remoteJidAlt)) continue; // tes notes à toi-même et les messages de l'agent pour toi
       const data = extract(msg);
       if (!data) continue;
       const ts = Number(msg.messageTimestamp || 0) * 1000 || Date.now();
@@ -265,11 +282,13 @@ export async function startWhatsApp({ phone } = {}) {
     }
   });
   me.ev.on("messages.upsert", (e) => current() && onUpsert(e));
-  me.ev.on("messages.reaction", (list) => {
+  me.ev.on("messages.reaction", async (list) => {
     if (!current()) return;
+    await refreshOwnerLid();
     for (const r of list || []) {
       onReaction({
         chatJid: r.key?.remoteJid,
+        chatAlt: r.key?.remoteJidAlt,
         targetId: r.key?.id,
         emoji: r.reaction?.text,
         fromMe: !!r.reaction?.key?.fromMe,

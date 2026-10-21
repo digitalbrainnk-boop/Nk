@@ -131,3 +131,86 @@ test("5. bilan du jour : chansons livrées et demandes spéciales", async () => 
   assert.equal(owner.filter((t) => /Bilan du/.test(t)).length, 1); // une seule fois par jour
   assert.ok(owner.length > before);
 });
+
+// ---------- Corrections après relecture ----------
+let generations = 0;
+const realFetch = globalThis.fetch;
+globalThis.fetch = async (url, init) => {
+  if (String(url).endsWith("/api/v1/generate")) generations++;
+  return realFetch(url, init);
+};
+
+test("6. envoi raté (WhatsApp coupé) : la chanson n'est PAS recomposée, seul l'envoi est retenté", async () => {
+  let down = true;
+  router.registerAdapter({
+    channel: "fake6",
+    send: async (c, t) => (sent.push({ to: c.external_id, t }), `m${sent.length}`),
+    sendAudio: async (c) => {
+      if (down) throw new Error("WhatsApp n'est pas connecté");
+      audios.push(c.external_id);
+      return "ok";
+    },
+  });
+  db.setSettings({ song_auto_send: true });
+  const c = db.upsertContact("fake6", "f1", "Issa");
+  db.saveOrder({ contact_id: c.id, stage: "acompte", price: 5000, paid: 5000, lyrics: "[Chorus] Issa", lyrics_status: "validated" });
+  const before = generations;
+  await router.startComposition(c.id);
+  await waitFor(() => db.activeOrder(c.id)?.lyrics_status === "composed");
+  await new Promise((r) => setTimeout(r, 50));
+  db.db.prepare("UPDATE orders SET updated_at = ? WHERE contact_id = ?").run(Date.now() - 10 * MIN, c.id);
+  for (let i = 0; i < 3; i++) await runWatchdog();
+  assert.equal(generations, before + 1); // une seule composition
+  assert.ok(owner.some((t) => /pas pu être envoyée/.test(t)));
+  down = false;
+  db.db.prepare("UPDATE incidents SET attempts = 4 WHERE key LIKE 'deliver:%'").run(); // prochain essai = tour n°5
+  await runWatchdog();
+  await waitFor(() => audios.includes("f1"));
+  assert.equal(generations, before + 1);
+});
+
+test("7. paiement confirmé sans prix noté, AVANT la validation du texte : la chanson part quand il valide", async () => {
+  db.setSettings({ compose_requires_payment: true });
+  const c = db.upsertContact("fake4", "g1", "Rasmané");
+  db.saveOrder({ contact_id: c.id, stage: "devis", lyrics: "[Chorus] Rasmané", lyrics_status: "proposed", lyrics_version: 1 });
+  await router.confirmPayment(c.id, { by: "test" });
+  assert.equal(db.activeOrder(c.id).lyrics_status, "proposed"); // pas encore validé : rien n'est composé
+  const before = generations;
+  router.setReplyGenerator(async () => reply({ messages: ["Top !"], song_step: "client_validated" }));
+  await router.handleIncoming({ channel: "fake4", externalId: "g1", text: "Oui c'est parfait", externalMsgId: "g1-1" });
+  await waitFor(() => generations > before);
+});
+
+test("8. la file des textes ne l'envoie qu'une fois, et un envoi raté est renvoyé sans réécrire le texte", async () => {
+  let fail = true;
+  router.registerAdapter({
+    channel: "fake7",
+    send: async (c, t) => {
+      if (fail && /Dis-moi si ce texte/.test(t)) throw new Error("coupure");
+      sent.push({ to: c.external_id, t });
+      return "x";
+    },
+  });
+  const c = db.upsertContact("fake7", "h1", "Bintou");
+  const o = db.saveOrder({ contact_id: c.id, stage: "nouveau" });
+  db.saveOrder({ id: o.id, lyrics_status: "writing", lyrics_due_at: Date.now() - 1000, lyrics_notes: "{}" });
+  await Promise.all([router.runLyricsQueue(), router.runLyricsQueue()]);
+  const v1 = db.getOrder(o.id);
+  assert.equal(v1.lyrics_version, 1);
+  assert.equal(v1.lyrics_status, "writing"); // envoi raté : nouvel essai prévu
+  fail = false;
+  await router.runLyricsQueue(Date.now() + 2 * MIN);
+  const v2 = db.getOrder(o.id);
+  assert.equal(v2.lyrics_status, "proposed");
+  assert.equal(v2.lyrics_version, 1); // même texte, l'IA n'a pas été repayée
+  assert.equal(sent.filter((x) => x.to === "h1").length, 1);
+});
+
+test("9. ton ✅ dans la discussion d'un client qui n'a pas annoncé de paiement ne confirme rien", async () => {
+  db.setSettings({ payment_confirm_emoji: "✅" });
+  const c = db.upsertContact("whatsapp", "226700@s.whatsapp.net", "Koffi");
+  db.saveOrder({ contact_id: c.id, stage: "devis", lyrics: "[Chorus] Koffi", lyrics_status: "validated" });
+  const r = await router.handleOwnerReaction({ channel: "whatsapp", chatJid: "226700@s.whatsapp.net", targetId: "x", emoji: "✅", ownerChat: false });
+  assert.equal(r, null);
+  assert.equal(db.activeOrder(c.id).payment_confirmed_at, 0);
+});

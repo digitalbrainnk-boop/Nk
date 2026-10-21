@@ -107,10 +107,11 @@ export async function runSocial(at = Date.now()) {
   const s = getSettings();
   if (!s.social_enabled) return null;
   if (new Date(at).getHours() < (Number(s.social_hour) || 0)) return null;
-  const every = Math.max(1, Number(s.social_every_days) || 3) * DAY;
+  const every = Math.max(1, Number(s.social_every_days) || 3);
   const last = lastPublishedPost();
-  // Une demi-journée de marge pour publier vers la même heure.
-  if (last && at - last.created_at < every - DAY / 2) return null;
+  // On compte en jours du calendrier : tous les N jours, à partir de l'heure choisie.
+  const day = (t) => new Date(new Date(t).setHours(0, 0, 0, 0)).getTime();
+  if (last && Math.round((day(at) - day(last.created_at)) / DAY) < every) return null;
   // Après un échec, on réessaie 3 heures plus tard (pas toutes les minutes).
   if (s.social_last_attempt && at - s.social_last_attempt < 3 * 3600_000) return null;
   setSettings({ social_last_attempt: at });

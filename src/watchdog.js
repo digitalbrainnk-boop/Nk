@@ -7,6 +7,7 @@ import {
   activeOrder,
   db,
   isIgnored,
+  isPaid,
   getContact,
   getSettings,
   listIncidents,
@@ -41,9 +42,20 @@ const PROMISE = /(texte|paroles)/i;
 const PROMISE_TIME = /(\d+\s*(min|minutes)|quelques minutes|tout de suite|dans un instant)/i;
 
 /** Un tour de vérification. Renvoie la liste des problèmes vus. */
+let running = false;
 export async function runWatchdog(now = Date.now()) {
   const s = getSettings();
-  if (!s.watchdog_enabled) return [];
+  if (!s.watchdog_enabled || running) return []; // un tour à la fois (une correction peut prendre plus d'une minute)
+  running = true;
+  try {
+    return await check(s, now);
+  } finally {
+    running = false;
+  }
+}
+
+async function check(s, now) {
+  const open = isOpen(new Date(now));
   const seen = new Set();
   const found = [];
   const flag = async ({ key, contactId, kind, text, fix, notifyAfter = 3, fixedMsg }) => {
@@ -77,7 +89,7 @@ export async function runWatchdog(now = Date.now()) {
     )
     .all(now - 12 * 60 * MIN);
   // La nuit (hors heures d'ouverture), les messages attendent : ce n'est pas un problème.
-  for (const p of isOpen(new Date(now)) ? pending : []) {
+  for (const p of open ? pending : []) {
     const c = getContact(p.contact_id);
     if (skip(c) || c.paused_until > now || isBusy(c.id) || now - p.first < grace) continue;
     const err = String(c.needs_human_reason || "").startsWith("Erreur") ? ` (${c.needs_human_reason})` : "";
@@ -107,20 +119,27 @@ export async function runWatchdog(now = Date.now()) {
     }
 
     // 3. Paiement vérifié mais chanson pas composée (Suno a échoué, coupure…).
-    const paid = o.paid > 0 || !s.compose_requires_payment;
+    //    3 compositions au plus : ensuite on te prévient au lieu de dépenser des crédits.
+    const paid = isPaid(o) || !s.compose_requires_payment;
     if (o.lyrics && o.lyrics_status === "validated" && paid) {
+      const tooMany = (o.compose_tries || 0) >= 3;
       await flag({
         key: `compose:${o.id}`,
         contactId: c.id,
         kind: "composition",
-        text: "Le paiement est vérifié mais la chanson n'est pas composée.",
-        notifyAfter: 2,
-        fix: async () => {
+        text: tooMany
+          ? `La chanson n'a pas pu être composée après ${o.compose_tries} essais : regarde la conversation (paroles refusées par Suno ? crédit Kie ?).`
+          : "Le paiement est vérifié mais la chanson n'est pas composée.",
+        notifyAfter: tooMany ? 1 : 2,
+        fix: tooMany ? undefined : async () => {
           if (String(c.needs_human_reason || "").startsWith("La composition a échoué")) updateContact(c.id, { needs_human: 0, needs_human_reason: null });
           await startComposition(c.id);
         },
       });
     }
+
+    // Pendant une composition relancée, le problème n'est pas « réglé » pour autant.
+    if (o.lyrics_status === "composing" && (o.compose_tries || 0) > 1) seen.add(`compose:${o.id}`);
 
     // 4. Composition bloquée (l'agent a redémarré pendant que Suno travaillait).
     if (o.lyrics_status === "composing" && now - o.updated_at > 25 * MIN) {
@@ -153,7 +172,10 @@ export async function runWatchdog(now = Date.now()) {
           kind: "livraison",
           text: "La chanson est prête mais n'a pas pu être envoyée au client.",
           notifyAfter: 2,
-          fix: async () => sendSong(getContact(c.id), song),
+          fix: async () => {
+            await sendSong(getContact(c.id), song);
+            if (String(getContact(c.id).needs_human_reason || "").startsWith("🎵 Chanson prête mais")) updateContact(c.id, { needs_human: 0, needs_human_reason: null });
+          },
         });
       }
     }
@@ -170,7 +192,7 @@ export async function runWatchdog(now = Date.now()) {
     }
 
     // 7. L'agent a promis le texte « dans X minutes » mais ne l'a jamais écrit.
-    if (s.song_flow && !o.lyrics && !o.lyrics_status) {
+    if (open && s.song_flow && !o.lyrics && !o.lyrics_status) {
       const last = db
         .prepare("SELECT * FROM messages WHERE contact_id = ? AND author IN ('agent', 'owner') AND status = 'sent' ORDER BY id DESC LIMIT 1")
         .get(c.id);

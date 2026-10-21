@@ -6,6 +6,8 @@ import {
   addExamples,
   dueLyrics,
   dueReminders,
+  getOrder,
+  isPaid,
   findContactByOwnerNote,
   isIgnored,
   rememberOwnerNote,
@@ -530,7 +532,12 @@ export async function createSong(contactId, brief, { orderId, autoSend = false }
         saveOrder({ id: orderId, lyrics_status: "composed" });
         emit("order", { contact_id: contactId });
         if (autoSend) {
-          await sendSong(getContact(contactId), getMessage(placeholder.id));
+          // Un envoi raté (WhatsApp déconnecté…) ne relance PAS la composition :
+          // la chanson reste « composée » et la surveillance retente seulement l'envoi.
+          await sendSong(getContact(contactId), getMessage(placeholder.id)).catch((e) => {
+            console.error("Envoi de la chanson :", e.message);
+            updateContact(contactId, { needs_human: 1, needs_human_reason: `🎵 Chanson prête mais pas encore envoyée : ${e.message}` });
+          });
         } else {
           updateContact(contactId, {
             needs_human: 1,
@@ -555,29 +562,39 @@ export async function createSong(contactId, brief, { orderId, autoSend = false }
 // ---------- Processus chanson : texte -> validation du client -> composition ----------
 
 /** Écrit (ou corrige) le texte de la chanson et l'envoie au client pour validation. */
-export async function proposeLyrics(contactId, { revise = false, notes = "", mode } = {}) {
+export async function proposeLyrics(contactId, { revise = false, notes = "", mode, resend = false } = {}) {
   const contact = getContact(contactId);
   let order = activeOrder(contactId) || saveOrder({ contact_id: contactId, stage: "nouveau" });
   const isRevision = revise && !!order.lyrics;
-  const brief = await withCredits({ contactId, kind: "lyrics" }, () =>
-    songBrief(contact, isRevision ? { previous: order.lyrics, notes } : {}),
-  );
-  order = saveOrder({
-    id: order.id,
-    lyrics: brief.lyrics,
-    song_title: brief.title,
-    song_style: brief.style,
-    lyrics_status: "proposed",
-    lyrics_version: (order.lyrics_version || 0) + 1,
-    title: order.title || brief.title,
-  });
+  if (resend && order.lyrics) {
+    // Le texte est déjà écrit (seul l'envoi avait échoué) : on le renvoie sans repayer l'IA.
+    order = saveOrder({ id: order.id, lyrics_status: "proposed" });
+  } else {
+    const brief = await withCredits({ contactId, kind: "lyrics" }, () =>
+      songBrief(contact, isRevision ? { previous: order.lyrics, notes } : {}),
+    );
+    order = saveOrder({
+      id: order.id,
+      lyrics: brief.lyrics,
+      song_title: brief.title,
+      song_style: brief.style,
+      lyrics_status: "proposed",
+      lyrics_version: (order.lyrics_version || 0) + 1,
+      title: order.title || brief.title,
+    });
+  }
   emit("order", { contact_id: contactId });
-  const text = `🎵 ${brief.title}${isRevision ? " (version corrigée)" : ""}\n\n${brief.lyrics}\n\nDis-moi si ce texte te plaît, ou ce que tu veux changer 😊`;
+  const text = `🎵 ${order.song_title}${isRevision ? " (version corrigée)" : ""}\n\n${order.lyrics}\n\nDis-moi si ce texte te plaît, ou ce que tu veux changer 😊`;
   if ((mode || channelMode(contact.channel)) === "draft") {
     const msg = addMessage(contactId, { author: "agent", text, status: "draft" });
     emit("message", { contact_id: contactId, message: msg });
   } else {
-    await deliver(contact, text, "agent");
+    try {
+      await deliver(contact, text, "agent");
+    } catch (e) {
+      e.sendFailed = true;
+      throw e;
+    }
   }
   return order;
 }
@@ -590,6 +607,7 @@ export async function startComposition(contactId) {
   saveOrder({
     id: order.id,
     lyrics_status: "composing",
+    compose_tries: (order.compose_tries || 0) + 1,
     stage: ["nouveau", "devis", "acompte"].includes(order.stage) ? "creation" : order.stage,
   });
   emit("order", { contact_id: contactId });
@@ -629,29 +647,38 @@ export function scheduleLyrics(contactId, { revise = false, notes = "" } = {}) {
 }
 
 /** Envoie les textes dont l'heure est arrivée (appelé toutes les 30 secondes). */
+let lyricsRunning = false;
 export async function runLyricsQueue(at = Date.now()) {
+  if (lyricsRunning) return 0; // le tour précédent attend encore l'IA : pas de double envoi
+  lyricsRunning = true;
   let n = 0;
-  for (const o of dueLyrics(at)) {
-    let opts = {};
-    try {
-      opts = JSON.parse(o.lyrics_notes || "{}");
-    } catch {}
-    // On passe tout de suite en « proposed » pour ne pas l'envoyer deux fois.
-    saveOrder({ id: o.id, lyrics_status: o.lyrics ? "proposed" : "", lyrics_due_at: 0 });
-    try {
-      await proposeLyrics(o.contact_id, { revise: !!opts.revise, notes: opts.notes || "" });
-      n++;
-    } catch (e) {
-      console.error("Texte de chanson :", e.message);
-      // Nouvel essai dans 1 min ; l'erreur est gardée pour la surveillance.
-      const tries = (Number(opts.tries) || 0) + 1;
-      saveOrder({
-        id: o.id,
-        lyrics_status: "writing",
-        lyrics_due_at: Date.now() + 60_000,
-        lyrics_notes: JSON.stringify({ ...opts, tries, error: friendlyError(e) }),
-      });
+  try {
+    for (const o of dueLyrics(at)) {
+      if (getOrder(o.id)?.lyrics_status !== "writing") continue;
+      let opts = {};
+      try {
+        opts = JSON.parse(o.lyrics_notes || "{}");
+      } catch {}
+      // On passe tout de suite en « proposed » pour ne pas l'envoyer deux fois.
+      saveOrder({ id: o.id, lyrics_status: o.lyrics ? "proposed" : "", lyrics_due_at: 0 });
+      try {
+        await proposeLyrics(o.contact_id, { revise: !!opts.revise, notes: opts.notes || "", resend: !!opts.resend });
+        n++;
+      } catch (e) {
+        console.error("Texte de chanson :", e.message);
+        // Nouvel essai dans 1, 2, 4, 8, 16 min, puis arrêt (la surveillance te prévient).
+        const tries = (Number(opts.tries) || 0) + 1;
+        const wait = tries >= 6 ? 365 * 24 * 3600_000 : 2 ** (tries - 1) * 60_000;
+        saveOrder({
+          id: o.id,
+          lyrics_status: "writing",
+          lyrics_due_at: Date.now() + wait,
+          lyrics_notes: JSON.stringify({ ...opts, tries, error: friendlyError(e), resend: !!opts.resend || !!e.sendFailed }),
+        });
+      }
     }
+  } finally {
+    lyricsRunning = false;
   }
   return n;
 }
@@ -688,9 +715,10 @@ export async function runReminders(now = Date.now()) {
   for (const id of dueReminders(now)) {
     const contact = getContact(id);
     const note = contact.remind_note || "il reviendrait pour une autre chanson";
-    updateContact(id, { remind_at: 0 }); // une seule fois, même en cas d'erreur
     const mode = channelMode(contact.channel);
-    if (mode === "off" || isIgnored(contact) || contact.paused_until > now || busy.has(id)) continue;
+    if (busy.has(id) || contact.paused_until > now) continue; // on réessaie au prochain tour
+    updateContact(id, { remind_at: 0 }); // une seule fois, même en cas d'erreur
+    if (mode === "off" || isIgnored(contact)) continue;
     busy.add(id);
     try {
       const reply = await withCredits({ contactId: id, kind: "reply" }, () =>
@@ -737,7 +765,7 @@ async function handleSongStep(contactId, reply, mode) {
   let order = activeOrder(contactId);
   if (reply.song_step === "client_validated") {
     if (!order?.lyrics || !["proposed", "validated"].includes(order.lyrics_status)) return;
-    if (s.compose_requires_payment && !(order.paid > 0)) {
+    if (s.compose_requires_payment && !isPaid(order)) {
       // Texte validé : l'agent vient de demander le paiement ; rien n'est composé avant ta vérification.
       saveOrder({ id: order.id, lyrics_status: "validated" });
       emit("order", { contact_id: contactId });
@@ -778,14 +806,17 @@ export async function confirmPayment(contactId, { by = "tableau de bord" } = {})
   const order = activeOrder(contactId);
   if (!order) throw new Error("Aucune commande en cours pour ce client.");
   if (["composing", "composed"].includes(order.lyrics_status)) return order; // déjà lancé
+  const ready = order.lyrics && ["validated", "payment_claimed"].includes(order.lyrics_status);
   saveOrder({
     id: order.id,
     paid: order.paid > 0 ? order.paid : order.price || 0,
+    payment_confirmed_at: Date.now(),
     stage: ["nouveau", "devis"].includes(order.stage) ? "acompte" : order.stage,
+    // Pris tout de suite : une 2e confirmation (bouton + emoji) ou la surveillance ne relance rien.
+    ...(ready ? { lyrics_status: "composing" } : {}),
   });
   updateContact(contactId, { needs_human: 0, needs_human_reason: null });
   emitHook("order.paid", { contact: who(contact), order: activeOrder(contactId), confirmed_by: by });
-  const ready = order.lyrics && ["validated", "payment_claimed"].includes(order.lyrics_status);
   if (order.lyrics_status === "payment_claimed" && !order.lyrics) saveOrder({ id: order.id, lyrics_status: "" });
   const say = (text) => deliver(contact, text, "agent").catch((e) => console.error("Message de confirmation :", e.message));
   if (!ready) {
@@ -795,7 +826,12 @@ export async function confirmPayment(contactId, { by = "tableau de bord" } = {})
     return activeOrder(contactId);
   }
   await say("Paiement bien reçu, merci 🙏 Je compose ta chanson maintenant, tu la reçois dans une dizaine de minutes 🎶");
-  await startComposition(contactId);
+  try {
+    await startComposition(contactId);
+  } catch (e) {
+    saveOrder({ id: order.id, lyrics_status: "validated" }); // la surveillance la relancera
+    throw e;
+  }
   notifyOwner(contact, `✅ Paiement confirmé (${by}) : composition lancée.`, { plain: true }).catch(() => {});
   return activeOrder(contactId);
 }
@@ -813,7 +849,7 @@ export async function handleOwnerReaction({ channel, chatJid, targetId, emoji, o
     const c = upsertContact(channel, chatJid);
     const o = activeOrder(c.id);
     const claimed = String(c.needs_human_reason || "").startsWith("Paiement annoncé");
-    if (o && (claimed || ["payment_claimed", "validated"].includes(o.lyrics_status))) contactId = c.id;
+    if (o && (claimed || o.lyrics_status === "payment_claimed")) contactId = c.id;
   }
   if (!contactId) return null;
   return confirmPayment(contactId, { by: `ta réaction ${emoji} sur WhatsApp` });

@@ -207,6 +207,7 @@ app.post("/api/orders", wrap(async (req, res) => {
     emitHook("order.paid", { contact, order: saved, amount: saved.paid - (before?.paid || 0) });
     // Texte déjà validé, on attendait le paiement : la composition démarre.
     if (saved.lyrics_status === "validated" && getSettings().compose_requires_payment) {
+      saveOrder({ id: saved.id, payment_confirmed_at: saved.payment_confirmed_at || Date.now() });
       startComposition(saved.contact_id).catch((e) => console.error("Composition :", e.message));
     }
   }

@@ -130,6 +130,10 @@ for (const sql of [
   "ALTER TABLE orders ADD COLUMN lyrics_notes TEXT NOT NULL DEFAULT ''",
   // Demande spéciale que TU traites toi-même (ex : chanson + vidéo lyrics, montage).
   "ALTER TABLE orders ADD COLUMN special TEXT NOT NULL DEFAULT ''",
+  // Paiement vérifié par TOI (réaction emoji ou bouton), même si le prix n'était pas noté.
+  "ALTER TABLE orders ADD COLUMN payment_confirmed_at INTEGER NOT NULL DEFAULT 0",
+  // Nombre de compositions lancées (pour ne pas relancer Suno sans fin).
+  "ALTER TABLE orders ADD COLUMN compose_tries INTEGER NOT NULL DEFAULT 0",
 ]) {
   try {
     db.exec(sql);
@@ -506,6 +510,7 @@ export function saveOrder(o) {
   const fields = [
     "stage", "title", "occasion", "price", "paid", "due_date", "notes",
     "lyrics", "song_title", "song_style", "lyrics_status", "lyrics_version", "lyrics_due_at", "lyrics_notes", "special",
+    "payment_confirmed_at", "compose_tries",
   ];
   if (o.stage && !STAGES.includes(o.stage)) throw new Error(`Étape inconnue : ${o.stage}`);
   if (o.id) {
@@ -516,7 +521,8 @@ export function saveOrder(o) {
     const delivered = next.stage === "livree" && cur.stage !== "livree" ? now() : cur.delivered_at;
     db.prepare(
       `UPDATE orders SET stage=?, title=?, occasion=?, price=?, paid=?, due_date=?, notes=?, lyrics=?, song_title=?, song_style=?,
-       lyrics_status=?, lyrics_version=?, lyrics_due_at=?, lyrics_notes=?, special=?, updated_at=?, delivered_at=? WHERE id=?`,
+       lyrics_status=?, lyrics_version=?, lyrics_due_at=?, lyrics_notes=?, special=?, payment_confirmed_at=?, compose_tries=?,
+       updated_at=?, delivered_at=? WHERE id=?`,
     ).run(
       next.stage,
       next.title,
@@ -533,6 +539,8 @@ export function saveOrder(o) {
       Number(next.lyrics_due_at) || 0,
       next.lyrics_notes || "",
       next.special || "",
+      Number(next.payment_confirmed_at) || 0,
+      Number(next.compose_tries) || 0,
       now(),
       delivered,
       o.id,
@@ -684,6 +692,9 @@ export function lastDeliveredOrder(contactId, days = 14) {
     .prepare("SELECT * FROM orders WHERE contact_id = ? AND stage = 'livree' AND delivered_at > ? ORDER BY delivered_at DESC LIMIT 1")
     .get(contactId, now() - days * 24 * 3600_000);
 }
+
+/** Paiement vérifié par toi (ou montant payé noté dans la commande). */
+export const isPaid = (o) => !!o && (Number(o.payment_confirmed_at) > 0 || Number(o.paid) > 0);
 
 /** Commandes dont le texte doit être envoyé maintenant. */
 export function dueLyrics(at = now()) {

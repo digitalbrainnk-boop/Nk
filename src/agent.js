@@ -5,7 +5,7 @@ import fs from "node:fs";
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
-import { activeOrder, allExamples, getSettings, lastDeliveredOrder, listKnowledge, listMessages, listSocialPosts } from "./db.js";
+import { activeOrder, allExamples, getSettings, isPaid, lastDeliveredOrder, listKnowledge, listMessages, listSocialPosts } from "./db.js";
 import { LLMError, chatJSON } from "./openai-compat.js";
 import { actionsPrompt, enabledActions, runAction } from "./integrations.js";
 
@@ -271,9 +271,9 @@ export async function generateReply(contact, { followup = false, reminder = "", 
     ? {
         writing: "le texte est en cours d'écriture : il sera envoyé automatiquement au client dans quelques minutes",
         proposed: `un texte (version ${order.lyrics_version}) a été envoyé au client et attend sa réponse`,
-        validated: s.compose_requires_payment
+        validated: s.compose_requires_payment && !isPaid(order)
           ? "le client a validé le texte ; il doit maintenant payer (la composition démarre seulement quand le propriétaire a vérifié le paiement)"
-          : "le client a validé le texte",
+          : "le client a validé le texte et le paiement est vérifié : la chanson va être composée",
         payment_claimed: "le client dit avoir payé ; le propriétaire est en train de vérifier le paiement",
         composing: "le paiement est vérifié, la chanson est en cours de composition (livrée dans environ 10 minutes)",
         composed: "la chanson est composée",

@@ -78,3 +78,17 @@ test("4. échec Facebook : tu es prévenu, nouvel essai 3 h plus tard (pas chaqu
   assert.equal(calls.length, n);
   assert.equal(db.listSocialPosts(1)[0].status, "failed");
 });
+
+test("5. tous les jours (1) : une seule publication par jour, pas deux", async () => {
+  fbDown = false;
+  db.setSettings({ social_every_days: 1, social_last_attempt: 0 });
+  const today10 = new Date(Date.now() + 10 * DAY);
+  today10.setHours(10, 0, 0, 0);
+  const p = db.addSocialPost({ text: "x", status: "published", fb_id: "f" });
+  db.db.prepare("UPDATE social_posts SET created_at = ? WHERE id = ?").run(today10.getTime(), p.id);
+  const today22 = new Date(today10);
+  today22.setHours(22);
+  assert.equal(await runSocial(today22.getTime()), null); // même jour : rien
+  const tomorrow10 = new Date(today10.getTime() + DAY);
+  assert.equal((await runSocial(tomorrow10.getTime()))?.status, "published");
+});
