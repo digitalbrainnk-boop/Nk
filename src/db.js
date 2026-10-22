@@ -196,6 +196,26 @@ export const DEFAULT_SETTINGS = {
   open_hour: 5, // l'agent répond de 5 h…
   close_hour: 0, // …à minuit (0 = minuit) ; la nuit, les messages attendent l'ouverture
   ignored_contacts: [], // numéros (ou @pseudos) auxquels l'agent ne répond jamais
+  welcome_enabled: true, // premier message d'un nouveau client : bonjour + message de bienvenue + question
+  welcome_message: `🎶🔥 BIENVENUE CHEZ DIGITAL BRAIN ! 🔥🎶
+
+❤️ Et si votre histoire devenait une chanson inoubliable ?
+
+Vous voulez une chanson pour un anniversaire, un mariage, votre amour ou un événement spécial ? 🎂💍💖
+
+🎤 Avec Digital Brain Music (DB Melo), transformez vos idées et vos émotions en chansons personnalisées !
+
+✍️ Vous avez déjà un texte ? Utilisez-le !
+📝 Vous n’avez pas de texte ? L’application peut vous aider à en créer un !
+🔗 https://dbmelo.com
+📱 Même lorsque notre équipe n’est pas disponible, vous pouvez créer vos chansons vous-même, facilement et à tout moment !
+
+🚀 N’attendez plus ! Cliquez sur le lien et créez votre première chanson dès aujourd’hui ! 👇
+
+🔗 https://dbmelo.com
+
+🎵 DB Melo : vos histoires, vos émotions, vos chansons ! ❤️🔥`,
+  welcome_question: "*Souhaitez-vous avoir une chanson personnalisée ?*",
   reply_policy: "all", // all (tout le monde sauf les ignorés) | allowed_only (seulement les contacts autorisés)
   allowed_contacts: [], // contacts autorisés (mode allowed_only)
   emoji_level: "rare", // none | rare | like_me
@@ -855,4 +875,39 @@ if (!getSettings().tarifs_seeded) {
   const has = db.prepare("SELECT 1 FROM knowledge WHERE lower(title) LIKE '%tarif%'").get();
   if (!has) saveKnowledge({ title: "Nos tarifs", content: TARIFS });
   setSettings({ tarifs_seeded: true });
+}
+
+// ---------- Fiche « Déroulement d'une commande » (ajoutée une seule fois, modifiable) ----------
+export const DEROULEMENT = `Déroulement d'une conversation avec un client (à suivre dans cet ordre) :
+
+1. Nouveau client : on dit bonjour, le message de bienvenue de l'entreprise part automatiquement, puis on demande : « Souhaitez-vous avoir une chanson personnalisée ? ». S'il demande déjà une chanson dans son premier message, on passe directement à l'étape 2.
+2. S'il veut une chanson : on lui envoie nos tarifs et on lui demande quelle option il choisit (chanson simple, chanson + vidéo lyrics, etc.).
+3. Quand il a choisi : « Tout d'abord, nous aimerions savoir : la chanson, c'est pour quelle occasion ? »
+4. Selon l'occasion, on demande les informations nécessaires (en un ou deux messages, pas un interrogatoire) :
+- Mariage (obligatoire) : les noms des mariés, la date du mariage et le lieu du mariage. Puis : « Si vous avez d'autres choses à ajouter, n'hésitez pas, pour qu'on puisse passer à la création du texte. »
+- Chanson d'amour : le prénom de la personne aimée (et le sien), leur histoire (rencontre, souvenirs), ce qu'il aime chez elle, le message à faire passer.
+- Anniversaire : le prénom de la personne, son âge si souhaité, le lien avec elle (maman, ami, collègue…), ses qualités, un souvenir ou un message.
+- Publicité d'une boutique ou d'une entreprise : le nom de la boutique, ce qu'elle vend ou propose, le quartier ou la ville, ce qui la rend unique ou un slogan. On ne met PAS de numéro de téléphone dans la chanson (difficile à chanter et à comprendre) : s'il en donne un, on lui explique gentiment pourquoi.
+- Autre occasion : les prénoms, l'occasion, l'émotion voulue et les détails importants.
+Si ce n'est pas dit, on demande aussi le style musical souhaité et la langue.
+5. Quand il a tout donné : « Est-ce que c'est toutes les informations ? », puis on écrit le texte.
+
+Ton : on vouvoie le client et on parle au nom de l'équipe (« nous »).`;
+if (!getSettings().process_seeded) {
+  const has = db.prepare("SELECT 1 FROM knowledge WHERE lower(title) LIKE '%déroulement%'").get();
+  if (!has) saveKnowledge({ title: "Déroulement d'une commande", content: DEROULEMENT });
+  setSettings({ process_seeded: true });
+}
+
+/** A-t-on déjà écrit à ce client (agent ou toi) ? Sinon, c'est un premier contact. */
+export function hasOurMessages(contactId) {
+  return !!db
+    .prepare("SELECT 1 FROM messages WHERE contact_id = ? AND author IN ('agent', 'owner') AND status IN ('sent', 'pending', 'draft') LIMIT 1")
+    .get(contactId);
+}
+
+/** Le texte des tarifs envoyé tel quel au client (fiche « tarifs », sans la partie « À savoir »). */
+export function pricesText() {
+  const fiche = db.prepare("SELECT content FROM knowledge WHERE lower(title) LIKE '%tarif%' ORDER BY id LIMIT 1").get();
+  return (fiche?.content || TARIFS).split(/\n\s*\nÀ savoir/)[0].trim();
 }

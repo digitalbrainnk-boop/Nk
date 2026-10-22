@@ -98,6 +98,11 @@
         <div class="row"><label>Consignes particulières</label>
           <textarea id="extra_rules" rows="4" placeholder="Ex : toujours demander un acompte de 50 %. Ne jamais accepter moins de 48 h de délai…"></textarea></div>
         <button id="save-business" class="primary">Enregistrer</button>
+        <h2>👋 Accueil des nouveaux clients</h2>
+        <label class="check"><input type="checkbox" id="welcome_enabled" /> Au premier message d'un nouveau client : bonjour, puis ce message de bienvenue (envoyé mot pour mot), puis la question</label>
+        <div class="row"><label>Message de bienvenue</label><textarea id="welcome_message" rows="10"></textarea></div>
+        <div class="row"><label>Question après la bienvenue (si le client n'a pas encore dit ce qu'il veut)</label><input id="welcome_question" /></div>
+        <button class="primary save-settings" data-keys="welcome_enabled,welcome_message,welcome_question">Enregistrer l'accueil</button>
         <h2>Fiches de connaissances</h2>
         <p class="muted">Tarifs, délais, étapes de commande, moyens de paiement, FAQ… L'agent ne promettra jamais rien qui n'est pas écrit ici ou dans tes conversations.</p>
         <div id="knowledge"></div>

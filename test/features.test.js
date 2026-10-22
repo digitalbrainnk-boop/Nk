@@ -20,6 +20,7 @@ before(() => {
     reply_mode: "auto",
     debounce_seconds: 0,
     open_hour: 0, // ouvert 24 h/24 pendant les tests
+    welcome_enabled: false, // testé à part (test/welcome.test.js)
     close_hour: 0,
     min_reply_delay_seconds: 0,
     max_reply_delay_seconds: 0,

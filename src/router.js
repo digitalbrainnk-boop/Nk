@@ -6,6 +6,8 @@ import {
   addExamples,
   dueLyrics,
   dueReminders,
+  hasOurMessages,
+  pricesText,
   isMuted,
   pendingMessages,
   agentRepliesSince,
@@ -355,6 +357,19 @@ async function applyReply(contact, reply, mode, { clientSentVoice = false, follo
   const contactId = contact.id;
   const s = getSettings();
   reply = { ...reply, messages: limitEmojis(reply.messages || [], s.emoji_level) };
+  // Textes officiels envoyés mot pour mot (emojis compris) : bienvenue et tarifs.
+  const verbatim = new Set();
+  if (reply.messages.length) {
+    const blocks = [];
+    if (s.welcome_enabled && s.welcome_message?.trim() && !followup && !hasOurMessages(contactId)) blocks.push(s.welcome_message.trim());
+    if (reply.send_prices) blocks.push(pricesText());
+    if (blocks.length) {
+      // Après le 1er message de l'agent (« Bonjour », « Voici nos tarifs : »), puis la suite.
+      const [first, ...rest] = reply.messages;
+      reply.messages = [first, ...blocks, ...rest];
+      blocks.forEach((b) => verbatim.add(b));
+    }
+  }
   const isTest = contact.channel === "test";
   const adapter = adapters.get(contact.channel);
   updateContact(contactId, {
@@ -383,7 +398,7 @@ async function applyReply(contact, reply, mode, { clientSentVoice = false, follo
   if (followup) updateContact(contactId, { followups: (contact.followups || 0) + 1, last_followup_at: Date.now() });
 
   // Un lien (ex : ta page Facebook) part toujours en texte, pour être cliquable.
-  const hasLink = reply.messages.some((m) => /https?:\/\//.test(m));
+  const hasLink = verbatim.size > 0 || reply.messages.some((m) => /https?:\/\//.test(m));
   const useVoice =
     !hasLink && (s.voice_replies === "always" || (s.voice_replies === "mirror" && clientSentVoice && !followup));
 
@@ -416,7 +431,10 @@ async function applyReply(contact, reply, mode, { clientSentVoice = false, follo
 
   for (const [i, text] of reply.messages.entries()) {
     if (!isTest) {
-      const typingMs = Math.min(15_000, (text.length / s.typing_chars_per_second) * 1000) + rand(300, 1200);
+      // Un texte officiel se « colle » vite ; le reste se tape à vitesse humaine.
+      const typingMs = verbatim.has(text)
+        ? rand(800, 2000)
+        : Math.min(15_000, (text.length / s.typing_chars_per_second) * 1000) + rand(300, 1200);
       await adapter?.typing?.(contact, typingMs).catch(() => {});
       await sleep(typingMs);
       if (i > 0) await sleep(rand(400, 1500));

@@ -5,7 +5,7 @@ import fs from "node:fs";
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
-import { activeOrder, allExamples, getSettings, isPaid, lastDeliveredOrder, listKnowledge, listMessages, listSocialPosts } from "./db.js";
+import { activeOrder, allExamples, getSettings, hasOurMessages, isPaid, lastDeliveredOrder, listKnowledge, listMessages, listSocialPosts } from "./db.js";
 import { LLMError, chatJSON } from "./openai-compat.js";
 import { actionsPrompt, enabledActions, runAction } from "./integrations.js";
 
@@ -24,6 +24,7 @@ const REPLY_SHAPE = `{"messages": ["bulle 1", "bulle 2"], "memory": "mémoire à
 - song_step : "none", "propose_lyrics" (écrire et envoyer le texte), "revise_lyrics" (changements demandés, détaillés dans revision_notes), "client_validated" (le client approuve le texte) ou "payment_claimed" (le client dit avoir payé / envoie une preuve de paiement)
 - discount_request : vide, sauf si le client demande un rabais / une réduction : ce qu'il demande et pourquoi
 - remind_in_days : 0, sauf si le client dit qu'il reviendra plus tard pour une (autre) chanson : dans combien de jours le relancer ; remind_about : ce qu'il a dit
+- send_prices : true pour envoyer nos tarifs au client (le texte exact part automatiquement après ton premier message)
 - asked_review : true seulement si tu viens d'envoyer au client le lien pour laisser un commentaire sur la page Facebook
 - special_request : vide, sauf si le client demande un service vidéo (vidéo lyrics, clip, montage…) : décris-le en quelques mots`;
 
@@ -74,6 +75,10 @@ const ReplySchema = z.object({
     .optional()
     .describe("Si le client annonce qu'il reviendra plus tard pour une (autre) chanson : dans combien de jours le relancer ; 0 sinon."),
   remind_about: z.string().optional().describe("Ce que le client a dit sur sa prochaine commande (occasion, date…)."),
+  send_prices: z
+    .boolean()
+    .optional()
+    .describe("true pour envoyer nos tarifs (texte officiel, envoyé automatiquement juste après ton premier message)."),
   asked_review: z
     .boolean()
     .optional()
@@ -303,6 +308,13 @@ export async function generateReply(contact, { followup = false, reminder = "", 
     ? `5) Dès qu'il a validé le texte, demande-lui de passer au paiement (montant${order?.price ? ` : ${order.price} ${s.currency}` : ""} et moyens de paiement indiqués dans les fiches, recopiés exactement — numéro et nom du compte ; choisis le moyen selon le pays du client en suivant les fiches ; si aucun moyen ne convient à son pays, ou s'il n'y en a pas, demande-lui comment il souhaite payer et mets needs_human à true) et de t'envoyer la capture ou la référence du paiement ; précise qu'il reçoit sa chanson${s.song_versions === "two_styles" ? " en 2 versions (une rythmée et une acoustique)" : " en 2 versions"} environ 10 minutes après la vérification du paiement. 6) Quand le client dit avoir payé ou envoie une capture de paiement : song_step = "payment_claimed", remercie-le et dis-lui que tu vérifies le paiement et que tu lui envoies sa chanson juste après. Ne dis JAMAIS que le paiement est reçu ou vérifié, ne lance jamais la composition toi-même : seul ${s.owner_name || "le propriétaire"} confirme le paiement (une capture peut être fausse).`
     : "5) La chanson est alors composée et envoyée au client automatiquement.";
   const owner = s.owner_name || "le propriétaire";
+  const firstContact = !followup && !reminder && !hasOurMessages(contact.id);
+  const welcomeHint =
+    firstContact && s.welcome_enabled
+      ? `\n- ⚠️ PREMIER CONTACT avec ce client : ton premier message est seulement une salutation courte (ex : « Bonjour 👋 » ou « Bonsoir »). Le message de bienvenue de l'entreprise est envoyé automatiquement juste après. Ensuite : si le client n'a pas encore dit ce qu'il veut, ton dernier message est exactement « ${s.welcome_question} » ; s'il demande déjà une chanson, mets send_prices à true et demande quelle option il choisit.`
+      : "";
+  const pricesHint = `\n- Tarifs : quand le client veut une chanson (ou demande les prix), mets send_prices à true : notre liste officielle des tarifs part automatiquement après ton premier message (ne recopie pas les tarifs toi-même ; ton premier message peut être « Voici nos tarifs : »). Puis demande-lui quelle option il choisit. Ne renvoie pas les tarifs s'ils ont déjà été envoyés récemment.
+- Les fiches (« Déroulement d'une commande », tarifs, paiement…) priment sur les exemples pour la façon de mener la conversation : suis le déroulement étape par étape.`;
   const reviewHint = afterDeliveryHint(s, contact, order, owner);
   const specialHint = order?.special
     ? `
@@ -333,7 +345,7 @@ ${formatExamples(examples)}
 Rappels :
 - Remplis « order » avec ce que tu sais de la commande. Ne marque jamais un paiement comme reçu : si le client dit avoir payé, mets ${s.song_flow ? 'song_step à "payment_claimed"' : "needs_human à true"} pour que ${s.owner_name || "le propriétaire"} vérifie.
 - Rabais : si le client demande une réduction ou un prix plus bas, n'accorde ni ne refuse rien toi-même : réponds gentiment que tu vas voir ce qui est possible et que tu reviens vers lui, et mets discount_request = ce qu'il demande et pourquoi (${s.owner_name || "le propriétaire"} est prévenu et viendra voir).
-- Prochaine commande : si le client dit qu'il reviendra plus tard pour une autre chanson (ex : « je prends deux chansons maintenant, je reviendrai pour une autre », « ce sera pour l'anniversaire de ma mère en mars »), réponds naturellement, puis mets remind_in_days = dans combien de jours le relancer (environ une semaine avant l'occasion si tu connais la date, sinon 14) et remind_about = ce qu'il a dit.${demoHint}${songHint}${specialHint}${reviewHint}
+- Prochaine commande : si le client dit qu'il reviendra plus tard pour une autre chanson (ex : « je prends deux chansons maintenant, je reviendrai pour une autre », « ce sera pour l'anniversaire de ma mère en mars »), réponds naturellement, puis mets remind_in_days = dans combien de jours le relancer (environ une semaine avant l'occasion si tu connais la date, sinon 14) et remind_about = ce qu'il a dit.${welcomeHint}${pricesHint}${demoHint}${songHint}${specialHint}${reviewHint}
 
 ${instruction}`;
 
@@ -390,6 +402,7 @@ function salvageReply(p) {
       : null,
     demo: p.demo === true,
     asked_review: p.asked_review === true || p.asked_review === "true",
+    send_prices: p.send_prices === true || p.send_prices === "true",
     discount_request: str(p.discount_request) || "",
     remind_in_days: Math.max(0, Math.min(365, Number(p.remind_in_days) || 0)),
     remind_about: str(p.remind_about) || "",
