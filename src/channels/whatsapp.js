@@ -193,6 +193,21 @@ function onHistory({ messages }) {
   if (added) setState({ learned: state.learned + added });
 }
 
+// Raisons de coupure renvoyées par WhatsApp, expliquées simplement.
+function explainClose(code, message) {
+  const why = {
+    401: "WhatsApp a fermé la session (appareil déconnecté depuis le téléphone).",
+    403: "WhatsApp refuse ce numéro pour le moment (compte restreint) : attends quelques heures.",
+    405: "WhatsApp a refusé la connexion : trop d'essais d'affilée ou limite d'appareils connectés atteinte (4 max). Supprime un ancien appareil dans « Appareils connectés » et attends 15 à 30 minutes avant de réessayer.",
+    408: "Pas de réponse de WhatsApp (internet lent ou coupé).",
+    428: "Connexion fermée par WhatsApp, nouvel essai…",
+    440: "Ce numéro a été connecté ailleurs (un autre agent ou WhatsApp Web) : une seule connexion à la fois.",
+    500: "Session abîmée : clique « Déconnecter l'appareil » puis reconnecte-toi.",
+    503: "WhatsApp est momentanément indisponible.",
+  }[code];
+  return why || `WhatsApp a coupé la connexion (${code || "?"}${message ? ` : ${message}` : ""}).`;
+}
+
 // Une session commencée mais jamais validée (QR non scanné, code non saisi)
 // bloque les tentatives suivantes : on repart de zéro.
 function clearUnfinishedSession() {
@@ -278,7 +293,9 @@ export async function startWhatsApp({ phone } = {}) {
       } else if (current()) {
         // Nouvelle tentative avec un délai qui grandit (3 s, 6 s, 12 s… max 2 min).
         const wait = Math.min(120_000, 3000 * 2 ** retries++);
-        setState({ status: "reconnexion…", error: u.lastDisconnect?.error?.message || null });
+        const why = explainClose(code, u.lastDisconnect?.error?.message);
+        console.log(`⚠️  WhatsApp : ${why} Nouvel essai dans ${Math.round(wait / 1000)} s.`);
+        setState({ status: `reconnexion dans ${Math.round(wait / 1000)} s…`, error: why });
         setTimeout(() => current() && startWhatsApp().catch((e) => setState({ status: "erreur", error: e.message })), wait);
       }
     }

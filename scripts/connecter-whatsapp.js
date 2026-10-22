@@ -26,15 +26,22 @@ function readCreds() {
   }
 }
 if (readCreds()?.registered) {
-  console.log("\n✅ WhatsApp est déjà connecté à l'agent. Lance simplement : agent");
-  console.log("   (pour reconnecter un autre numéro : supprime d'abord l'appareil dans WhatsApp → Appareils connectés)\n");
-  process.exit(0);
+  // Un numéro est déjà connecté : on propose de le remplacer (ex. passer sur WhatsApp Business).
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  const ans = (await rl.question("\n✅ Un WhatsApp est déjà connecté à l'agent. Le remplacer par un autre numéro (ex. ton WhatsApp Business) ? (o/n) : ")).trim().toLowerCase();
+  rl.close();
+  if (!ans.startsWith("o")) {
+    console.log("\nRien n'a changé. Lance simplement : agent\n");
+    process.exit(0);
+  }
+  fs.rmSync(AUTH_DIR, { recursive: true, force: true });
+  console.log("Ancienne connexion effacée. Pense à supprimer l'ancien appareil dans WhatsApp → Appareils connectés.");
 }
 
 let phone = (process.argv[2] || "").replace(/\D/g, "");
 if (!phone) {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-  phone = (await rl.question("\nTon numéro WhatsApp AVEC l'indicatif du pays, sans + ni espaces\n(ex. Burkina : 226XXXXXXXX, Côte d'Ivoire : 225XXXXXXXXXX) : ")).replace(/\D/g, "");
+  phone = (await rl.question("\nLe numéro à connecter (ton WhatsApp Business si c'est lui qui doit répondre), AVEC l'indicatif du pays, sans + ni espaces\n(ex. Burkina : 226XXXXXXXX, Côte d'Ivoire : 225XXXXXXXXXX) : ")).replace(/\D/g, "");
   rl.close();
 }
 phone = phone.replace(/^0+/, "");
@@ -62,7 +69,7 @@ async function connect() {
         console.log("\n==============================");
         console.log(`   CODE WHATSAPP :  ${code}`);
         console.log("==============================");
-        console.log("Sur ton téléphone, dans WhatsApp :");
+        console.log("Sur ton téléphone, dans l'application de CE numéro (WhatsApp Business si c'est ton numéro pro) :");
         console.log("  ⋮ (ou Réglages) → Appareils connectés → Connecter un appareil");
         console.log("  → en bas : « Associer avec le numéro de téléphone à la place »");
         console.log("  → tape le code ci-dessus. (Tu peux aussi toucher la notification WhatsApp.)");
@@ -87,7 +94,13 @@ async function connect() {
       } else {
         const msg = u.lastDisconnect?.error?.message || code;
         const net = /ENOTFOUND|ECONN|ETIMEDOUT|network/i.test(String(msg));
-        console.log(`\n❌ Connexion fermée (${msg}).${net ? " Vérifie ta connexion internet (données ou Wi-Fi)." : ""} Réessaie : npm run whatsapp\n`);
+        const hint =
+          code === 405 || code === 403
+            ? " WhatsApp refuse pour le moment : trop d'essais d'affilée, ou déjà 4 appareils connectés. Supprime un ancien appareil dans « Appareils connectés » et attends 15 à 30 minutes."
+            : net
+              ? " Vérifie ta connexion internet (données ou Wi-Fi)."
+              : "";
+        console.log(`\n❌ Connexion fermée (${msg}).${hint} Réessaie : npm run whatsapp\n`);
         process.exit(1);
       }
     }
