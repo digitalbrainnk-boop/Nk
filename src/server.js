@@ -18,6 +18,7 @@ import {
   deleteOrder,
   getContact,
   isIgnored,
+  isMuted,
   getOrder,
   getMessage,
   getSettings,
@@ -34,6 +35,7 @@ import {
   upsertContact,
   listIncidents,
   listSocialPosts,
+  exampleKinds,
   DATA_DIR,
 } from "./db.js";
 import { bus } from "./events.js";
@@ -54,7 +56,7 @@ import {
   startComposition,
 } from "./router.js";
 import { TTS_VOICES } from "./tts.js";
-import { dailyReport, runWatchdog } from "./watchdog.js";
+import { dailyReport, runExampleSort, runWatchdog } from "./watchdog.js";
 import { draftPost, publishNow, runSocial } from "./social.js";
 import { HOOK_EVENTS, deliveryLog, emitHook, runAction, testHook } from "./integrations.js";
 import { buildStyleProfile, friendlyError, songBrief } from "./agent.js";
@@ -221,12 +223,37 @@ app.get("/api/events", (req, res) => {
 // ---------- Conversations ----------
 app.get("/api/contacts", (req, res) => {
   const list = getSettings().ignored_contacts;
-  res.json(listContacts().map((c) => ({ ...c, ignored: isIgnored({ ...c, meta: JSON.parse(c.meta || "{}") }, list) })));
+  const s = getSettings();
+  res.json(
+    listContacts().map((c) => {
+      const full = { ...c, meta: JSON.parse(c.meta || "{}") };
+      return { ...c, ignored: isIgnored(full, list), allowed: isIgnored(full, s.allowed_contacts), muted: isMuted(full, s) };
+    }),
+  );
 });
 app.get("/api/contacts/:id", (req, res) => {
   const c = getContact(Number(req.params.id));
   if (!c) return res.sendStatus(404);
-  res.json({ contact: { ...c, ignored: isIgnored(c) }, messages: listMessages(c.id, 300) });
+  const s = getSettings();
+  res.json({
+    contact: { ...c, ignored: isIgnored(c), allowed: isIgnored(c, s.allowed_contacts), muted: isMuted(c, s), policy: s.reply_policy },
+    messages: listMessages(c.id, 300),
+  });
+});
+// Mode « seulement les contacts autorisés » : autorise / retire l'autorisation.
+app.post("/api/contacts/:id/allow", (req, res) => {
+  const c = getContact(Number(req.params.id));
+  if (!c) return res.sendStatus(404);
+  let list = [...(getSettings().allowed_contacts || [])];
+  if (req.body?.allow) {
+    if (!isIgnored(c, list)) list.push(contactKey(c));
+  } else {
+    list = list.filter((entry) => !isIgnored(c, [entry]));
+  }
+  setSettings({ allowed_contacts: list });
+  // Autorisé : l'agent répond aux messages qui attendaient.
+  if (req.body?.allow) schedule(c.id, 2);
+  res.json({ allowed: isIgnored(c, list), list });
 });
 // Ajoute / retire le contact de la liste « ne jamais répondre ».
 app.post("/api/contacts/:id/ignore", (req, res) => {
@@ -602,6 +629,14 @@ app.post("/api/learn/import", upload.array("files"), wrap(async (req, res) => {
   res.json({ pairs, added });
 }));
 app.get("/api/learn/stats", (req, res) => res.json(exampleStats()));
+app.get("/api/learn/kinds", (req, res) => res.json(exampleKinds()));
+app.post("/api/learn/sort", wrap(async (req, res) => {
+  try {
+    res.json({ sorted: await runExampleSort(2000), kinds: exampleKinds() });
+  } catch (e) {
+    res.status(502).json({ error: friendlyError(e) });
+  }
+}));
 app.delete("/api/learn/examples", (req, res) => {
   clearExamples(req.query.source);
   res.json({ ok: true });

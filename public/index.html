@@ -306,6 +306,21 @@
           <input type="file" id="restore-file" accept=".db" style="width:auto" /><button class="small" id="restore-btn">⬆️ Restaurer</button></div>
         <h2>🔐 Connexion</h2>
         <div class="btns"><button class="small" id="logout">Me déconnecter</button><button class="small danger" id="logout-all">Déconnecter tous les appareils</button></div>
+        <h2>👥 À qui l'agent répond</h2>
+        <div class="row"><label>L'agent répond à</label>
+          <select id="reply_policy">
+            <option value="all">Tout le monde, sauf les numéros de la liste ci-dessous</option>
+            <option value="allowed_only">Seulement les contacts que j'autorise (bouton « ✅ Autoriser » dans chaque conversation)</option>
+          </select></div>
+        <div class="row"><label>Emojis dans les réponses</label>
+          <select id="emoji_level">
+            <option value="rare">Très peu (un de temps en temps)</option>
+            <option value="none">Aucun</option>
+            <option value="like_me">Comme dans mes conversations</option>
+          </select></div>
+        <div class="row"><label>Sujets auxquels l'agent ne doit jamais répondre (il se tait et te prévient). Les messages personnels (famille, couple, demandes d'argent…) sont déjà toujours transmis à toi.</label>
+          <textarea id="forbidden_topics" rows="3" placeholder="Ex : questions sur ma famille, politique, demandes de prêt, propositions de partenariat…"></textarea></div>
+        <button class="primary save-settings" data-keys="reply_policy,emoji_level,forbidden_topics">Enregistrer</button>
         <h2>🚫 Ne jamais répondre à ces numéros</h2>
         <p class="muted">Un numéro par ligne, avec ou sans indicatif (ex : 22670123456). Pour Telegram, tu peux mettre le @pseudo. L'agent garde leurs messages mais ne leur répond jamais : famille, amis, collègues… Tu peux aussi le faire depuis une conversation (bouton « 🚫 Ne jamais répondre »).</p>
         <textarea id="ignored_list" rows="5" placeholder="22670123456&#10;22566554433&#10;@monpote"></textarea>

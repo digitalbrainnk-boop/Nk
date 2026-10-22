@@ -134,3 +134,81 @@ test("profil d'écriture : si Kie a un souci passager, l'agent réessaie avec mo
     globalThis.fetch = real;
   }
 });
+
+test("emojis : « très peu » n'en garde qu'un par réponse, « aucun » les retire tous", () => {
+  const msgs = ["Awww mon bb 🥹❤️ si je pouvais 😭❤️", "Oui 😂"];
+  assert.deepEqual(router.limitEmojis(msgs, "rare"), ["Awww mon bb 🥹 si je pouvais", "Oui"]);
+  assert.deepEqual(router.limitEmojis(msgs, "none"), ["Awww mon bb si je pouvais", "Oui"]);
+  assert.deepEqual(router.limitEmojis(["Ça va ? 👍🏽"], "rare"), ["Ça va ? 👍🏽"]);
+});
+
+test("l'agent sait qu'il ne parle que de l'activité et se tait sur les messages personnels", async () => {
+  const agent = await import("../src/agent.js");
+  const prompts = [];
+  const real = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    if (String(url).includes("/chat/completions")) {
+      prompts.push(JSON.parse(init.body).messages.map((m) => m.content).join("\n"));
+      return Response.json({ choices: [{ message: { content: JSON.stringify({ messages: [], memory: "", needs_human: true, reason: "Message personnel : demande d'argent" }) } }] });
+    }
+    return real(url, init);
+  };
+  db.setSettings({ forbidden_topics: "politique" });
+  try {
+    const c = db.upsertContact("fake8", "p1", "Inconnu");
+    db.addMessage(c.id, { author: "client", text: "J'ai pas mangé tu peux m'envoyer de l'argent ?" });
+    const r = await agent.generateReply(db.getContact(c.id));
+    assert.deepEqual(r.messages, []);
+    assert.match(prompts.at(-1), /N'Y RÉPONDS PAS/);
+    assert.match(prompts.at(-1), /demandes d'argent/);
+    assert.match(prompts.at(-1), /Sujets auxquels tu ne réponds JAMAIS.*politique/);
+    assert.match(prompts.at(-1), /Emojis : très peu/);
+  } finally {
+    globalThis.fetch = real;
+    db.setSettings({ forbidden_topics: "" });
+  }
+});
+
+test("mode « seulement les contacts autorisés » : silence tant que tu n'as pas autorisé", async () => {
+  db.setSettings({ reply_policy: "allowed_only", allowed_contacts: [] });
+  router.setReplyGenerator(async () => reply({ messages: ["Bonjour, je vous écoute"] }));
+  await say("x1", "Bonjour");
+  assert.equal(sent.filter((x) => x.to === "x1").length, 0);
+  db.setSettings({ allowed_contacts: ["x1"] });
+  const c = db.upsertContact("fake8", "x1");
+  assert.equal(db.isMuted(db.getContact(c.id)), false);
+  db.setSettings({ reply_policy: "all", allowed_contacts: [] });
+});
+
+test("tri des exemples : la vie privée est écartée, seuls les échanges clients servent de modèle", async () => {
+  const { runExampleSort } = await import("../src/watchdog.js");
+  const agent = await import("../src/agent.js");
+  db.addExamples(
+    [
+      { client_text: "Tu as mangé mon bb ?", owner_reply: "Oui ma prunelle ❤️" },
+      { client_text: "C'est combien une chanson ?", owner_reply: "1 200 F, je te l'écris aujourd'hui" },
+    ],
+    "whatsapp-history",
+  );
+  const real = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    if (String(url).includes("/chat/completions")) {
+      const text = JSON.parse(init.body).messages.map((m) => m.content).join("\n");
+      const items = [...text.matchAll(/#(\d+)\nAutre personne : ([^\n]*)/g)].map(([, id, t]) => ({
+        id: Number(id),
+        kind: /chanson|combien/i.test(t) ? "pro" : "perso",
+      }));
+      return Response.json({ choices: [{ message: { content: JSON.stringify({ items }) } }] });
+    }
+    return real(url, init);
+  };
+  try {
+    assert.ok((await runExampleSort()) >= 2);
+  } finally {
+    globalThis.fetch = real;
+  }
+  assert.ok(db.exampleKinds().perso >= 1);
+  const used = agent.pickExamples("tu as mangé", 50).map((e) => e.owner_reply);
+  assert.ok(!used.some((r) => /prunelle/.test(r)));
+  assert.ok(used.some((r) => /1 200 F/.test(r)));
+});

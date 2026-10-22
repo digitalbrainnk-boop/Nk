@@ -6,12 +6,12 @@ import {
   addExamples,
   dueLyrics,
   dueReminders,
+  isMuted,
   pendingMessages,
   agentRepliesSince,
   getOrder,
   isPaid,
   findContactByOwnerNote,
-  isIgnored,
   rememberOwnerNote,
   logCredits,
   addMessage,
@@ -227,7 +227,7 @@ async function runAgent(contactId) {
   const mode = channelMode(contact.channel);
   if (mode === "off") return;
   if (contact.paused_until > Date.now()) return;
-  if (isIgnored(contact)) {
+  if (isMuted(contact)) {
     markAnswered(contactId); // numéro dans la liste « ne jamais répondre »
     return;
   }
@@ -335,10 +335,26 @@ function applyOrder(contactId, o) {
   emitHook("order.updated", { contact: who(getContact(contactId)), order: activeOrder(contactId) });
 }
 
+// Emojis (Réglages) : « aucun » les retire tous, « très peu » n'en garde qu'un par réponse.
+const EMOJI = /\p{Extended_Pictographic}(?:\uFE0F|\u200D\p{Extended_Pictographic}|[\u{1F3FB}-\u{1F3FF}])*/gu;
+export function limitEmojis(messages, level = getSettings().emoji_level) {
+  if (level === "like_me") return messages;
+  let kept = level === "none" ? 1 : 0;
+  return messages
+    .map((m) =>
+      m
+        .replace(EMOJI, (e) => (kept++ < 1 ? e : ""))
+        .replace(/[ \t]{2,}/g, " ")
+        .trim(),
+    )
+    .filter(Boolean);
+}
+
 /** Applique une réponse de l'agent : mémoire, commande, brouillons ou envoi. */
 async function applyReply(contact, reply, mode, { clientSentVoice = false, followup = false } = {}) {
   const contactId = contact.id;
   const s = getSettings();
+  reply = { ...reply, messages: limitEmojis(reply.messages || [], s.emoji_level) };
   const isTest = contact.channel === "test";
   const adapter = adapters.get(contact.channel);
   updateContact(contactId, {
@@ -955,7 +971,7 @@ export async function runReminders(now = Date.now()) {
     const mode = channelMode(contact.channel);
     if (busy.has(id) || contact.paused_until > now) continue; // on réessaie au prochain tour
     updateContact(id, { remind_at: 0 }); // une seule fois, même en cas d'erreur
-    if (mode === "off" || isIgnored(contact)) continue;
+    if (mode === "off" || isMuted(contact)) continue;
     busy.add(id);
     try {
       const reply = await withCredits({ contactId: id, kind: "reply" }, () =>
@@ -1167,7 +1183,7 @@ export async function runFollowups(now = Date.now()) {
   for (const { id } of rows) {
     const contact = getContact(id);
     const mode = channelMode(contact.channel);
-    if (mode === "off" || busy.has(id) || isIgnored(contact)) continue;
+    if (mode === "off" || busy.has(id) || isMuted(contact)) continue;
     busy.add(id);
     try {
       const reply = await withCredits({ contactId: id, kind: "reply" }, () =>

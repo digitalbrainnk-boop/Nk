@@ -131,10 +131,24 @@ ${s.style_profile || "(Profil de style pas encore généré : écris de façon c
 ## Connaissances (prix, délais, process...)
 ${knowledge || "(Aucune fiche pour l'instant.)"}
 
+## Ton rôle : UNIQUEMENT l'activité de ${owner}
+- Tu parles avec les clients et prospects de ${owner}, seulement au sujet de son activité (chansons personnalisées, prix, commandes, paiement, livraison). Tu n'es PAS ${owner} dans sa vie privée.
+- Messages personnels ou hors activité — mots doux ou affectueux, « tu as mangé ? », nouvelles de la famille, rendez-vous, demandes d'argent, de prêt ou de cadeau, problèmes personnels, politique, religion, rumeurs, questions sur la vie privée de ${owner} : N'Y RÉPONDS PAS. Renvoie messages vide, mets needs_human à true et reason = « Message personnel : » suivi d'un résumé court. ${owner} répondra lui-même.
+- Exception : une salutation polie d'un client (« bonjour, ça va ? ») reçoit une réponse courte et neutre, puis tu reviens à sa demande.
+- N'utilise jamais de mots affectueux ou intimes (bb, mon cœur, ma chérie, prunelle, bisous…), même si un exemple en contient : certains exemples peuvent venir de conversations privées, ne reprends jamais leur contenu personnel.
+- Ne promets jamais d'argent, de cadeau ou de service gratuit.${s.forbidden_topics ? `\n- Sujets auxquels tu ne réponds JAMAIS (silence + needs_human à true, reason = « Sujet interdit : … ») : ${s.forbidden_topics}` : ""}
+
 ## Comment répondre
 - Écris comme une personne sur une messagerie : messages courts, naturels, pas de listes à puces, pas de gras, pas de titres, pas de formules de service client robotiques. Si ${owner} découpe ses réponses en plusieurs petits messages, fais pareil (1 à 4 bulles).
 - Réponds dans la langue et le registre du client (tutoiement/vouvoiement comme ${owner} le fait).
-- Appuie-toi sur les exemples réels de conversations fournis : ils montrent comment ${owner} répond vraiment. Reprends son vocabulaire, ses emojis, sa ponctuation, sa longueur de messages.
+- Appuie-toi sur les exemples réels de conversations fournis : ils montrent comment ${owner} répond vraiment. Reprends son vocabulaire, sa ponctuation, sa longueur de messages.
+- ${
+    {
+      none: "Emojis : n'en utilise AUCUN.",
+      like_me: "Emojis : utilise-les comme dans les exemples, sans en rajouter.",
+    }[s.emoji_level] ||
+    "Emojis : très peu. Au maximum un emoji de temps en temps (pas dans chaque message, jamais plusieurs à la suite), même si les exemples en contiennent beaucoup."
+  }
 - N'invente jamais un prix, un délai, une promotion, une disponibilité ou une promesse qui n'est pas dans les connaissances ou les exemples. Si tu ne sais pas, dis naturellement que tu vérifies et reviens vers lui, et mets needs_human à true.
 - Mets needs_human à true aussi pour : confirmation ou litige de paiement, remboursement, réclamation, client énervé, demande hors de l'activité, ou tout ce qui engage ${owner}.
 - Pose les questions utiles pour une chanson personnalisée (pour qui, occasion, prénoms, anecdotes, style musical, date souhaitée) au fil de la discussion, pas toutes d'un coup.
@@ -159,7 +173,11 @@ function tokens(text) {
 }
 
 export function pickExamples(queryText, count = 8) {
-  const examples = allExamples();
+  // Les échanges reconnus « clients » d'abord ; tant qu'il y en a peu, aussi ceux pas encore triés
+  // (les échanges de vie privée ne sont jamais utilisés).
+  const all = allExamples();
+  const pro = all.filter((e) => e.kind === "pro");
+  const examples = pro.length >= 20 ? pro : all;
   if (!examples.length) return [];
   const q = tokens(queryText);
   const scored = examples.map((e) => {
@@ -652,4 +670,47 @@ function afterDeliveryHint(s, contact, order, owner) {
     return `\n- ${song[0].toUpperCase() + song.slice(1)} a été livrée${contact.review_asked_at ? " et tu as déjà invité le client à laisser un commentaire : ne le redemande pas" : ""}. S'il remercie, remercie-le simplement ; s'il se plaint, excuse-toi sincèrement, demande ce qu'il aimerait changer et mets needs_human à true.`;
   }
   return `\n- ${song[0].toUpperCase() + song.slice(1)} a été livrée. Si le client remercie ou montre qu'il est content (merci, il a aimé, emojis…) : remercie-le chaleureusement, puis demande-lui, s'il le veut bien et si son temps le permet, d'aller laisser un petit commentaire sous notre publication Facebook (ça nous aide vraiment), avec ce lien : ${link} — et mets asked_review à true. Une seule fois, sans insister. Ne lui demande pas « est-ce que tu as aimé ? ». S'il se plaint ou a une remarque : excuse-toi sincèrement, demande ce qu'il aimerait changer et mets needs_human à true pour que ${owner} s'en occupe.`;
+}
+
+const ExampleKinds = z.object({
+  items: z.array(z.object({ id: z.number(), kind: z.enum(["pro", "perso"]) })),
+});
+
+/**
+ * Trie les exemples appris (historique WhatsApp, imports) : « pro » = échange avec un
+ * client au sujet de l'activité, « perso » = vie privée (famille, amour, amis, argent…).
+ * Les exemples « perso » ne servent plus jamais à imiter ton style.
+ */
+export async function sortExamples(batch) {
+  if (!batch.length) return [];
+  const s = getSettings();
+  const list = batch
+    .map((e) => `#${e.id}\nAutre personne : ${e.client_text.slice(0, 300)}\nPropriétaire : ${e.owner_reply.slice(0, 300)}`)
+    .join("\n---\n");
+  const instructions = `Voici des échanges WhatsApp de ${s.owner_name || "un compositeur de chansons personnalisées"}. ${s.business_description ? `Son activité : ${s.business_description}` : "Son activité : chansons personnalisées (texte, composition, prix, paiement, livraison)."}
+Classe chaque échange :
+- "pro" : échange avec un client ou un prospect au sujet de l'activité (demande de chanson, prix, commande, paroles, paiement, livraison, remerciements d'un client, salutations dans ce cadre) ;
+- "perso" : vie privée (famille, couple, mots doux, amis, nouvelles, argent personnel, rendez-vous, blagues, tout ce qui ne concerne pas l'activité).
+En cas de doute, choisis "perso".
+
+${list}`;
+  if (useCompat()) {
+    const r = await chatJSON({
+      system: "Tu classes des conversations. Réponds seulement en JSON.",
+      turns: [{ role: "user", content: [{ type: "text", text: instructions }] }],
+      schema: ExampleKinds,
+      shape: `{"items": [{"id": 12, "kind": "pro"}, {"id": 13, "kind": "perso"}]}`,
+    });
+    if (!r.ok) throw new Error("L'IA n'a pas renvoyé un tri lisible.");
+    return r.data.items;
+  }
+  const response = await getClient().beta.messages.parse({
+    model: s.model || "claude-opus-5-5",
+    max_tokens: 8000,
+    betas: ["server-side-fallback-2026-07-01"],
+    fallbacks: "default",
+    output_config: { effort: "low", format: betaZodOutputFormat(ExampleKinds) },
+    messages: [{ role: "user", content: instructions }],
+  });
+  return response.parsed_output?.items || [];
 }

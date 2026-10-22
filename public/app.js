@@ -102,7 +102,7 @@ function renderContacts() {
     <div class="contact ${c.id === currentId ? "active" : ""}" data-id="${c.id}">
       <div class="top"><span class="name">${esc(c.name || c.external_id)}</span><span class="tag">${CHANNELS[c.channel] || c.channel}</span></div>
       <div class="top"><span class="preview">${c.last_author === "client" ? "" : "↩ "}${esc(c.last_text || "")}</span>
-        <span>${c.ignored ? '<span class="tag">🚫 ignoré</span>' : ""}${c.needs_human ? '<span class="tag alert">besoin de toi</span>' : ""}${c.drafts ? `<span class="tag draft">${c.drafts} à valider</span>` : ""}${c.last_at ? `<span class="tag">${time(c.last_at)}</span>` : ""}</span></div>
+        <span>${c.ignored ? '<span class="tag">🚫 ignoré</span>' : c.muted ? '<span class="tag">🔒 non autorisé</span>' : ""}${c.needs_human ? '<span class="tag alert">besoin de toi</span>' : ""}${c.drafts ? `<span class="tag draft">${c.drafts} à valider</span>` : ""}${c.last_at ? `<span class="tag">${time(c.last_at)}</span>` : ""}</span></div>
     </div>`,
       )
       .join("") || '<p class="muted" style="padding:14px">Aucune conversation pour l\'instant.</p>';
@@ -148,7 +148,8 @@ async function openContact(id) {
         <span class="tag">${CHANNELS[c.channel] || c.channel}</span> <span class="muted">${esc(c.meta?.phone || "")}</span>
         ${c.credits_used ? `<span class="tag" title="Crédits Kie utilisés pour ce client (estimation)">≈ ${credits(c.credits_used)}</span>` : ""}</div>
       <div class="btns" style="margin:0">
-        <span class="status ${paused || c.ignored ? "" : "ok"}">${c.ignored ? "🚫 L'agent ne répond jamais à ce contact" : paused ? (forever ? "Agent en pause" : `Tu as la main jusqu'à ${new Date(c.paused_until).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}`) : "Agent actif"}</span>
+        <span class="status ${paused || c.muted ? "" : "ok"}">${c.ignored ? "🚫 L'agent ne répond jamais à ce contact" : c.muted ? "🔒 Contact pas encore autorisé : l'agent ne lui répond pas" : paused ? (forever ? "Agent en pause" : `Tu as la main jusqu'à ${new Date(c.paused_until).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}`) : "Agent actif"}</span>
+        ${c.policy === "allowed_only" && !c.ignored ? `<button class="small ${c.allowed ? "" : "primary"}" id="toggle-allow">${c.allowed ? "🔒 Retirer l'autorisation" : "✅ Autoriser l'agent avec ce contact"}</button>` : ""}
         <button class="small" id="toggle-ignore">${c.ignored ? "✅ Répondre à nouveau à ce contact" : "🚫 Ne jamais répondre à ce contact"}</button>
         <button class="small" id="toggle-pause">${paused ? "Réactiver l'agent" : "Mettre l'agent en pause"}</button>
         <button class="small" id="regen">Proposer une réponse</button>
@@ -185,6 +186,13 @@ async function openContact(id) {
   const b = $("#bubbles");
   b.scrollTop = b.scrollHeight;
   $("#back").onclick = () => $(".split").classList.remove("open");
+  $("#toggle-allow")?.addEventListener("click", async () => {
+    await api(`/api/contacts/${id}/allow`, { method: "POST", body: { allow: !c.allowed } });
+    toast(c.allowed ? "L'agent ne répondra plus à ce contact" : "Autorisé : l'agent répond à ce contact");
+    settings = await api("/api/settings");
+    openContact(id);
+    loadContacts();
+  });
   $("#toggle-ignore").onclick = async () => {
     await api(`/api/contacts/${id}/ignore`, { method: "POST", body: { ignore: !c.ignored } });
     toast(c.ignored ? "L'agent répondra de nouveau à ce contact" : "C'est noté : l'agent ne répondra plus jamais à ce contact");
@@ -726,6 +734,22 @@ async function loadLearn() {
     ? `<b>${total}</b> exemples d'échanges réels :<br>` + stats.map((s) => `• ${s.n} — ${labels[s.source] || s.source}`).join("<br>") +
       ` <button class="ghost small" id="clear-ex">tout effacer</button>`
     : "Aucun exemple pour l'instant.";
+  const k = await api("/api/learn/kinds").catch(() => ({}));
+  if (total) {
+    $("#learn-stats").innerHTML += `<p class="muted">🧹 Tri automatique : <b>${k.pro || 0}</b> échanges avec des clients (utilisés pour imiter ton style) · ${k.perso || 0} échanges de vie privée écartés (jamais utilisés)${k.a_trier ? ` · ${k.a_trier} à trier` : ""}</p>` +
+      (k.a_trier ? '<button class="small" id="sort-ex">🧹 Trier maintenant</button>' : "");
+  }
+  $("#sort-ex")?.addEventListener("click", async (ev) => {
+    ev.target.disabled = true;
+    ev.target.textContent = "Tri en cours… (1 à 2 minutes)";
+    try {
+      const r = await api("/api/learn/sort", { method: "POST" });
+      toast(`Tri terminé : ${r.kinds.pro || 0} échanges clients gardés, ${r.kinds.perso || 0} personnels écartés.`);
+    } catch (err) {
+      toast(err.message);
+    }
+    loadLearn();
+  });
   $("#clear-ex")?.addEventListener("click", async () => {
     if (!confirm("Effacer tous les exemples appris ?")) return;
     await api("/api/learn/examples", { method: "DELETE" });

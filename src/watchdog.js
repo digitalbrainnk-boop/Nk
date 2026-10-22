@@ -6,7 +6,9 @@
 import {
   activeOrder,
   db,
-  isIgnored,
+  setExampleKind,
+  unsortedExamples,
+  isMuted,
   isPaid,
   getContact,
   getSettings,
@@ -79,7 +81,7 @@ async function check(s, now) {
   };
 
   const testIds = new Set(db.prepare("SELECT id FROM contacts WHERE channel = 'test'").all().map((r) => r.id));
-  const skip = (c) => !c || testIds.has(c.id) || isIgnored(c) || channelMode(c.channel) === "off";
+  const skip = (c) => !c || testIds.has(c.id) || isMuted(c) || channelMode(c.channel) === "off";
 
   // 1. Messages de clients restés sans réponse (erreur du cerveau, coupure…).
   const grace = ((Number(s.debounce_seconds) || 0) + (Number(s.max_reply_delay_seconds) || 0)) * 1000 + 2 * MIN;
@@ -229,6 +231,9 @@ async function check(s, now) {
     });
   }
 
+  // Tri des exemples appris (vie privée écartée) : toutes les 30 minutes s'il en reste.
+  await maybeSortExamples(now);
+
   // 9. Solde Kie bas : une alerte par jour (vérifié toutes les 30 minutes).
   await lowCreditAlert(s, now);
   // 10. Plafond de crédits du jour atteint : une alerte par jour.
@@ -350,4 +355,36 @@ async function lowCreditAlert(s, now) {
     `🪫 Il ne reste que ${Math.round(balance)} crédits sur ton compte Kie.ai : recharge bientôt pour que l'agent puisse continuer à composer.`,
   ).catch(() => null);
   if (ok) setSettings({ low_credit_alert_day: today });
+}
+
+// ---------- Tri des exemples : échanges clients (« pro ») et vie privée (« perso ») ----------
+let sorting = false;
+export async function runExampleSort(max = 400) {
+  if (sorting) return 0;
+  sorting = true;
+  let n = 0;
+  try {
+    const { sortExamples } = await import("./agent.js");
+    const { budgetReached } = await import("./credits.js");
+    while (n < max && !budgetReached()) {
+      const batch = unsortedExamples(40);
+      if (!batch.length) break;
+      const items = await sortExamples(batch);
+      // Réponse incomplète : on ne touche à rien (sinon on écarterait de bons exemples).
+      if (items.length < batch.length / 2) throw new Error("tri incomplet, nouvel essai plus tard");
+      const kinds = new Map(items.map((i) => [Number(i.id), i.kind]));
+      for (const e of batch) setExampleKind(e.id, kinds.get(e.id) === "pro" ? "pro" : "perso");
+      n += batch.length;
+    }
+  } finally {
+    sorting = false;
+  }
+  return n;
+}
+
+let lastSort = 0;
+async function maybeSortExamples(now) {
+  if (now - lastSort < 30 * MIN || !unsortedExamples(1).length) return;
+  lastSort = now;
+  await runExampleSort(200).catch((e) => console.error("Tri des exemples :", e.message));
 }

@@ -75,6 +75,8 @@ for (const sql of [
   // File d'envoi : un message qui n'a pas pu partir (WhatsApp coupé…) reste « pending »
   // et repart tel quel à la reconnexion (rien n'est régénéré).
   "ALTER TABLE messages ADD COLUMN tries INTEGER NOT NULL DEFAULT 0",
+  // Exemples de style triés par l'IA : « pro » (échange avec un client) ou « perso » (vie privée).
+  "ALTER TABLE examples ADD COLUMN kind TEXT",
   "ALTER TABLE messages ADD COLUMN error TEXT",
   "ALTER TABLE contacts ADD COLUMN followups INTEGER NOT NULL DEFAULT 0",
   "ALTER TABLE contacts ADD COLUMN last_followup_at INTEGER NOT NULL DEFAULT 0",
@@ -194,6 +196,10 @@ export const DEFAULT_SETTINGS = {
   open_hour: 5, // l'agent répond de 5 h…
   close_hour: 0, // …à minuit (0 = minuit) ; la nuit, les messages attendent l'ouverture
   ignored_contacts: [], // numéros (ou @pseudos) auxquels l'agent ne répond jamais
+  reply_policy: "all", // all (tout le monde sauf les ignorés) | allowed_only (seulement les contacts autorisés)
+  allowed_contacts: [], // contacts autorisés (mode allowed_only)
+  emoji_level: "rare", // none | rare | like_me
+  forbidden_topics: "", // sujets auxquels l'agent ne répond jamais (il te prévient)
   currency: "FCFA",
   followup_enabled: true,
   followup_hours: 20, // < 24 h : Messenger/Instagram n'autorisent pas les messages après 24 h sans réponse
@@ -451,12 +457,23 @@ export function addExamples(pairs, source) {
   return n;
 }
 
+/** Exemples utilisables pour imiter ton style : jamais ceux triés « perso » (vie privée). */
 export function allExamples() {
-  return db.prepare("SELECT * FROM examples ORDER BY id DESC").all();
+  return db.prepare("SELECT * FROM examples WHERE kind IS NULL OR kind != 'perso' ORDER BY id DESC").all();
 }
 
 export function exampleStats() {
   return db.prepare("SELECT source, COUNT(*) AS n FROM examples GROUP BY source").all();
+}
+export function exampleKinds() {
+  const rows = db.prepare("SELECT COALESCE(kind, 'a_trier') AS kind, COUNT(*) AS n FROM examples GROUP BY kind").all();
+  return Object.fromEntries(rows.map((r) => [r.kind, r.n]));
+}
+export function unsortedExamples(limit = 40) {
+  return db.prepare("SELECT id, client_text, owner_reply FROM examples WHERE kind IS NULL ORDER BY id LIMIT ?").all(limit);
+}
+export function setExampleKind(id, kind) {
+  db.prepare("UPDATE examples SET kind = ? WHERE id = ?").run(kind, id);
 }
 
 export function clearExamples(source) {
@@ -641,6 +658,7 @@ export function isIgnored(contact, list = getSettings().ignored_contacts) {
   return list.some((raw) => {
     const entry = String(raw).trim();
     if (!entry) return false;
+    if (entry === String(contact.external_id)) return true;
     const d = digits(entry);
     // Numéro : on accepte avec ou sans indicatif du pays (comparaison par la fin).
     if (d.length >= 6 && /^[+\d\s().-]+$/.test(entry)) return ids.some((id) => id.endsWith(d) || d.endsWith(id));
@@ -649,6 +667,16 @@ export function isIgnored(contact, list = getSettings().ignored_contacts) {
 }
 
 /** Identifiant le plus parlant d'un contact pour la liste des ignorés. */
+/**
+ * L'agent doit-il se taire avec ce contact ? Oui s'il est dans la liste « ne jamais
+ * répondre », ou, en mode « seulement les contacts autorisés », s'il n'est pas autorisé.
+ */
+export function isMuted(contact, s = getSettings()) {
+  if (!contact) return true;
+  if (isIgnored(contact, s.ignored_contacts)) return true;
+  return s.reply_policy === "allowed_only" && contact.channel !== "test" && !isIgnored(contact, s.allowed_contacts);
+}
+
 export function contactKey(contact) {
   const phone = digits(contact.meta?.phone) || digits(contact.external_id);
   if (phone.length >= 6) return phone;
