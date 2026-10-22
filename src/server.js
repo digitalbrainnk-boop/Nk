@@ -42,6 +42,7 @@ import { bus } from "./events.js";
 import {
   approveDraft,
   confirmPayment,
+  lyricsMessage,
   createSong,
   handleIncoming,
   proposeLyrics,
@@ -461,7 +462,7 @@ app.post("/api/contacts/:id/lyrics/send", wrap(async (req, res) => {
   const order = activeOrder(id);
   if (!order?.lyrics) throw new Error("Aucun texte à envoyer.");
   saveOrder({ id: order.id, lyrics_status: "proposed" });
-  await sendManual(id, `🎵 ${order.song_title || order.title || "Ta chanson"}\n\n${order.lyrics}\n\nDis-moi si ce texte te plaît, ou ce que tu veux changer 😊`);
+  await sendManual(id, lyricsMessage(order));
   res.json({ ok: true });
 }));
 // TU as vérifié le paiement (même effet que ta réaction emoji sur WhatsApp).

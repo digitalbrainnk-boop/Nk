@@ -6,6 +6,7 @@ import {
   addExamples,
   dueLyrics,
   dueReminders,
+  listKnowledge,
   hasOurMessages,
   pricesText,
   isMuted,
@@ -714,13 +715,14 @@ export async function proposeLyrics(contactId, { revise = false, notes = "", mod
       lyrics: brief.lyrics,
       song_title: brief.title,
       song_style: brief.style,
+      style_label: brief.style_label || "",
       lyrics_status: "proposed",
       lyrics_version: (order.lyrics_version || 0) + 1,
       title: order.title || brief.title,
     });
   }
   emit("order", { contact_id: contactId });
-  const text = `🎵 ${order.song_title}${isRevision ? " (version corrigée)" : ""}\n\n${order.lyrics}\n\nDis-moi si ce texte te plaît, ou ce que tu veux changer 😊`;
+  const text = lyricsMessage(order, isRevision);
   if ((mode || channelMode(contact.channel)) === "draft") {
     const msg = addMessage(contactId, { author: "agent", text, status: "draft" });
     emit("message", { contact_id: contactId, message: msg });
@@ -733,6 +735,12 @@ export async function proposeLyrics(contactId, { revise = false, notes = "", mod
     }
   }
   return order;
+}
+
+/** Le texte envoyé au client : titre, style choisi en haut, paroles, question. */
+export function lyricsMessage(order, isRevision = false) {
+  const style = order.style_label || "";
+  return `🎵 ${order.song_title || order.title || "Votre chanson"}${isRevision ? " (version corrigée)" : ""}${style ? `\nStyle : ${style}` : ""}\n\n${order.lyrics}\n\nDites-nous si ce texte vous plaît, ou ce que vous souhaitez changer.`;
 }
 
 /** Lance la composition avec Suno à partir du texte validé. */
@@ -877,13 +885,14 @@ async function composeVersions(contactId, brief, jobs, { orderId, autoSend }) {
       await deliver(
         contact,
         twoStyles
-          ? "🎶 Voici ta chanson en 2 versions : une version rythmée et une version acoustique. J'espère qu'elle te plaira !"
+          ? "🎶 Voici votre chanson en 2 versions : une version rythmée et une version acoustique. Nous espérons qu'elle vous plaira !"
           : ready.length > 1
-            ? "🎶 Voici ta chanson en 2 versions, choisis celle que tu préfères ! J'espère qu'elle te plaira 😊"
-            : "🎶 Voici ta chanson, j'espère qu'elle te plaira !",
+            ? "🎶 Voici votre chanson en 2 versions, choisissez celle que vous préférez ! Nous espérons qu'elle vous plaira."
+            : "🎶 Voici votre chanson, nous espérons qu'elle vous plaira !",
         "agent",
       ).catch(() => {});
       for (const m of ready) await sendSong(getContact(contactId), m); // en cas de coupure : file d'envoi
+      await deliver(getContact(contactId), "Merci pour votre confiance 🙏", "agent").catch(() => {});
     } else {
       updateContact(contactId, {
         needs_human: 1,
@@ -952,6 +961,15 @@ export async function runLyricsQueue(at = Date.now()) {
     lyricsRunning = false;
   }
   return n;
+}
+
+/** Tes numéros de paiement, lus dans la fiche des moyens de paiement. */
+function ownPaymentNumbers() {
+  return listKnowledge()
+    .filter((k) => /paiement|payment|orange|moov|wave/i.test(`${k.title} ${k.content}`))
+    .flatMap((k) => k.content.match(/\+?\d[\d\s.-]{7,}\d/g) || [])
+    .map((n) => n.replace(/\D/g, ""))
+    .filter((n) => n.length >= 8);
 }
 
 /** Le client demande un rabais : TU décides, l'agent te prévient. */
@@ -1082,17 +1100,56 @@ async function handleSongStep(contactId, reply, mode) {
     // Si le texte n'est pas encore validé, il garde son état : on compose seulement quand il l'est.
     if (!order.lyrics || order.lyrics_status === "validated") saveOrder({ id: order.id, lyrics_status: "payment_claimed" });
     emit("order", { contact_id: contactId });
-    // Preuve envoyée par le client (capture) : on te la transfère.
+    // Preuve envoyée par le client (capture) : on te la transfère, avec ce qu'on y lit.
     const proof = listMessages(contactId, 15)
       .filter((m) => m.author === "client" && m.kind === "image" && m.media_path && Date.now() - m.created_at < 3600_000)
       .at(-1);
     const emoji = s.payment_confirm_emoji || "✅";
-    const amount = order.price ? `${order.price} ${s.currency}` : "le montant convenu";
-    await notifyOwner(
-      contact,
-      `💰 Ce client dit avoir payé ${amount}${order.song_title || order.title ? ` pour « ${order.song_title || order.title} »` : ""}.\nVérifie ton compte. Si c'est bon, réagis à CE message avec ${emoji} : je compose la chanson et je la lui envoie.\n(Tant que tu n'as pas réagi, rien n'est composé.)`,
-      { kind: "payment", orderId: order.id, imagePath: proof?.media_path, imageMime: proof?.media_type, plain: true },
+    const info = reply.payment_info || {};
+    let capture = null;
+    if (proof) {
+      const { readPaymentCapture } = await import("./agent.js");
+      capture = await readPaymentCapture(proof.media_path, proof.media_type);
+    }
+    const clientPhone = contact.meta?.phone || (/^\d{8,}$/.test(String(contact.external_id).split("@")[0]) ? String(contact.external_id).split("@")[0] : "");
+    const lines = [
+      "💰 PAIEMENT ANNONCÉ — à vérifier",
+      `👤 Client : ${contact.name || "?"}${clientPhone ? ` (+${clientPhone})` : ""}`,
+      `📱 Numéro utilisé pour payer : ${info.payer_number || capture?.payer_number || "non précisé"}`,
+      `💵 Montant : ${info.amount || capture?.amount || "non précisé"}${order.price ? ` (prix annoncé : ${order.price} ${s.currency})` : ""}`,
+    ];
+    if (info.method) lines.push(`🏦 Moyen : ${info.method}`);
+    if (info.agency) lines.push(`🏢 Paiement en agence : ${info.agency}`);
+    if (capture?.is_payment !== undefined) {
+      lines.push("", "🧾 Lu sur la capture (à vérifier) :");
+      if (capture.text) lines.push(`« ${String(capture.text).slice(0, 400)} »`);
+      if (capture.reference) lines.push(`Référence : ${capture.reference}`);
+      if (capture.date) lines.push(`Date : ${capture.date}`);
+      if (capture.recipient_number || capture.recipient_name) {
+        lines.push(`Bénéficiaire : ${[capture.recipient_name, capture.recipient_number].filter(Boolean).join(" ")}`);
+      }
+      // Anti-fraude : le bénéficiaire doit être un de tes numéros (fiche des moyens de paiement).
+      const mine = ownPaymentNumbers();
+      const rec = String(capture.recipient_number || "").replace(/\D/g, "");
+      if (mine.length && rec.length >= 8 && !mine.some((n) => n.endsWith(rec.slice(-8)))) {
+        lines.push("⚠️ Le numéro bénéficiaire ne correspond à aucun de tes numéros de paiement : capture suspecte !");
+      }
+      if (capture.is_payment === false) lines.push("⚠️ Cette image ne ressemble pas à une capture de paiement.");
+    } else if (proof) {
+      lines.push("", "🧾 Capture jointe à ce message.");
+    }
+    lines.push(
+      "",
+      `Vérifie ton compte. Si c'est bon, réagis à CE message avec ${emoji} : la chanson est composée et envoyée au client.`,
+      "(Tant que tu n'as pas réagi, rien n'est composé.)",
     );
+    await notifyOwner(contact, lines.join("\n"), {
+      kind: "payment",
+      orderId: order.id,
+      imagePath: proof?.media_path,
+      imageMime: proof?.media_type,
+      plain: true,
+    });
     updateContact(contactId, { needs_human: 1, needs_human_reason: `Paiement annoncé par le client : vérifie-le puis réagis avec ${emoji} (WhatsApp) ou clique « Paiement vérifié ».` });
     emit("contact", { contact_id: contactId });
   }
@@ -1127,7 +1184,7 @@ export async function confirmPayment(contactId, { by = "tableau de bord" } = {})
     emit("order", { contact_id: contactId });
     return activeOrder(contactId);
   }
-  await say("Paiement bien reçu, merci 🙏 Je compose ta chanson maintenant, tu la reçois dans une dizaine de minutes 🎶");
+  await say("Paiement bien reçu, merci 🙏 Nous composons votre chanson maintenant, vous la recevrez dans une dizaine de minutes.");
   try {
     await startComposition(contactId);
   } catch (e) {
@@ -1249,6 +1306,8 @@ export async function notifyOwner(contact, reason, { kind, orderId, imagePath, i
  * sinon sur Telegram. Renvoie l'identifiant du message (ou true), null si rien n'a pu partir.
  */
 export async function messageOwner(text, { imagePath, imageMime } = {}) {
+  // En-tête reconnaissable : tu sais tout de suite que c'est ton agent qui t'écrit.
+  text = `🤖 *TON AGENT*\n${text}`;
   const wa = adapters.get("whatsapp");
   if (wa?.notifyOwner) {
     try {

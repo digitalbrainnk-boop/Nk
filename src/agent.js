@@ -6,7 +6,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { activeOrder, allExamples, getSettings, hasOurMessages, isPaid, lastDeliveredOrder, listKnowledge, listMessages, listSocialPosts } from "./db.js";
-import { LLMError, chatJSON } from "./openai-compat.js";
+import { LLMError, chatJSON, visionJSON } from "./openai-compat.js";
 import { actionsPrompt, enabledActions, runAction } from "./integrations.js";
 
 // "claude" (par défaut) ou "openai" (service compatible : Kie.ai, DeepSeek...).
@@ -24,6 +24,7 @@ const REPLY_SHAPE = `{"messages": ["bulle 1", "bulle 2"], "memory": "mémoire à
 - song_step : "none", "propose_lyrics" (écrire et envoyer le texte), "revise_lyrics" (changements demandés, détaillés dans revision_notes), "client_validated" (le client approuve le texte) ou "payment_claimed" (le client dit avoir payé / envoie une preuve de paiement)
 - discount_request : vide, sauf si le client demande un rabais / une réduction : ce qu'il demande et pourquoi
 - remind_in_days : 0, sauf si le client dit qu'il reviendra plus tard pour une (autre) chanson : dans combien de jours le relancer ; remind_about : ce qu'il a dit
+- payment_info : quand le client annonce un paiement : {"payer_number": "numéro utilisé pour payer", "amount": "montant", "method": "Orange Money / Moov Money / Wave / agence…", "agency": "agence et ville si paiement en agence"} (null sinon)
 - send_prices : true pour envoyer nos tarifs au client (le texte exact part automatiquement après ton premier message)
 - asked_review : true seulement si tu viens d'envoyer au client le lien pour laisser un commentaire sur la page Facebook
 - special_request : vide, sauf si le client demande un service vidéo (vidéo lyrics, clip, montage…) : décris-le en quelques mots`;
@@ -75,6 +76,16 @@ const ReplySchema = z.object({
     .optional()
     .describe("Si le client annonce qu'il reviendra plus tard pour une (autre) chanson : dans combien de jours le relancer ; 0 sinon."),
   remind_about: z.string().optional().describe("Ce que le client a dit sur sa prochaine commande (occasion, date…)."),
+  payment_info: z
+    .object({
+      payer_number: z.string().nullable().optional().describe("Numéro utilisé pour payer (tel que donné par le client ou lu sur la capture)."),
+      amount: z.string().nullable().optional().describe("Montant payé annoncé par le client."),
+      method: z.string().nullable().optional().describe("Orange Money, Moov Money, Wave, agence…"),
+      agency: z.string().nullable().optional().describe("Si paiement en agence : nom de l'agence / ville."),
+    })
+    .nullable()
+    .optional()
+    .describe("Détails du paiement annoncé par le client (null s'il n'en parle pas)."),
   send_prices: z
     .boolean()
     .optional()
@@ -141,7 +152,8 @@ ${knowledge || "(Aucune fiche pour l'instant.)"}
 - Messages personnels ou hors activité — mots doux ou affectueux, « tu as mangé ? », nouvelles de la famille, rendez-vous, demandes d'argent, de prêt ou de cadeau, problèmes personnels, politique, religion, rumeurs, questions sur la vie privée de ${owner} : N'Y RÉPONDS PAS. Renvoie messages vide, mets needs_human à true et reason = « Message personnel : » suivi d'un résumé court. ${owner} répondra lui-même.
 - Exception : une salutation polie d'un client (« bonjour, ça va ? ») reçoit une réponse courte et neutre, puis tu reviens à sa demande.
 - N'utilise jamais de mots affectueux ou intimes (bb, mon cœur, ma chérie, prunelle, bisous…), même si un exemple en contient : certains exemples peuvent venir de conversations privées, ne reprends jamais leur contenu personnel.
-- Ne promets jamais d'argent, de cadeau ou de service gratuit.${s.forbidden_topics ? `\n- Sujets auxquels tu ne réponds JAMAIS (silence + needs_human à true, reason = « Sujet interdit : … ») : ${s.forbidden_topics}` : ""}
+- Ne promets jamais d'argent, de cadeau ou de service gratuit.
+- Ne mentionne JAMAIS les outils utilisés (Suno, intelligence artificielle, logiciel ou application de composition…) : c'est « nous », l'équipe, qui écrivons et composons. Les chansons sont envoyées en audio, directement.${s.forbidden_topics ? `\n- Sujets auxquels tu ne réponds JAMAIS (silence + needs_human à true, reason = « Sujet interdit : … ») : ${s.forbidden_topics}` : ""}
 
 ## Comment répondre
 - Écris comme une personne sur une messagerie : messages courts, naturels, pas de listes à puces, pas de gras, pas de titres, pas de formules de service client robotiques. Si ${owner} découpe ses réponses en plusieurs petits messages, fais pareil (1 à 4 bulles).
@@ -305,7 +317,7 @@ export async function generateReply(contact, { followup = false, reminder = "", 
       ? "le texte est en cours d'écriture : il sera envoyé automatiquement au client dans quelques minutes"
       : "aucun texte écrit pour l'instant";
   const payInfo = s.compose_requires_payment
-    ? `5) Dès qu'il a validé le texte, demande-lui de passer au paiement (montant${order?.price ? ` : ${order.price} ${s.currency}` : ""} et moyens de paiement indiqués dans les fiches, recopiés exactement — numéro et nom du compte ; choisis le moyen selon le pays du client en suivant les fiches ; si aucun moyen ne convient à son pays, ou s'il n'y en a pas, demande-lui comment il souhaite payer et mets needs_human à true) et de t'envoyer la capture ou la référence du paiement ; précise qu'il reçoit sa chanson${s.song_versions === "two_styles" ? " en 2 versions (une rythmée et une acoustique)" : " en 2 versions"} environ 10 minutes après la vérification du paiement. 6) Quand le client dit avoir payé ou envoie une capture de paiement : song_step = "payment_claimed", remercie-le et dis-lui que tu vérifies le paiement et que tu lui envoies sa chanson juste après. Ne dis JAMAIS que le paiement est reçu ou vérifié, ne lance jamais la composition toi-même : seul ${s.owner_name || "le propriétaire"} confirme le paiement (une capture peut être fausse).`
+    ? `5) Dès qu'il a validé le texte, demande-lui de passer au paiement (montant${order?.price ? ` : ${order.price} ${s.currency}` : ""} et moyens de paiement indiqués dans les fiches, recopiés exactement — numéro et nom du compte ; choisis le moyen selon le pays du client en suivant les fiches ; si aucun moyen ne convient à son pays, ou s'il n'y en a pas, demande-lui comment il souhaite payer et mets needs_human à true) et de t'envoyer la capture ou la référence du paiement ; précise qu'il reçoit sa chanson${s.song_versions === "two_styles" ? " en 2 versions (une rythmée et une acoustique)" : " en 2 versions"} environ 10 minutes après la vérification du paiement. 6) Quand le client dit avoir payé : s'il a envoyé une capture, c'est bon ; sinon demande-lui d'abord avec quel numéro il a effectué le paiement et quel montant (ou, s'il a payé dans une agence, dans quelle agence et à quel nom). Dès que tu as la capture OU le numéro utilisé (ou l'agence) : song_step = "payment_claimed", remplis payment_info avec ce que tu sais, remercie-le et dis-lui que tu vérifies le paiement et que tu lui envoies sa chanson juste après. Ne dis JAMAIS que le paiement est reçu ou vérifié, ne lance jamais la composition toi-même : seul ${s.owner_name || "le propriétaire"} confirme le paiement (une capture peut être fausse).`
     : "5) La chanson est alors composée et envoyée au client automatiquement.";
   const owner = s.owner_name || "le propriétaire";
   const firstContact = !followup && !reminder && !hasOurMessages(contact.id);
@@ -323,7 +335,7 @@ export async function generateReply(contact, { followup = false, reminder = "", 
 - Formules avec vidéo lyrics, affiche anniversaire, montage vidéo, clip… : tu ne les fais pas toi-même. Si le client en choisit une, donne-lui le prix (fiches), dis-lui chaleureusement que ${owner} s'en occupe personnellement et revient vers lui très vite, mets special_request = ce qu'il veut (ex : « chanson + vidéo lyrics ») et song_step = "none".`;
   const songHint = s.song_flow
     ? `
-- Chanson personnalisée (processus) : 1) rassemble l'essentiel au fil de la discussion (pour qui, prénoms, occasion, 2 ou 3 anecdotes ou qualités, ambiance/style musical, langue) ; 2) quand le client t'a donné ses informations, demande-lui TOUJOURS d'abord si c'est tout ou s'il veut ajouter quelque chose (ex : « C'est noté 👌 Est-ce que c'est toutes les infos ou tu veux ajouter quelque chose ? ») ; 3) seulement quand il confirme que c'est complet, mets song_step à "propose_lyrics" : le texte sera écrit et envoyé automatiquement — dans messages, dis-lui que tu t'y mets et qu'il reçoit le texte d'ici ${Math.min(12, Math.max(1, Number(s.lyrics_delay_max) || 10))} minutes maximum ; n'écris jamais les paroles toi-même ; 4) si le client veut changer quelque chose dans le texte proposé : song_step = "revise_lyrics" et revision_notes = ses demandes précises ; s'il approuve clairement le texte : song_step = "client_validated". ${payInfo} Sinon song_step = "none". Ne remets pas la même étape si elle est déjà en cours (voir l'état ci-dessous).
+- Chanson personnalisée (processus) : 1) rassemble l'essentiel au fil de la discussion en suivant la fiche « Déroulement d'une commande » (option choisie, occasion, informations de l'occasion, langue) ; demande TOUJOURS aussi : la voix — voix masculine, voix féminine ou duo (les deux voix ensemble) — et le style : doux (acoustique) ou dansant ; s'il ne sait pas, propose-lui un style adapté à l'occasion ; 2) quand le client t'a donné ses informations, demande-lui TOUJOURS d'abord si c'est tout ou s'il veut ajouter quelque chose (ex : « C'est noté 👌 Est-ce que c'est toutes les infos ou tu veux ajouter quelque chose ? ») ; 3) seulement quand il confirme que c'est complet, mets song_step à "propose_lyrics" : le texte sera écrit et envoyé automatiquement — dans messages, dis-lui que tu t'y mets et qu'il reçoit le texte d'ici ${Math.min(12, Math.max(1, Number(s.lyrics_delay_max) || 10))} minutes maximum ; n'écris jamais les paroles toi-même ; 4) si le client veut changer quelque chose dans le texte proposé : song_step = "revise_lyrics" et revision_notes = ses demandes précises ; s'il approuve clairement le texte : song_step = "client_validated". ${payInfo} Sinon song_step = "none". Ne remets pas la même étape si elle est déjà en cours (voir l'état ci-dessous).
 - Si tu ne comprends pas un message (audio inaudible, demande floue, question à laquelle les fiches ne répondent pas) : réponds au client que tu reviens vers lui très vite, mets needs_human à true et explique dans reason ce que tu n'as pas compris : ${s.owner_name || "le propriétaire"} reçoit ton message sur son WhatsApp.
 - État du texte de la chanson : ${lyricsState}${order?.lyrics && order.lyrics_status === "proposed" ? `\nTexte proposé (version ${order.lyrics_version}) :\n${order.lyrics.slice(0, 3000)}` : ""}`
     : "";
@@ -403,6 +415,15 @@ function salvageReply(p) {
     demo: p.demo === true,
     asked_review: p.asked_review === true || p.asked_review === "true",
     send_prices: p.send_prices === true || p.send_prices === "true",
+    payment_info:
+      p.payment_info && typeof p.payment_info === "object"
+        ? {
+            payer_number: str(p.payment_info.payer_number),
+            amount: str(p.payment_info.amount),
+            method: str(p.payment_info.method),
+            agency: str(p.payment_info.agency),
+          }
+        : null,
     discount_request: str(p.discount_request) || "",
     remind_in_days: Math.max(0, Math.min(365, Number(p.remind_in_days) || 0)),
     remind_about: str(p.remind_about) || "",
@@ -558,6 +579,10 @@ ${corpus}
 const SongBrief = z.object({
   title: z.string().describe("Titre court de la chanson (max 80 caractères)."),
   style: z.string().describe("Style musical pour Suno, en anglais, mots-clés séparés par des virgules (genre, ambiance, instruments, voix)."),
+  style_label: z
+    .string()
+    .optional()
+    .describe("Le style présenté au client, en français, court (ex : « Afro pop dansant, voix masculine »)."),
   lyrics: z.string().describe("Paroles complètes avec [Verse], [Chorus], [Bridge]... dans la langue de la conversation."),
 });
 
@@ -571,6 +596,8 @@ export async function songBrief(contact, { previous, notes } = {}) {
   const instructions = `Tu es parolier pour ${s.owner_name || "un compositeur"} qui crée des chansons personnalisées.
 À partir de la conversation et de la mémoire du client, écris la chanson commandée : prénoms, anecdotes, occasion, émotions, langue demandée.
 Paroles chantables, rimes naturelles, structure [Verse 1] [Chorus] [Verse 2] [Chorus] [Bridge] [Chorus], 2 à 3 minutes.
+Style : respecte ce que le client a choisi — doux/acoustique ou dansant, genre musical — et la voix : voix masculine (male vocals), voix féminine (female vocals) ou duo (male and female duet vocals). Le champ style (en anglais, pour la composition) doit contenir ces choix ; style_label les présente au client en français.
+Jamais de numéro de téléphone dans les paroles.
 ${s.business_description ? `Activité : ${s.business_description}\n` : ""}
 Mémoire du client :
 ${contact.memory || "(vide)"}
@@ -593,7 +620,7 @@ ${notes || "(voir la conversation)"}`
       system: "Tu écris des chansons personnalisées.",
       turns: [{ role: "user", content: [{ type: "text", text: instructions }] }],
       schema: SongBrief,
-      shape: `{"title": "...", "style": "afro pop, joyful, male vocals, guitar", "lyrics": "[Verse 1]\\n..."}`,
+      shape: `{"title": "...", "style": "afro pop, joyful, danceable, male vocals, guitar", "style_label": "Afro pop dansant, voix masculine", "lyrics": "[Verse 1]\\n..."}`,
     });
     if (!r.ok) throw new Error("L'IA n'a pas renvoyé de paroles lisibles, réessaie.");
     return r.data;
@@ -671,18 +698,19 @@ export function reviewLink(s = getSettings()) {
   return post ? `https://www.facebook.com/${post.fb_id}` : "";
 }
 
-// Après la livraison : quand le client remercie (content), l'inviter à laisser un commentaire.
+// Après la livraison : quand le client réagit bien, l'inviter à laisser un commentaire.
 function afterDeliveryHint(s, contact, order, owner) {
   if (!s.review_request || order) return "";
   const delivered = lastDeliveredOrder(contact.id);
   if (!delivered) return "";
   const link = reviewLink(s);
   const title = delivered.song_title || delivered.title;
-  const song = `la chanson${title ? ` « ${title} »` : ""}`;
+  const song = `La chanson${title ? ` « ${title} »` : ""}`;
+  const unhappy = ` S'il n'a pas aimé, ou s'il veut un autre style ou d'autres changements : ne propose PAS de nouvelle composition toi-même ; dis-lui poliment que tu transmets à l'équipe et qu'on revient vers lui, et mets needs_human à true avec reason = « Changement demandé après livraison : … ». ${owner} décidera.`;
   if (contact.review_asked_at || !link) {
-    return `\n- ${song[0].toUpperCase() + song.slice(1)} a été livrée${contact.review_asked_at ? " et tu as déjà invité le client à laisser un commentaire : ne le redemande pas" : ""}. S'il remercie, remercie-le simplement ; s'il se plaint, excuse-toi sincèrement, demande ce qu'il aimerait changer et mets needs_human à true.`;
+    return `\n- ${song} a été livrée (avec « Merci pour votre confiance »)${contact.review_asked_at ? " et tu as déjà demandé un commentaire : ne le redemande pas" : ""}. S'il remercie, remercie-le simplement.${unhappy}`;
   }
-  return `\n- ${song[0].toUpperCase() + song.slice(1)} a été livrée. Si le client remercie ou montre qu'il est content (merci, il a aimé, emojis…) : remercie-le chaleureusement, puis demande-lui, s'il le veut bien et si son temps le permet, d'aller laisser un petit commentaire sous notre publication Facebook (ça nous aide vraiment), avec ce lien : ${link} — et mets asked_review à true. Une seule fois, sans insister. Ne lui demande pas « est-ce que tu as aimé ? ». S'il se plaint ou a une remarque : excuse-toi sincèrement, demande ce qu'il aimerait changer et mets needs_human à true pour que ${owner} s'en occupe.`;
+  return `\n- ${song} a été livrée (avec « Merci pour votre confiance »). Dès que le client réagit normalement ou positivement (merci, merci beaucoup, il a aimé, emoji…) : remercie-le, puis écris « Si le temps vous le permet, nous aimerions vous demander de nous laisser un tout petit commentaire sous l'une de nos publications Facebook 🙏 » suivi de ce lien : ${link} — et mets asked_review à true. Une seule fois, sans insister. Ne lui demande pas « est-ce que vous avez aimé ? ».${unhappy}`;
 }
 
 const ExampleKinds = z.object({
@@ -726,4 +754,36 @@ ${list}`;
     messages: [{ role: "user", content: instructions }],
   });
   return response.parsed_output?.items || [];
+}
+
+/**
+ * Lit la capture de paiement envoyée par le client (au mieux : si le service IA ne lit
+ * pas les images, renvoie null et tu vérifies avec la capture transférée).
+ */
+export async function readPaymentCapture(imagePath, mime) {
+  const prompt = `Cette image est une capture de paiement mobile (Orange Money, Moov Money, Wave…) ou un reçu d'agence. Extrais :
+{"is_payment": true/false, "payer_number": "numéro qui a payé ou null", "recipient_number": "numéro qui a reçu ou null", "recipient_name": "nom du bénéficiaire ou null", "amount": "montant avec la devise ou null", "reference": "référence / ID de transaction ou null", "date": "date et heure ou null", "text": "le message principal de la capture, recopié"}`;
+  try {
+    if (useCompat()) return await visionJSON({ prompt, imagePath, mime });
+    const data = fs.readFileSync(imagePath).toString("base64");
+    const r = await getClient().messages.create({
+      model: getSettings().model || "claude-opus-5-5",
+      max_tokens: 1500,
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "image", source: { type: "base64", media_type: (mime || "image/jpeg").split(";")[0], data } },
+            { type: "text", text: `${prompt}\nRéponds uniquement avec le JSON.` },
+          ],
+        },
+      ],
+    });
+    const text = r.content.map((b) => (b.type === "text" ? b.text : "")).join("");
+    const m = text.match(/\{[\s\S]*\}/);
+    return m ? JSON.parse(m[0]) : null;
+  } catch (e) {
+    console.error("Lecture de la capture :", e.message);
+    return null;
+  }
 }

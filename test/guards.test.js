@@ -65,7 +65,7 @@ test("un seul texte : l'agent ne renvoie pas un 2e texte si le client n'a pas de
   assert.equal(db.activeOrder(c.id).lyrics_version, 1);
   await say("a", "Merci !");
   assert.equal(db.activeOrder(c.id).lyrics_version, 1);
-  assert.equal(sent.filter((x) => x.to === "a" && /Dis-moi si ce texte/.test(x.t)).length, 1);
+  assert.equal(sent.filter((x) => x.to === "a" && /Dites-nous si ce texte/.test(x.t)).length, 1);
 });
 
 test("corrections : le texte corrigé est renvoyé, puis au-delà de la limite c'est toi qui prends la main", async () => {

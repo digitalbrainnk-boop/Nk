@@ -140,6 +140,8 @@ for (const sql of [
   "ALTER TABLE orders ADD COLUMN payment_confirmed_at INTEGER NOT NULL DEFAULT 0",
   // Nombre de compositions lancées (pour ne pas relancer Suno sans fin).
   "ALTER TABLE orders ADD COLUMN compose_tries INTEGER NOT NULL DEFAULT 0",
+  // Style présenté au client (en français), écrit en haut du texte.
+  "ALTER TABLE orders ADD COLUMN style_label TEXT NOT NULL DEFAULT ''",
 ]) {
   try {
     db.exec(sql);
@@ -558,7 +560,7 @@ export function saveOrder(o) {
   const fields = [
     "stage", "title", "occasion", "price", "paid", "due_date", "notes",
     "lyrics", "song_title", "song_style", "lyrics_status", "lyrics_version", "lyrics_due_at", "lyrics_notes", "special",
-    "payment_confirmed_at", "compose_tries",
+    "payment_confirmed_at", "compose_tries", "style_label",
   ];
   if (o.stage && !STAGES.includes(o.stage)) throw new Error(`Étape inconnue : ${o.stage}`);
   if (o.id) {
@@ -570,7 +572,7 @@ export function saveOrder(o) {
     db.prepare(
       `UPDATE orders SET stage=?, title=?, occasion=?, price=?, paid=?, due_date=?, notes=?, lyrics=?, song_title=?, song_style=?,
        lyrics_status=?, lyrics_version=?, lyrics_due_at=?, lyrics_notes=?, special=?, payment_confirmed_at=?, compose_tries=?,
-       updated_at=?, delivered_at=? WHERE id=?`,
+       style_label=?, updated_at=?, delivered_at=? WHERE id=?`,
     ).run(
       next.stage,
       next.title,
@@ -589,6 +591,7 @@ export function saveOrder(o) {
       next.special || "",
       Number(next.payment_confirmed_at) || 0,
       Number(next.compose_tries) || 0,
+      next.style_label || "",
       now(),
       delivered,
       o.id,
@@ -878,7 +881,7 @@ if (!getSettings().tarifs_seeded) {
 }
 
 // ---------- Fiche « Déroulement d'une commande » (ajoutée une seule fois, modifiable) ----------
-export const DEROULEMENT = `Déroulement d'une conversation avec un client (à suivre dans cet ordre) :
+const DEROULEMENT_V1 = `Déroulement d'une conversation avec un client (à suivre dans cet ordre) :
 
 1. Nouveau client : on dit bonjour, le message de bienvenue de l'entreprise part automatiquement, puis on demande : « Souhaitez-vous avoir une chanson personnalisée ? ». S'il demande déjà une chanson dans son premier message, on passe directement à l'étape 2.
 2. S'il veut une chanson : on lui envoie nos tarifs et on lui demande quelle option il choisit (chanson simple, chanson + vidéo lyrics, etc.).
@@ -893,10 +896,38 @@ Si ce n'est pas dit, on demande aussi le style musical souhaité et la langue.
 5. Quand il a tout donné : « Est-ce que c'est toutes les informations ? », puis on écrit le texte.
 
 Ton : on vouvoie le client et on parle au nom de l'équipe (« nous »).`;
+export const DEROULEMENT = `Déroulement d'une conversation avec un client (à suivre dans cet ordre) :
+
+1. Nouveau client : on dit bonjour, le message de bienvenue de l'entreprise part automatiquement, puis on demande : « Souhaitez-vous avoir une chanson personnalisée ? ». S'il demande déjà une chanson dans son premier message, on passe directement à l'étape 2.
+2. S'il veut une chanson : on lui envoie nos tarifs et on lui demande quelle option il choisit (chanson simple, chanson + vidéo lyrics, etc.).
+3. Quand il a choisi : « Tout d'abord, nous aimerions savoir : la chanson, c'est pour quelle occasion ? »
+4. Selon l'occasion, on demande les informations nécessaires (en un ou deux messages, pas un interrogatoire) :
+- Mariage (obligatoire) : les noms des mariés, la date du mariage et le lieu du mariage. Puis : « Si vous avez d'autres choses à ajouter, n'hésitez pas, pour qu'on puisse passer à la création du texte. »
+- Chanson d'amour : le prénom de la personne aimée (et le sien), leur histoire (rencontre, souvenirs), ce qu'il aime chez elle, le message à faire passer.
+- Anniversaire : le prénom de la personne, son âge si souhaité, le lien avec elle (maman, ami, collègue…), ses qualités, un souvenir ou un message.
+- Publicité d'une boutique ou d'une entreprise : le nom de la boutique, ce qu'elle vend ou propose, le quartier ou la ville, ce qui la rend unique ou un slogan. On ne met PAS de numéro de téléphone dans la chanson (difficile à chanter et à comprendre) : s'il en donne un, on lui explique gentiment pourquoi.
+- Autre occasion : les prénoms, l'occasion, l'émotion voulue et les détails importants.
+5. La voix : « Souhaitez-vous une voix masculine, une voix féminine, ou un duo (les deux voix ensemble) ? »
+6. Le style : « Préférez-vous un style doux (acoustique) ou un style dansant ? ». S'il ne sait pas, on lui propose un style adapté à l'occasion.
+7. Quand il a tout donné : « Est-ce que c'est toutes les informations ? », puis on écrit le texte. Le style choisi est écrit en haut du texte envoyé.
+8. Après la livraison des chansons : « Merci pour votre confiance ». Quand il réagit bien, on lui demande un petit commentaire sous une de nos publications Facebook (avec le lien). S'il veut un autre style ou n'a pas aimé : on prévient le propriétaire, on ne recompose rien soi-même.
+
+Ton : on vouvoie le client et on parle au nom de l'équipe (« nous »). On ne parle jamais des outils utilisés pour composer.`;
 if (!getSettings().process_seeded) {
   const has = db.prepare("SELECT 1 FROM knowledge WHERE lower(title) LIKE '%déroulement%'").get();
   if (!has) saveKnowledge({ title: "Déroulement d'une commande", content: DEROULEMENT });
-  setSettings({ process_seeded: true });
+  setSettings({ process_seeded: true, process_version: 2 });
+} else if ((getSettings().process_version || 1) < 2) {
+  // Mise à jour de la fiche (voix, style, après livraison) seulement si tu ne l'as pas modifiée.
+  const fiche = db.prepare("SELECT * FROM knowledge WHERE lower(title) LIKE '%déroulement%' ORDER BY id LIMIT 1").get();
+  if (fiche && fiche.content === DEROULEMENT_V1) saveKnowledge({ id: fiche.id, title: fiche.title, content: DEROULEMENT });
+  setSettings({ process_version: 2 });
+}
+
+// Lien Facebook envoyé aux clients contents (une seule fois ; modifiable dans Canaux).
+if (!getSettings().fb_link_seeded) {
+  if (!getSettings().facebook_page_url) setSettings({ facebook_page_url: "https://www.facebook.com/share/19JqG28YSV/" });
+  setSettings({ fb_link_seeded: true });
 }
 
 /** A-t-on déjà écrit à ce client (agent ou toi) ? Sinon, c'est un premier contact. */

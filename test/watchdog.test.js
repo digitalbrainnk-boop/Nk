@@ -101,7 +101,7 @@ test("3. texte promis mais jamais écrit : l'agent l'écrit et te le signale", a
   await runWatchdog();
   const o = db.activeOrder(c.id);
   assert.equal(o.lyrics_status, "proposed");
-  assert.ok(sent.some((x) => x.to === "d1" && /Dis-moi si ce texte te plaît/.test(x.t)));
+  assert.ok(sent.some((x) => x.to === "d1" && /Dites-nous si ce texte vous plaît/.test(x.t)));
   assert.ok(owner.some((t) => /Corrigé automatiquement/.test(t) && /Ali/.test(t)));
 });
 
@@ -160,7 +160,7 @@ test("6. envoi raté (WhatsApp coupé) : rien n'est recomposé, les 2 versions r
   db.saveOrder({ contact_id: c.id, stage: "acompte", price: 5000, paid: 5000, lyrics: "[Chorus] Issa", lyrics_status: "validated" });
   const before = generations;
   await router.startComposition(c.id);
-  await waitFor(() => db.listMessages(c.id).filter((m) => m.status === "pending").length === 3); // annonce + 2 versions
+  await waitFor(() => db.listMessages(c.id).filter((m) => m.status === "pending").length === 4); // annonce + 2 versions + merci
   assert.equal(db.activeOrder(c.id).lyrics_status, "composed");
   db.db.prepare("UPDATE messages SET created_at = ? WHERE contact_id = ?").run(Date.now() - 15 * MIN, c.id);
   for (let i = 0; i < 3; i++) await runWatchdog();

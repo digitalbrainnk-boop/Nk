@@ -167,6 +167,37 @@ async function chatTextOnce({ system, turns, json = false }) {
   return text;
 }
 
+/**
+ * Lit une image (ex : capture de paiement) et renvoie un objet JSON. Seulement pour les
+ * services au format « chat/completions » qui acceptent les images ; sinon null.
+ */
+export async function visionJSON({ prompt, imagePath, mime }) {
+  const cfg = llmConfig();
+  if (!cfg.url || !cfg.key || !cfg.model || wireFormat(cfg.url) !== "chat") return null;
+  const fs = await import("node:fs");
+  const data = fs.readFileSync(imagePath).toString("base64");
+  const text = await post(
+    cfg,
+    {
+      model: cfg.model,
+      max_tokens: 1500,
+      messages: [
+        { role: "system", content: "Tu lis des captures d'écran de paiement mobile. Réponds UNIQUEMENT avec un objet JSON." },
+        {
+          role: "user",
+          content: [
+            { type: "text", text: prompt },
+            { type: "image_url", image_url: { url: `data:${(mime || "image/jpeg").split(";")[0]};base64,${data}` } },
+          ],
+        },
+      ],
+    },
+    { timeoutMs: 60_000 },
+  );
+  const m = String(text || "").match(/\{[\s\S]*\}/);
+  return m ? JSON.parse(m[0]) : null;
+}
+
 /** Demande une réponse JSON et la valide avec un schéma zod. */
 export async function chatJSON({ system, turns, schema, shape, salvage }) {
   const text = await chatText({

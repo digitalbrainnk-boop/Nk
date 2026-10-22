@@ -84,7 +84,7 @@ test("1. assez d'infos : le texte est écrit et envoyé au client pour validatio
   assert.equal(o.lyrics_version, 1);
   assert.equal(o.song_style, "zouglou, festif");
   assert.match(sent.at(-1), /Joyeux anniversaire Ibrahim \(v1\)/);
-  assert.match(sent.at(-1), /Dis-moi si ce texte te plaît/);
+  assert.match(sent.at(-1), /Dites-nous si ce texte vous plaît/);
 });
 
 test("2. le client demande un changement : nouvelle version à partir de la précédente", async () => {
@@ -136,7 +136,7 @@ test("5. le client dit avoir payé : rien n'est composé, tu es prévenu sur Wha
   const o = db.activeOrder(c.id);
   assert.equal(o.lyrics_status, "payment_claimed");
   assert.equal(o.paid, 0); // l'agent ne marque jamais un paiement
-  assert.match(ownerNotes.at(-1).text, /dit avoir payé/);
+  assert.match(ownerNotes.at(-1).text, /PAIEMENT ANNONCÉ/);
   assert.match(ownerNotes.at(-1).text, /👍/);
   assert.equal(ownerNotes.at(-1).imagePath, img); // la capture t'est transférée
   assert.equal(sunoBodies.length, before);
@@ -176,7 +176,7 @@ test("8. texte envoyé avec un délai « humain » (12 min max)", async () => {
   assert.equal(await router.runLyricsQueue(Date.now()), 0); // pas encore l'heure
   assert.equal(await router.runLyricsQueue(Date.now() + 6 * 60_000), 1);
   assert.equal(db.activeOrder(c.id).lyrics_status, "proposed");
-  assert.match(sent.at(-1), /Dis-moi si ce texte te plaît/);
+  assert.match(sent.at(-1), /Dites-nous si ce texte vous plaît/);
 });
 
 test("9. réglage « rythmée + acoustique » : 2 créations, la 1re version de chacune", async () => {

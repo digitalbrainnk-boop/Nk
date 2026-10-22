@@ -45,8 +45,9 @@ db.saveOrder({ contact_id: c.id, stage: "livree", song_title: "Pour Ibrahim", ly
 test("après la livraison : quand le client remercie, invitation au commentaire avec le lien (sans « tu as aimé ? »)", async () => {
   answer = { messages: ["Avec plaisir 🙏"], memory: "", needs_human: false, reason: "" };
   await agent.generateReply(db.getContact(c.id));
-  assert.match(prompts.at(-1), /Si le client remercie ou montre qu'il est content/);
-  assert.match(prompts.at(-1), /commentaire sous notre publication Facebook/);
+  assert.match(prompts.at(-1), /réagit normalement ou positivement/);
+  assert.match(prompts.at(-1), /commentaire sous l'une de nos publications Facebook/);
+  assert.match(prompts.at(-1), /ne propose PAS de nouvelle composition/);
   assert.match(prompts.at(-1), /https:\/\/www\.facebook\.com\/nkdigital/);
   assert.match(prompts.at(-1), /Pour Ibrahim/);
 });
