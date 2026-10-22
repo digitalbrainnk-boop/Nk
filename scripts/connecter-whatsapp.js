@@ -4,6 +4,7 @@
 import path from "node:path";
 import fs from "node:fs";
 import readline from "node:readline/promises";
+import { spawnSync } from "node:child_process";
 import pino from "pino";
 import { Browsers, DisconnectReason, fetchLatestBaileysVersion, makeWASocket, useMultiFileAuthState } from "baileys";
 import { DATA_DIR, setSettings } from "../src/db.js";
@@ -14,8 +15,16 @@ const port = Number(process.env.PORT || 3000);
 // L'agent ne doit pas tourner en même temps (deux connexions se gêneraient).
 const running = await fetch(`http://127.0.0.1:${port}/`, { signal: AbortSignal.timeout(1500) }).then(() => true, () => false);
 if (running) {
-  console.log("\n⚠️  L'agent est en marche. Arrête-le d'abord (CTRL + c dans sa fenêtre), puis relance : npm run whatsapp\n");
-  process.exit(1);
+  // L'agent tourne peut-être dans une autre fenêtre de Termux : on l'arrête ici.
+  console.log("\n⏸️  L'agent est en marche (peut-être dans une autre fenêtre de Termux) : je l'arrête…");
+  spawnSync("pkill", ["-f", "src/server.js"]);
+  await new Promise((r) => setTimeout(r, 3000));
+  const still = await fetch(`http://127.0.0.1:${port}/`, { signal: AbortSignal.timeout(1500) }).then(() => true, () => false);
+  if (still) {
+    console.log("⚠️  Impossible de l'arrêter. Ferme Termux complètement (notification Termux → Exit), rouvre-le, puis tape : npm run whatsapp\n");
+    process.exit(1);
+  }
+  console.log("✓ Agent arrêté.");
 }
 
 function readCreds() {
