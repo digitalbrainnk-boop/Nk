@@ -15,6 +15,9 @@ export function Footer() {
           <Link href="/mes-chansons" className="hover:text-cream">
             Mes chansons
           </Link>
+          <Link href="/installer" className="hover:text-cream">
+            Installer l&apos;application
+          </Link>
           <Link href="/#faq" className="hover:text-cream">
             Questions fréquentes
           </Link>

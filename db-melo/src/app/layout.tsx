@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Manrope, Sora } from "next/font/google";
 import { Footer } from "@/components/layout/Footer";
 import { Header } from "@/components/layout/Header";
+import { InAppBanner } from "@/components/pwa/InstallPrompt";
 import { ServiceWorkerRegister } from "@/components/pwa/ServiceWorkerRegister";
 import { BRAND } from "@/lib/constants";
 import "./globals.css";
@@ -35,6 +36,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="fr" className={`${sora.variable} ${manrope.variable}`}>
       <body className="studio-glow min-h-dvh antialiased">
         <Header />
+        <InAppBanner />
         <main>{children}</main>
         <Footer />
         <ServiceWorkerRegister />

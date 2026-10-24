@@ -18,7 +18,7 @@ const FAQ = [
   { q: "Combien de temps faut-il ?", a: "Quelques minutes pour remplir le formulaire, puis 1 à 5 minutes de composition après le paiement." },
   { q: "Comment payer depuis mon pays ?", a: "Par Mobile Money dans votre monnaie (Orange Money, Wave, MTN MoMo, Moov, Airtel Money, M-Pesa… selon le pays), ou par carte Visa / Mastercard depuis n'importe quel pays d'Afrique." },
   { q: "Comment garder la chanson sur mon téléphone ?", a: "Un bouton « Télécharger & Sauvegarder » ouvre l'enregistrement natif : app Fichiers sur iPhone et iPad, Téléchargements et lecteurs de musique sur Android. Le MP3 contient le titre, l'artiste et la pochette." },
-  { q: "Puis-je installer l'application ?", a: "Oui : sur Android et ordinateur, touchez « Installer l'app ». Sur iPhone et iPad, Safari → Partager → « Sur l'écran d'accueil »." },
+  { q: "Puis-je installer l'application ?", a: "Oui, sans passer par le Play Store : touchez « Installer » en haut de l'écran, ou suivez le guide sur dbmelo.com/installer (Android, Samsung, iPhone, et depuis Facebook ou TikTok, où il faut d'abord ouvrir le site dans Chrome ou Safari)." },
   { q: "À qui appartient la chanson ?", a: "Vous pouvez l'offrir, la partager et la diffuser dans un cadre personnel (fête, cérémonie, réseaux sociaux). Pour un usage commercial, contactez-nous." },
 ];
 
@@ -160,10 +160,10 @@ export default function Home() {
           <Smartphone className="size-14 shrink-0 text-gold" />
           <div className="flex-1">
             <h2 className="font-display text-2xl font-bold">L&apos;application sur votre téléphone</h2>
-            <p className="mt-2 text-muted">DB.Mélo s&apos;installe sur Android, iPhone, iPad et ordinateur, sans passer par un store. Vos chansons à portée de main, même hors ligne une fois téléchargées.</p>
+            <p className="mt-2 text-muted">DB.Mélo s&apos;installe sur Android, iPhone, iPad et ordinateur, sans passer par le Play Store : deux gestes depuis le site. Vos chansons à portée de main, même hors ligne une fois téléchargées.</p>
           </div>
-          <Link href="/studio" className="btn btn-gold">
-            Essayer maintenant
+          <Link href="/installer" className="btn btn-gold">
+            Installer l&apos;application
           </Link>
         </Reveal>
       </section>
