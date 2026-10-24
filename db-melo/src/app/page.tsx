@@ -18,7 +18,7 @@ const FAQ = [
   { q: "Combien de temps faut-il ?", a: "Quelques minutes pour remplir le formulaire, puis 1 à 5 minutes de composition après le paiement." },
   { q: "Comment payer depuis mon pays ?", a: "Par Mobile Money dans votre monnaie (Orange Money, Wave, MTN MoMo, Moov, Airtel Money, M-Pesa… selon le pays), ou par carte Visa / Mastercard depuis n'importe quel pays d'Afrique." },
   { q: "Comment garder la chanson sur mon téléphone ?", a: "Un bouton « Télécharger & Sauvegarder » ouvre l'enregistrement natif : app Fichiers sur iPhone et iPad, Téléchargements et lecteurs de musique sur Android. Le MP3 contient le titre, l'artiste et la pochette." },
-  { q: "Puis-je installer l'application ?", a: "Oui, sans passer par le Play Store : touchez « Installer » en haut de l'écran, ou suivez le guide sur dbmelo.com/installer (Android, Samsung, iPhone, et depuis Facebook ou TikTok, où il faut d'abord ouvrir le site dans Chrome ou Safari)." },
+  { q: "Puis-je installer l'application ?", a: "Oui, sans passer par le Play Store : touchez « Installer » en haut de l'écran, ou suivez le guide sur dbmelo.com/installer (Android, Samsung, iPhone, et depuis Facebook, TikTok ou un lien touché dans une autre application, où il faut d'abord ouvrir le site dans Chrome ou Safari)." },
   { q: "À qui appartient la chanson ?", a: "Vous pouvez l'offrir, la partager et la diffuser dans un cadre personnel (fête, cérémonie, réseaux sociaux). Pour un usage commercial, contactez-nous." },
 ];
 

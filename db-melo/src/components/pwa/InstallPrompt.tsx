@@ -9,7 +9,7 @@ import { Check, Copy, Download, EllipsisVertical, ExternalLink, Menu, Share, Squ
 import { type ReactNode, useEffect, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { isStandalone } from "@/lib/client/download-to-mobile";
-import { chromeIntentUrl, detectInstallEnv, type InstallEnv } from "@/lib/client/install-env";
+import { appFromReferrer, chromeIntentUrl, detectInstallEnv, type InstallEnv, ofApp } from "@/lib/client/install-env";
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -46,7 +46,14 @@ export function useInstall() {
   const [env, setEnv] = useState<InstallEnv | null>(null);
   const [standalone, setStandalone] = useState(true);
   useEffect(() => {
-    setEnv(detectInstallEnv(navigator.userAgent, navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1));
+    const detected = detectInstallEnv(navigator.userAgent, navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    // Le référent de l'application d'origine disparaît à la page suivante : il est gardé pour l'onglet.
+    let viaApp = appFromReferrer(document.referrer);
+    try {
+      if (viaApp) sessionStorage.setItem("dbmelo-via", viaApp);
+      else viaApp = sessionStorage.getItem("dbmelo-via");
+    } catch {}
+    setEnv({ ...detected, viaApp: detected.platform === "android" && !detected.inApp ? viaApp : null });
     setStandalone(isStandalone());
   }, []);
   /** Ouvre l'invite native ; renvoie false si le navigateur n'en propose pas. */
@@ -100,13 +107,24 @@ function CopyLink() {
   );
 }
 
+/** Liens touchés dans Gmail, Telegram, Claude… : la page s'ouvre dans une fenêtre de Chrome sans installation. */
+function AppWindowHint({ app }: { app?: string | null }) {
+  return (
+    <p className="rounded-2xl border border-gold/30 bg-gold/5 p-3 text-gold-soft">
+      <strong>Une croix ✕ en haut à gauche de l&apos;écran ?</strong> La page est ouverte dans la fenêtre{" "}
+      {app ? ofApp(app) : "de l'application où vous avez touché le lien (Facebook, Gmail, Telegram…)"}, qui ne permet pas
+      d&apos;installer. Touchez <strong>⋮</strong> en haut à droite, puis <strong>« Ouvrir dans Chrome »</strong>, et recommencez.
+    </p>
+  );
+}
+
 export function InstallSteps({ env }: { env: InstallEnv }) {
   const browser = env.platform === "ios" ? "Safari" : "Chrome";
   if (env.inApp) {
     return (
       <div className="space-y-4 text-sm">
         <p className="rounded-2xl border border-gold/30 bg-gold/5 p-3 text-gold-soft">
-          Vous êtes dans le navigateur de <strong>{env.inApp}</strong> : il ne permet pas d&apos;installer l&apos;application. Ouvrez DB.Mélo dans {browser}.
+          Vous êtes dans le navigateur <strong>{ofApp(env.inApp)}</strong> : il ne permet pas d&apos;installer l&apos;application. Ouvrez DB.Mélo dans {browser}.
         </p>
         {env.platform === "android" && (
           <a href={typeof window === "undefined" ? "#" : chromeIntentUrl(window.location.href)} className="btn btn-gold w-full">
@@ -134,16 +152,25 @@ export function InstallSteps({ env }: { env: InstallEnv }) {
   }
   if (env.platform === "ios") {
     return (
-      <ol className="space-y-3 text-sm text-cream/90">
-        <Step n={1} icon={<Share className="size-4" />}>
-          Touchez le bouton <strong>Partager</strong>{" "}
-          {env.browser === "safari" ? "de Safari (en bas sur iPhone, en haut sur iPad)" : "dans la barre d'adresse (en haut à droite dans Chrome)"}.
-        </Step>
-        <Step n={2} icon={<SquarePlus className="size-4" />}>
-          Choisissez <strong>« Sur l&apos;écran d&apos;accueil »</strong> (faites défiler la liste si besoin), puis <strong>Ajouter</strong>.
-        </Step>
-        {env.browser !== "safari" && <p className="text-muted">Si l&apos;option n&apos;apparaît pas, ouvrez dbmelo.com dans Safari.</p>}
-      </ol>
+      <div className="space-y-4 text-sm">
+        <ol className="space-y-3 text-cream/90">
+          <Step n={1} icon={<Share className="size-4" />}>
+            Touchez le bouton <strong>Partager</strong>{" "}
+            {env.browser === "safari" ? "de Safari (en bas sur iPhone, en haut sur iPad)" : "dans la barre d'adresse (en haut à droite dans Chrome)"}.
+          </Step>
+          <Step n={2} icon={<SquarePlus className="size-4" />}>
+            Choisissez <strong>« Sur l&apos;écran d&apos;accueil »</strong> (faites défiler la liste si besoin), puis <strong>Ajouter</strong>.
+          </Step>
+        </ol>
+        {env.browser === "safari" ? (
+          <p className="text-muted">
+            Pas de « Sur l&apos;écran d&apos;accueil » dans la liste ? La page est ouverte dans la fenêtre d&apos;une autre application : touchez
+            l&apos;icône Safari (la boussole) en bas à droite, puis recommencez.
+          </p>
+        ) : (
+          <p className="text-muted">Si l&apos;option n&apos;apparaît pas, ouvrez dbmelo.com dans Safari.</p>
+        )}
+      </div>
     );
   }
   if (env.platform === "android") {
@@ -159,21 +186,35 @@ export function InstallSteps({ env }: { env: InstallEnv }) {
         </ol>
       );
     }
+    const steps = (
+      <ol className="space-y-3 text-cream/90">
+        <Step n={1} icon={<EllipsisVertical className="size-4" />}>
+          Touchez le menu <strong>⋮</strong> en haut à droite de {env.browser === "chrome" ? "Chrome" : env.browser === "firefox" ? "Firefox" : "votre navigateur"}.
+        </Step>
+        <Step n={2} icon={<SquarePlus className="size-4" />}>
+          Choisissez <strong>« Installer l&apos;application »</strong> ou <strong>« Ajouter à l&apos;écran d&apos;accueil »</strong>, puis{" "}
+          <strong>Installer</strong>.
+        </Step>
+      </ol>
+    );
+    // Opera, Phoenix, Mi… : Chrome installe mieux, le bouton passe en premier.
+    if (env.browser === "other") {
+      return (
+        <div className="space-y-4 text-sm">
+          <a href={typeof window === "undefined" ? "#" : chromeIntentUrl(window.location.href)} className="btn btn-gold w-full">
+            <ExternalLink className="size-5" /> Ouvrir dans Chrome
+          </a>
+          <p className="text-muted">L&apos;installation est plus simple dans Chrome. Pour rester dans ce navigateur :</p>
+          {steps}
+        </div>
+      );
+    }
+    // Venue d'une application (Gmail, Claude…) : la fenêtre intégrée est le cas le plus probable, il passe en premier.
     return (
       <div className="space-y-4 text-sm">
-        <ol className="space-y-3 text-cream/90">
-          <Step n={1} icon={<EllipsisVertical className="size-4" />}>
-            Touchez le menu <strong>⋮</strong> en haut à droite de {env.browser === "chrome" ? "Chrome" : env.browser === "firefox" ? "Firefox" : "votre navigateur"}.
-          </Step>
-          <Step n={2} icon={<SquarePlus className="size-4" />}>
-            Choisissez <strong>« Installer l&apos;application »</strong> ou <strong>« Ajouter à l&apos;écran d&apos;accueil »</strong>, puis confirmez.
-          </Step>
-        </ol>
-        {env.browser === "other" && typeof window !== "undefined" && (
-          <a href={chromeIntentUrl(window.location.href)} className="btn btn-ghost w-full">
-            <ExternalLink className="size-5" /> Plus simple : ouvrir dans Chrome
-          </a>
-        )}
+        {env.browser === "chrome" && env.viaApp && <AppWindowHint app={env.viaApp} />}
+        {steps}
+        {env.browser === "chrome" && !env.viaApp && <AppWindowHint />}
       </div>
     );
   }
@@ -194,6 +235,8 @@ const NO_STORE = "Pas besoin du Play Store ni de l'App Store : l'application s'i
 /* ───────────── Fenêtre d'aide ───────────── */
 
 export function InstallSheet({ env, open, onClose }: { env: InstallEnv; open: boolean; onClose: () => void }) {
+  // Chrome peut proposer l'installation directe quelques secondes après l'ouverture de la fenêtre.
+  const { canPrompt, install } = useInstall();
   // Rendue dans <body> : l'en-tête (flou d'arrière-plan) enfermerait sinon la fenêtre dans sa hauteur.
   if (typeof document === "undefined") return null;
   return createPortal(
@@ -224,7 +267,13 @@ export function InstallSheet({ env, open, onClose }: { env: InstallEnv; open: bo
                 <X className="size-5" />
               </button>
             </div>
-            <InstallSteps env={env} />
+            {canPrompt && !env.inApp ? (
+              <button type="button" onClick={async () => (await install()) && onClose()} className="btn btn-gold w-full text-base">
+                <Download className="size-5" /> Installer maintenant
+              </button>
+            ) : (
+              <InstallSteps env={env} />
+            )}
             <p className="mt-5 text-xs text-muted">{NO_STORE}</p>
           </motion.div>
         </motion.div>

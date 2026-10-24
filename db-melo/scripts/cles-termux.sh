@@ -236,6 +236,13 @@ tester() {
         r=$(curl -s -m 20 -o /dev/null -w "%{http_code} %{redirect_url}" "http://${k#https://}/")
         case "$r" in 30[1278]\ https://*) echo "✅ Les visiteurs en http:// sont renvoyés vers https://" ;; *) echo "ℹ️  http:// ne renvoie pas vers https:// : tape dbmelo-maj" ;; esac ;;
       esac
+      # Fichiers dont Chrome a besoin pour proposer l'installation de l'application.
+      a=""
+      for f in manifest.webmanifest sw.js icons/192 icons/512; do
+        r=$(curl -s -m 20 -o /dev/null -w "%{http_code} %{content_type}" "$k/$f")
+        case "$f $r" in "manifest.webmanifest 200 "* | "sw.js 200 "*javascript* | "icons/"*" 200 image/png"*) ;; *) a="$a $f (${r:-sans réponse})" ;; esac
+      done
+      [ -z "$a" ] && echo "✅ Application installable : manifeste, service worker et icônes en place" || echo "❌ Installation de l'application : fichiers en erreur :$a (tape dbmelo-maj)"
     fi
     [ "$(lire ALLOW_DEMO_PAYMENTS)" = "true" ] && echo "⛔ Paiement simulé ACTIVÉ sur le site public : désactive-le (8) !"
   elif [ "$(lire ALLOW_DEMO_PAYMENTS)" = "true" ]; then

@@ -1,6 +1,6 @@
 // Détection du contexte d'installation à partir d'agents utilisateurs réels.
 import { describe, expect, it } from "vitest";
-import { chromeIntentUrl, detectInstallEnv } from "@/lib/client/install-env";
+import { appFromReferrer, chromeIntentUrl, detectInstallEnv, ofApp } from "@/lib/client/install-env";
 
 const UA = {
   chromeAndroid: "Mozilla/5.0 (Linux; Android 14; SM-A546B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Mobile Safari/537.36",
@@ -21,6 +21,13 @@ const UA = {
   chromeIos: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/124.0.6367.88 Mobile/15E148 Safari/604.1",
   ipadOs: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15",
   desktopChrome: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36",
+  phoenix:
+    "Mozilla/5.0 (Linux; Android 12; TECNO CK7n Build/SP1A.210812.016; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/112.0.5615.136 Mobile Safari/537.36 PHX/12.5",
+  googleApp:
+    "Mozilla/5.0 (Linux; Android 13; SM-A135F Build/TP1A.220624.014; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/119.0.6045.163 Mobile Safari/537.36 GSA/14.47.25.29.arm64",
+  opera: "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36 OPR/79.1.4195.76963",
+  miBrowser:
+    "Mozilla/5.0 (Linux; U; Android 13; fr-fr; Redmi Note 12 Build/TKQ1.221114.001) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/112.0.5615.136 Mobile Safari/537.36 XiaoMi/MiuiBrowser/14.5.10-gn",
 };
 
 describe("contexte d'installation", () => {
@@ -37,6 +44,25 @@ describe("contexte d'installation", () => {
     expect(detectInstallEnv(UA.tiktokIos)).toMatchObject({ platform: "ios", inApp: "TikTok" });
     expect(detectInstallEnv(UA.instagram)).toMatchObject({ platform: "android", inApp: "Instagram" });
     expect(detectInstallEnv(UA.telegramAndroid)).toMatchObject({ platform: "android", inApp: "une application" });
+    expect(detectInstallEnv(UA.googleApp)).toMatchObject({ platform: "android", inApp: "Google" });
+    expect(detectInstallEnv(UA.phoenix)).toMatchObject({ platform: "android", inApp: "Phoenix" });
+  });
+
+  it("navigateurs qui se présentent comme Chrome sans en être", () => {
+    expect(detectInstallEnv(UA.opera)).toEqual({ platform: "android", browser: "other", inApp: null });
+    expect(detectInstallEnv(UA.miBrowser)).toEqual({ platform: "android", browser: "other", inApp: null });
+  });
+
+  it("application qui a ouvert le lien (fenêtre intégrée de Chrome)", () => {
+    expect(appFromReferrer("android-app://com.anthropic.claude/")).toBe("Claude");
+    expect(appFromReferrer("android-app://com.google.android.gm/")).toBe("Gmail");
+    expect(appFromReferrer("android-app://com.facebook.orca/")).toBe("Messenger");
+    expect(appFromReferrer("android-app://org.telegram.messenger/")).toBe("Telegram");
+    expect(appFromReferrer("android-app://com.exemple.inconnue/")).toBe("une application");
+    expect(appFromReferrer("android-app://com.android.chrome/")).toBeNull();
+    expect(appFromReferrer("https://www.google.com/")).toBeNull();
+    expect(appFromReferrer("")).toBeNull();
+    expect([ofApp("Gmail"), ofApp("Instagram"), ofApp("une application")]).toEqual(["de Gmail", "d'Instagram", "d'une application"]);
   });
 
   it("iPhone et iPad", () => {

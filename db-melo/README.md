@@ -171,7 +171,7 @@ Limite des navigateurs : sur iPhone, un site ne peut pas ajouter un fichier dire
 
 ### Application installable
 
-`manifest.webmanifest` (icônes 192/512 et maskable générées au build), icône Apple, `display: standalone`, raccourcis, service worker (coquille hors ligne, jamais de cache pour l'API). Bouton **« Installer l'app »** sur Android / Chrome / Edge, et instructions « Partager → Sur l'écran d'accueil » sur iPhone et iPad.
+`manifest.webmanifest` (icônes 192/512 et maskable générées au build), icône Apple, `display: standalone`, raccourcis, service worker (coquille hors ligne, jamais de cache pour l'API). Bouton **« Installer l'app »** sur Android / Chrome / Edge, et instructions « Partager → Sur l'écran d'accueil » sur iPhone et iPad. Depuis un navigateur intégré (Facebook, TikTok, Phoenix, application Google…) ou une fenêtre ouverte par une autre application (Gmail, Telegram… : reconnue au référent `android-app://`), le site explique comment rouvrir la page dans Chrome ou Safari ; `dbmelo-cles` (test 9) vérifie que le manifeste, le service worker et les icônes répondent.
 
 ## Variables d'environnement
 
