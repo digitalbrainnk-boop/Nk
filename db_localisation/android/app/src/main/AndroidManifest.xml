@@ -34,12 +34,17 @@
     <!-- Démarrage automatique après le redémarrage du téléphone. -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
-    <!-- Mode SMS sans data : recevoir le code secret et répondre la position. -->
+    <!-- ÉTAPE 5 (pas encore implémentée) : permissions SMS + état SIM.
+         DÉSACTIVÉES pour l'instant : déclarer RECEIVE_SMS/SEND_SMS déclenche le
+         blocage anti-fraude renforcé de Google Play Protect (installation
+         impossible hors Play Store). On les réactivera à l'étape 5, et elles
+         feront l'objet d'une déclaration dédiée pour la publication sur le Store.
     <uses-permission android:name="android.permission.RECEIVE_SMS" />
     <uses-permission android:name="android.permission.SEND_SMS" />
-
-    <!-- Détection du changement de carte SIM (alerte antivol légitime). -->
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+    -->
+    <!-- Mode SMS sans data : recevoir le code secret et répondre la position. -->
+    <!-- Détection du changement de carte SIM (alerte antivol légitime). -->
 
     <!-- Exclusion de l'optimisation batterie (demande explicite à l'utilisateur). -->
     <uses-permission
