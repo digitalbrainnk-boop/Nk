@@ -1,11 +1,11 @@
 "use client";
 
-// Installer l'application : invite native quand le navigateur la propose (Chrome / Edge sur Android et
-// ordinateur), sinon les gestes exacts selon le téléphone et le navigateur — et une sortie des
-// navigateurs intégrés (Facebook, TikTok, Instagram…), où l'installation est impossible.
+// Installer l'application : sur Android, l'application à télécharger (dbmelo.com/dbmelo.apk) ;
+// sinon l'invite native quand le navigateur la propose (Chrome / Edge), ou les gestes exacts selon le
+// téléphone et le navigateur — et une sortie des navigateurs intégrés (Facebook, TikTok, Instagram…).
 
 import { AnimatePresence, motion } from "framer-motion";
-import { Check, Copy, Download, EllipsisVertical, ExternalLink, Menu, Share, SquarePlus, X } from "lucide-react";
+import { Check, CircleCheck, Copy, Download, EllipsisVertical, ExternalLink, FileDown, Menu, Share, ShieldCheck, SquarePlus, X } from "lucide-react";
 import { type ReactNode, useEffect, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { isStandalone } from "@/lib/client/download-to-mobile";
@@ -40,6 +40,29 @@ const subscribe = (l: () => void) => {
   };
 };
 
+// Taille de l'application Android (null : ce serveur n'en propose pas), demandée une fois par page.
+let apkInfo: Promise<number | null> | null = null;
+function fetchApkSize(): Promise<number | null> {
+  apkInfo ??= fetch("/dbmelo.apk", { method: "HEAD", cache: "no-store" })
+    .then((r) => (r.ok ? Number(r.headers.get("content-length")) || 0 : null))
+    .catch(() => null);
+  return apkInfo;
+}
+
+/** undefined : en cours de vérification ; null : pas d'application Android ; sinon sa taille en octets. */
+export function useAndroidApk(enabled: boolean) {
+  const [size, setSize] = useState<number | null | undefined>(undefined);
+  useEffect(() => {
+    if (!enabled) return;
+    let live = true;
+    fetchApkSize().then((s) => live && setSize(s));
+    return () => {
+      live = false;
+    };
+  }, [enabled]);
+  return enabled ? size : null;
+}
+
 export function useInstall() {
   const prompt = useSyncExternalStore(subscribe, () => deferred, () => null);
   const justInstalled = useSyncExternalStore(subscribe, () => installedNow, () => false);
@@ -54,7 +77,13 @@ export function useInstall() {
       else viaApp = sessionStorage.getItem("dbmelo-via");
     } catch {}
     setEnv({ ...detected, viaApp: detected.platform === "android" && !detected.inApp ? viaApp : null });
-    setStandalone(isStandalone());
+    // Ouvert depuis l'application Android (adresse de lancement « ?source=android ») : déjà installée.
+    let inAndroidApp = false;
+    try {
+      if (new URLSearchParams(window.location.search).get("source") === "android") sessionStorage.setItem("dbmelo-app", "android");
+      inAndroidApp = sessionStorage.getItem("dbmelo-app") === "android";
+    } catch {}
+    setStandalone(isStandalone() || inAndroidApp);
   }, []);
   /** Ouvre l'invite native ; renvoie false si le navigateur n'en propose pas. */
   const install = async () => {
@@ -107,6 +136,74 @@ function CopyLink() {
   );
 }
 
+const megabytes = (bytes: number) => `${(bytes / 1_000_000).toFixed(1).replace(".", ",")}\u00a0Mo`;
+
+/** Téléchargement de l'application Android et les trois gestes qui suivent. */
+export function AndroidDownload({ size }: { size: number }) {
+  return (
+    <div className="space-y-4 text-sm">
+      <a href="/dbmelo.apk" download="DBMelo.apk" className="btn btn-gold w-full text-base">
+        <Download className="size-5" /> Télécharger l&apos;application{size > 0 ? ` (${megabytes(size)})` : ""}
+      </a>
+      <ol className="space-y-3 text-cream/90">
+        <Step n={1} icon={<FileDown className="size-4" />}>
+          Si Chrome demande une confirmation, touchez <strong>« Télécharger quand même »</strong>. Ouvrez ensuite le fichier <strong>DBMelo.apk</strong> :
+          notification en haut de l&apos;écran, ou dossier <strong>Téléchargements</strong>.
+        </Step>
+        <Step n={2} icon={<ShieldCheck className="size-4" />}>
+          Si le téléphone demande une autorisation : touchez <strong>Paramètres</strong>, activez <strong>« Autoriser cette source »</strong>, puis
+          revenez en arrière.
+        </Step>
+        <Step n={3} icon={<CircleCheck className="size-4" />}>
+          Touchez <strong>Installer</strong>, puis <strong>Ouvrir</strong>. L&apos;icône DB.Mélo apparaît avec vos autres applications.
+        </Step>
+      </ol>
+      <p className="text-muted">
+        Si Google Play Protect affiche un message, touchez <strong>« Plus de détails »</strong> puis <strong>« Installer quand même »</strong> :
+        l&apos;application ouvre simplement dbmelo.com.
+      </p>
+    </div>
+  );
+}
+
+/**
+ * Sur Android : l'application à télécharger, puis les autres solutions selon le navigateur.
+ * `freeze` : dans la fenêtre ancrée en bas, rien ne doit apparaître une fois ouverte, sinon le bouton
+ * remonte sous le doigt (Chrome autorise souvent l'installation directe au premier toucher).
+ */
+function AndroidChoices({
+  env,
+  size,
+  canPrompt,
+  install,
+  freeze = false,
+}: { env: InstallEnv; size: number; canPrompt: boolean; install: () => Promise<boolean>; freeze?: boolean }) {
+  const [promptAtOpen] = useState(canPrompt);
+  const offerChrome = freeze ? promptAtOpen : canPrompt;
+  return (
+    <div className="space-y-5">
+      <AndroidDownload size={size} />
+      {env.inApp ? (
+        <div className="space-y-3 border-line border-t pt-4 text-sm">
+          <p className="text-muted">Le téléchargement ne démarre pas dans {ofApp(env.inApp)} ? Ouvrez DB.Mélo dans Chrome, puis recommencez :</p>
+          <a href={typeof window === "undefined" ? "#" : chromeIntentUrl(window.location.href)} className="btn btn-ghost w-full">
+            <ExternalLink className="size-5" /> Ouvrir dans Chrome
+          </a>
+        </div>
+      ) : (
+        offerChrome && (
+          <div className="space-y-3 border-line border-t pt-4 text-sm">
+            <p className="text-muted">Ou sans télécharger de fichier, directement depuis Chrome :</p>
+            <button type="button" onClick={install} className="btn btn-ghost w-full">
+              <SquarePlus className="size-5" /> Installer depuis Chrome
+            </button>
+          </div>
+        )
+      )}
+    </div>
+  );
+}
+
 /** Liens touchés dans Gmail, Telegram, Claude… : la page s'ouvre dans une fenêtre de Chrome sans installation. */
 function AppWindowHint({ app }: { app?: string | null }) {
   return (
@@ -153,6 +250,10 @@ export function InstallSteps({ env }: { env: InstallEnv }) {
   if (env.platform === "ios") {
     return (
       <div className="space-y-4 text-sm">
+        <p className="text-muted">
+          Sur iPhone, Apple ne permet de télécharger des applications que depuis l&apos;App Store : DB.Mélo s&apos;ajoute à l&apos;écran
+          d&apos;accueil en deux gestes, et s&apos;ouvre ensuite comme une application.
+        </p>
         <ol className="space-y-3 text-cream/90">
           <Step n={1} icon={<Share className="size-4" />}>
             Touchez le bouton <strong>Partager</strong>{" "}
@@ -231,12 +332,15 @@ export function InstallSteps({ env }: { env: InstallEnv }) {
 }
 
 const NO_STORE = "Pas besoin du Play Store ni de l'App Store : l'application s'installe depuis le site en quelques secondes, et l'icône DB.Mélo apparaît sur votre écran d'accueil.";
+const NO_PLAY_STORE = "Pas besoin du Play Store : l'application se télécharge directement depuis dbmelo.com, gratuitement.";
 
 /* ───────────── Fenêtre d'aide ───────────── */
 
 export function InstallSheet({ env, open, onClose }: { env: InstallEnv; open: boolean; onClose: () => void }) {
   // Chrome peut proposer l'installation directe quelques secondes après l'ouverture de la fenêtre.
   const { canPrompt, install } = useInstall();
+  const apk = useAndroidApk(env.platform === "android");
+  const download = typeof apk === "number";
   // Rendue dans <body> : l'en-tête (flou d'arrière-plan) enfermerait sinon la fenêtre dans sa hauteur.
   if (typeof document === "undefined") return null;
   return createPortal(
@@ -261,20 +365,22 @@ export function InstallSheet({ env, open, onClose }: { env: InstallEnv; open: bo
           >
             <div className="mb-4 flex items-start justify-between">
               <h2 id="install-title" className="font-display text-lg font-bold">
-                Installer DB.Mélo
+                {download ? "Télécharger DB.Mélo" : env.platform === "ios" ? "Installer DB.Mélo sur iPhone" : "Installer DB.Mélo"}
               </h2>
               <button type="button" onClick={onClose} aria-label="Fermer" className="btn-quiet">
                 <X className="size-5" />
               </button>
             </div>
-            {canPrompt && !env.inApp ? (
+            {download ? (
+              <AndroidChoices env={env} size={apk} canPrompt={canPrompt} install={async () => (await install()) && (onClose(), true)} freeze />
+            ) : canPrompt && !env.inApp ? (
               <button type="button" onClick={async () => (await install()) && onClose()} className="btn btn-gold w-full text-base">
                 <Download className="size-5" /> Installer maintenant
               </button>
             ) : (
               <InstallSteps env={env} />
             )}
-            <p className="mt-5 text-xs text-muted">{NO_STORE}</p>
+            <p className="mt-5 text-xs text-muted">{download ? NO_PLAY_STORE : NO_STORE}</p>
           </motion.div>
         </motion.div>
       )}
@@ -288,17 +394,26 @@ export function InstallSheet({ env, open, onClose }: { env: InstallEnv; open: bo
 export function InstallButton() {
   const { env, canPrompt, installed, install } = useInstall();
   const [open, setOpen] = useState(false);
-  // Sur téléphone, le bouton est toujours là : invite native si possible, sinon les gestes à faire.
+  // Vérifiée dès l'affichage : la fenêtre propose l'application Android sans attendre.
+  const apk = useAndroidApk(env?.platform === "android" && !installed);
+  // Sur téléphone, le bouton est toujours là : application à télécharger sur Android, invite native si
+  // possible, sinon les gestes à faire.
   if (!env || installed || (env.platform === "desktop" && !canPrompt)) return null;
+  const mobile = env.platform !== "desktop";
   const onClick = async () => {
-    if (canPrompt && (await install())) return;
+    if (typeof apk !== "number" && canPrompt && (await install())) return;
     setOpen(true);
   };
   return (
     <>
-      <button type="button" onClick={onClick} className="btn btn-ghost min-h-10 rounded-xl px-3 py-2 text-sm" aria-label="Installer l'application">
+      <button
+        type="button"
+        onClick={onClick}
+        className="btn btn-ghost min-h-10 rounded-xl px-3 py-2 text-sm"
+        aria-label={mobile ? "Télécharger l'application" : "Installer l'application"}
+      >
         <Download className="size-4" />
-        Installer
+        {mobile ? "Télécharger" : "Installer"}
       </button>
       <InstallSheet env={env} open={open} onClose={() => setOpen(false)} />
     </>
@@ -307,8 +422,9 @@ export function InstallButton() {
 
 /* ───────────── Guide complet (page /installer) ───────────── */
 
-const OTHER_DEVICES: { label: string; env: InstallEnv }[] = [
-  { label: "Android avec Chrome", env: { platform: "android", browser: "chrome", inApp: null } },
+const OTHER_DEVICES: { label: string; env: InstallEnv; download?: boolean }[] = [
+  { label: "Android : télécharger l'application", env: { platform: "android", browser: "chrome", inApp: null }, download: true },
+  { label: "Android avec Chrome, sans téléchargement", env: { platform: "android", browser: "chrome", inApp: null } },
   { label: "Samsung (Samsung Internet)", env: { platform: "android", browser: "samsung", inApp: null } },
   { label: "iPhone et iPad (Safari)", env: { platform: "ios", browser: "safari", inApp: null } },
   { label: "Depuis Facebook, TikTok ou Instagram (Android)", env: { platform: "android", browser: "chrome", inApp: "Facebook, TikTok ou Instagram" } },
@@ -316,9 +432,23 @@ const OTHER_DEVICES: { label: string; env: InstallEnv }[] = [
   { label: "Ordinateur", env: { platform: "desktop", browser: "chrome", inApp: null } },
 ];
 
+function PhoneQr() {
+  const [url, setUrl] = useState("");
+  useEffect(() => setUrl(`${window.location.origin}/installer`), []);
+  if (!url) return null;
+  return (
+    <div className="flex items-center gap-4 border-line border-t pt-4">
+      <img src={`/api/qr?text=${encodeURIComponent(url)}`} alt="QR code vers la page de téléchargement" className="size-28 rounded-xl bg-cream p-1" />
+      <p className="text-sm text-muted">Sur votre téléphone : scannez ce code avec l&apos;appareil photo pour télécharger DB.Mélo.</p>
+    </div>
+  );
+}
+
 export function InstallGuide() {
   const { env, canPrompt, installed, install } = useInstall();
+  const apk = useAndroidApk(true);
   if (!env) return <div className="card h-40 animate-pulse" />;
+  const download = env.platform === "android" && typeof apk === "number";
   return (
     <div className="space-y-6">
       <div className="card space-y-4 p-6">
@@ -326,6 +456,8 @@ export function InstallGuide() {
           <p className="flex items-center gap-2 text-success">
             <Check className="size-5" /> DB.Mélo est installée sur cet appareil.
           </p>
+        ) : download ? (
+          <AndroidChoices env={env} size={apk} canPrompt={canPrompt} install={install} />
         ) : canPrompt ? (
           <button type="button" onClick={install} className="btn btn-gold w-full text-base">
             <Download className="size-5" /> Installer l&apos;application
@@ -333,12 +465,13 @@ export function InstallGuide() {
         ) : (
           <InstallSteps env={env} />
         )}
-        <p className="text-sm text-muted">{NO_STORE}</p>
+        <p className="text-sm text-muted">{download ? NO_PLAY_STORE : NO_STORE}</p>
+        {env.platform === "desktop" && <PhoneQr />}
       </div>
       <div>
         <h2 className="mb-3 font-display text-xl font-bold">Sur un autre téléphone</h2>
         <div className="space-y-3">
-          {OTHER_DEVICES.map((d) => (
+          {OTHER_DEVICES.filter((d) => !d.download || typeof apk === "number").map((d) => (
             <details key={d.label} className="card group p-5">
               <summary className="cursor-pointer list-none font-semibold marker:hidden">
                 <span className="flex items-center justify-between gap-4">
@@ -347,7 +480,7 @@ export function InstallGuide() {
                 </span>
               </summary>
               <div className="mt-4">
-                <InstallSteps env={d.env} />
+                {d.download && typeof apk === "number" ? <AndroidDownload size={apk} /> : <InstallSteps env={d.env} />}
               </div>
             </details>
           ))}
@@ -360,7 +493,7 @@ export function InstallGuide() {
 /* ───────────── Bandeau dans les navigateurs intégrés ───────────── */
 
 export function InAppBanner() {
-  const { env } = useInstall();
+  const { env, installed } = useInstall();
   const [hidden, setHidden] = useState(true);
   const [open, setOpen] = useState(false);
   useEffect(() => {
@@ -370,7 +503,7 @@ export function InAppBanner() {
       setHidden(false);
     }
   }, []);
-  if (!env?.inApp || hidden) return null;
+  if (!env?.inApp || installed || hidden) return null;
   const close = () => {
     setHidden(true);
     try {

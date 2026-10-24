@@ -17,7 +17,37 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Application Android (db-melo/android, Trusted Web Activity) : compilée non signée, le serveur la
+  # signe avec sa propre clé. Recompilée seulement quand le projet Android change.
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - id: cache
+        uses: actions/cache@v4
+        with:
+          path: android-apk
+          key: dbmelo-android-${{ hashFiles('db-melo/android/**') }}
+      - if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+      - if: steps.cache.outputs.cache-hit != 'true'
+        name: Compilation de l'application Android
+        working-directory: db-melo/android
+        run: |
+          ./gradlew assembleRelease --no-daemon --stacktrace
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          mkdir -p "$GITHUB_WORKSPACE/android-apk"
+          "$BT/zipalign" -f 4 app/build/outputs/apk/release/app-release-unsigned.apk "$GITHUB_WORKSPACE/android-apk/dbmelo-non-signee.apk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: android-apk/dbmelo-non-signee.apk
+
   paquet:
+    needs: android
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -32,6 +62,17 @@ jobs:
       - run: npm ci
       - run: npx tsc --noEmit
       - run: npm test
+      - uses: actions/download-artifact@v4
+        with:
+          name: android
+          path: db-melo/android-apk
+      - name: Signature de l'application Android vérifiée par apksigner
+        run: |
+          node --experimental-strip-types --no-warnings scripts/signer-apk-essai.mts android-apk/dbmelo-non-signee.apk "$RUNNER_TEMP/essai.apk"
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          "$BT/zipalign" -c 4 android-apk/dbmelo-non-signee.apk
+          "$BT/apksigner" verify --verbose --min-sdk-version 24 "$RUNNER_TEMP/essai.apk"
+          "$BT/aapt2" dump badging "$RUNNER_TEMP/essai.apk" | head -5
       - name: Compilation (paquet autonome)
         run: npx next build
         env:

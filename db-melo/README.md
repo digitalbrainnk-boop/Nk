@@ -173,6 +173,16 @@ Limite des navigateurs : sur iPhone, un site ne peut pas ajouter un fichier dire
 
 `manifest.webmanifest` (icônes 192/512 et maskable générées au build), icône Apple, `display: standalone`, raccourcis, service worker (coquille hors ligne, jamais de cache pour l'API). Bouton **« Installer l'app »** sur Android / Chrome / Edge, et instructions « Partager → Sur l'écran d'accueil » sur iPhone et iPad. Depuis un navigateur intégré (Facebook, TikTok, Phoenix, application Google…) ou une fenêtre ouverte par une autre application (Gmail, Telegram… : reconnue au référent `android-app://`), le site explique comment rouvrir la page dans Chrome ou Safari ; `dbmelo-cles` (test 9) vérifie que le manifeste, le service worker et les icônes répondent.
 
+### Application Android à télécharger
+
+Bouton **« Télécharger »** en haut de l'écran sur téléphone, page `dbmelo.com/telecharger` (→ `/installer`) : sur Android, l'application `DBMelo.apk` se télécharge depuis le site, sans Play Store ; sur iPhone, Apple n'autorisant que l'App Store, le site guide l'ajout à l'écran d'accueil.
+
+- `android/` : projet Trusted Web Activity généré avec [Bubblewrap](https://github.com/GoogleChromeLabs/bubblewrap) (paquet `com.dbmelo.app`, Android 7.0 minimum). Il ouvre `https://dbmelo.com/?source=android` en plein écran dans Chrome, ou dans un WebView si Chrome est absent ; le site s'y reconnaît et masque alors ses boutons d'installation.
+- GitHub le compile **non signé** quand le dossier change, vérifie une signature d'essai avec `apksigner`, et le glisse dans le paquet o2switch.
+- Le serveur le **signe lui-même** (APK Signature Scheme v2, `src/lib/server/apk-sign.ts`) avec une clé créée au premier téléchargement dans `DATA_DIR/android/cle-signature.json` : la clé ne quitte jamais le serveur. **Sauvegardez ce fichier** : Android n'accepte une mise à jour de l'application que signée par la même clé.
+- `/.well-known/assetlinks.json` publie l'empreinte de cette clé : l'application s'ouvre sans barre d'adresse. `dbmelo-cles` (test 9) vérifie les deux.
+- Nouvelle version de l'application Android : augmenter `appVersionCode` dans `android/app/build.gradle` (le site, lui, se met à jour sans rien réinstaller).
+
 ## Variables d'environnement
 
 Voir `.env.example`. Les plus importantes :

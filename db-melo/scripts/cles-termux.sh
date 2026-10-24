@@ -243,6 +243,14 @@ tester() {
         case "$f $r" in "manifest.webmanifest 200 "* | "sw.js 200 "*javascript* | "icons/"*" 200 image/png"*) ;; *) a="$a $f (${r:-sans réponse})" ;; esac
       done
       [ -z "$a" ] && echo "✅ Application installable : manifeste, service worker et icônes en place" || echo "❌ Installation de l'application : fichiers en erreur :$a (tape dbmelo-maj)"
+      # Application Android à télécharger, signée par le serveur, et son lien de confiance avec le site.
+      r=$(curl -s -m 60 -o /dev/null -w "%{http_code} %{size_download}" "$k/dbmelo.apk")
+      case "$r" in
+        200\ *) echo "✅ Application Android : $k/dbmelo.apk ($(( ${r#* } / 1024 )) Ko)"
+          case "$(curl -s -m 20 "$k/.well-known/assetlinks.json")" in *sha256_cert_fingerprints*) ;; *) echo "ℹ️  assetlinks.json ne répond pas : l'application s'ouvrira avec une barre d'adresse" ;; esac ;;
+        404\ *) echo "ℹ️  Application Android pas encore dans cette version : tape dbmelo-maj" ;;
+        *) echo "❌ Application Android : réponse ${r%% *} (voir dbmelo-journal)" ;;
+      esac
     fi
     [ "$(lire ALLOW_DEMO_PAYMENTS)" = "true" ] && echo "⛔ Paiement simulé ACTIVÉ sur le site public : désactive-le (8) !"
   elif [ "$(lire ALLOW_DEMO_PAYMENTS)" = "true" ]; then

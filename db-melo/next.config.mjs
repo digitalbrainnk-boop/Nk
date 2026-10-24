@@ -12,6 +12,10 @@ const nextConfig = {
   // Le dépôt contient aussi l'agent (package-lock à la racine) : DB.Mélo est autonome dans ce dossier.
   outputFileTracingRoot: root,
   turbopack: { root },
+  async redirects() {
+    // Adresse courte à partager : dbmelo.com/telecharger.
+    return [{ source: "/telecharger", destination: "/installer", permanent: false }];
+  },
   async headers() {
     return [
       {

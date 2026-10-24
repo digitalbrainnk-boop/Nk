@@ -56,6 +56,8 @@ html {
   background: var(--color-ink);
   color-scheme: dark;
   -webkit-text-size-adjust: 100%;
+  /* Le vinyle qui tourne dépasse de l'écran : sans cela, le téléphone élargit la page et la dézoome. */
+  overflow-x: clip;
 }
 
 body {
@@ -64,6 +66,7 @@ body {
   font-family: var(--font-sans);
   -webkit-tap-highlight-color: transparent;
   overflow-x: hidden;
+  overflow-x: clip;
 }
 
 ::selection {

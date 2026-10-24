@@ -26,8 +26,8 @@ self.addEventListener("fetch", (event) => {
   if (req.method !== "GET") return;
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
-  // Jamais de cache pour l'API (statuts, paiements, audio protégé).
-  if (url.pathname.startsWith("/api/")) return;
+  // Jamais de cache pour l'API (statuts, paiements, audio protégé) ni pour l'application Android.
+  if (url.pathname.startsWith("/api/") || url.pathname.endsWith(".apk")) return;
 
   // Fichiers statiques versionnés : cache d'abord.
   if (url.pathname.startsWith("/_next/static/") || url.pathname.startsWith("/icons/") || url.pathname.startsWith("/samples/")) {
