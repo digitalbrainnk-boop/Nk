@@ -1,11 +1,13 @@
 "use client";
 
-// Installer l'application : sur Android, l'application à télécharger (dbmelo.com/dbmelo.apk) ;
-// sinon l'invite native quand le navigateur la propose (Chrome / Edge), ou les gestes exacts selon le
-// téléphone et le navigateur — et une sortie des navigateurs intégrés (Facebook, TikTok, Instagram…).
+// Installer l'application : l'invite de Chrome (Android, ordinateur) en un toucher — l'application
+// s'installe alors toute seule —, annoncée par une notification dès que Chrome la permet ; sinon les
+// gestes exacts selon le téléphone et le navigateur, une sortie des navigateurs intégrés (Facebook,
+// TikTok…), et en dernier recours le fichier d'installation Android (dbmelo.com/dbmelo.apk).
 
 import { AnimatePresence, motion } from "framer-motion";
-import { Check, CircleCheck, Copy, Download, EllipsisVertical, ExternalLink, FileDown, Menu, Share, ShieldCheck, SquarePlus, X } from "lucide-react";
+import { Check, CircleCheck, Copy, Download, EllipsisVertical, ExternalLink, FileDown, LoaderCircle, Menu, Share, ShieldCheck, SquarePlus, X } from "lucide-react";
+import { usePathname } from "next/navigation";
 import { type ReactNode, useEffect, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { isStandalone } from "@/lib/client/download-to-mobile";
@@ -166,40 +168,76 @@ export function AndroidDownload({ size }: { size: number }) {
   );
 }
 
-/**
- * Sur Android : l'application à télécharger, puis les autres solutions selon le navigateur.
- * `freeze` : dans la fenêtre ancrée en bas, rien ne doit apparaître une fois ouverte, sinon le bouton
- * remonte sous le doigt (Chrome autorise souvent l'installation directe au premier toucher).
- */
-function AndroidChoices({
-  env,
-  size,
-  canPrompt,
-  install,
-  freeze = false,
-}: { env: InstallEnv; size: number; canPrompt: boolean; install: () => Promise<boolean>; freeze?: boolean }) {
-  const [promptAtOpen] = useState(canPrompt);
-  const offerChrome = freeze ? promptAtOpen : canPrompt;
+/** Dernier recours, replié : le fichier d'installation Android, pour les navigateurs qui n'installent pas. */
+function ApkFallback({ size }: { size: number | null | undefined }) {
+  if (typeof size !== "number") return null;
   return (
-    <div className="space-y-5">
-      <AndroidDownload size={size} />
-      {env.inApp ? (
-        <div className="space-y-3 border-line border-t pt-4 text-sm">
-          <p className="text-muted">Le téléchargement ne démarre pas dans {ofApp(env.inApp)} ? Ouvrez DB.Mélo dans Chrome, puis recommencez :</p>
-          <a href={typeof window === "undefined" ? "#" : chromeIntentUrl(window.location.href)} className="btn btn-ghost w-full">
-            <ExternalLink className="size-5" /> Ouvrir dans Chrome
-          </a>
-        </div>
-      ) : (
-        offerChrome && (
-          <div className="space-y-3 border-line border-t pt-4 text-sm">
-            <p className="text-muted">Ou sans télécharger de fichier, directement depuis Chrome :</p>
-            <button type="button" onClick={install} className="btn btn-ghost w-full">
-              <SquarePlus className="size-5" /> Installer depuis Chrome
-            </button>
-          </div>
-        )
-      )}
+    <details className="group rounded-2xl border border-line p-4 text-sm">
+      <summary className="cursor-pointer list-none text-muted marker:hidden">
+        <span className="flex items-center justify-between gap-3">
+          Autre méthode : télécharger le fichier d&apos;installation
+          <span className="text-gold transition group-open:rotate-45">+</span>
+        </span>
+      </summary>
+      <div className="mt-4">
+        <AndroidDownload size={size} />
+      </div>
+    </details>
+  );
+}
+
+/**
+ * Installation par Chrome ou Samsung Internet : un toucher, puis « Installer » dans la fenêtre du
+ * navigateur, et l'application s'installe toute seule. Le bouton s'allume dès que Chrome le permet
+ * (après quelques secondes sur le site) ; seul son libellé change, pour ne rien décaler sous le doigt.
+ */
+function BrowserInstall({ env, canPrompt, install, apk }: { env: InstallEnv; canPrompt: boolean; install: () => void; apk: number | null | undefined }) {
+  return (
+    <div className="space-y-4 text-sm">
+      {env.browser === "chrome" && env.viaApp && <AppWindowHint app={env.viaApp} />}
+      <button type="button" onClick={install} disabled={!canPrompt} className="btn btn-gold w-full text-base disabled:opacity-70">
+        {canPrompt ? <Download className="size-5" /> : <LoaderCircle className="size-5 animate-spin" />}
+        {canPrompt ? "Installer l'application" : "Préparation de l'installation…"}
+      </button>
+      <p className="text-cream/90">
+        Touchez ensuite <strong>Installer</strong> dans la fenêtre {env.browser === "samsung" ? "de Samsung Internet" : "de Chrome"} : l&apos;application
+        s&apos;installe toute seule et son icône apparaît avec vos autres applications.
+      </p>
+      <p className="text-muted">
+        {env.browser === "samsung" ? (
+          <>
+            Le bouton reste gris ? Touchez le menu <strong>≡</strong> en bas à droite, puis <strong>« Ajouter la page à »</strong> →{" "}
+            <strong>« Écran d&apos;accueil »</strong>.
+          </>
+        ) : (
+          <>
+            Le bouton reste gris ? Touchez le menu <strong>⋮</strong> en haut à droite de Chrome, puis <strong>« Installer l&apos;application »</strong>{" "}
+            (ou « Ajouter à l&apos;écran d&apos;accueil »).
+          </>
+        )}
+      </p>
+      {env.browser === "chrome" && !env.viaApp && <AppWindowHint />}
+      <ApkFallback size={apk} />
+    </div>
+  );
+}
+
+/** Toutes les solutions pour cet appareil, de la plus simple à la moins simple. */
+function InstallOptions({ env, canPrompt, install, apk }: { env: InstallEnv; canPrompt: boolean; install: () => void; apk: number | null | undefined }) {
+  if (env.platform === "android" && !env.inApp && (env.browser === "chrome" || env.browser === "samsung")) {
+    return <BrowserInstall env={env} canPrompt={canPrompt} install={install} apk={apk} />;
+  }
+  if (canPrompt && !env.inApp) {
+    return (
+      <button type="button" onClick={install} className="btn btn-gold w-full text-base">
+        <Download className="size-5" /> Installer l&apos;application
+      </button>
+    );
+  }
+  return (
+    <div className="space-y-4">
+      <InstallSteps env={env} />
+      {env.platform === "android" && <ApkFallback size={apk} />}
     </div>
   );
 }
@@ -332,7 +370,6 @@ export function InstallSteps({ env }: { env: InstallEnv }) {
 }
 
 const NO_STORE = "Pas besoin du Play Store ni de l'App Store : l'application s'installe depuis le site en quelques secondes, et l'icône DB.Mélo apparaît sur votre écran d'accueil.";
-const NO_PLAY_STORE = "Pas besoin du Play Store : l'application se télécharge directement depuis dbmelo.com, gratuitement.";
 
 /* ───────────── Fenêtre d'aide ───────────── */
 
@@ -340,7 +377,6 @@ export function InstallSheet({ env, open, onClose }: { env: InstallEnv; open: bo
   // Chrome peut proposer l'installation directe quelques secondes après l'ouverture de la fenêtre.
   const { canPrompt, install } = useInstall();
   const apk = useAndroidApk(env.platform === "android");
-  const download = typeof apk === "number";
   // Rendue dans <body> : l'en-tête (flou d'arrière-plan) enfermerait sinon la fenêtre dans sa hauteur.
   if (typeof document === "undefined") return null;
   return createPortal(
@@ -365,22 +401,14 @@ export function InstallSheet({ env, open, onClose }: { env: InstallEnv; open: bo
           >
             <div className="mb-4 flex items-start justify-between">
               <h2 id="install-title" className="font-display text-lg font-bold">
-                {download ? "Télécharger DB.Mélo" : env.platform === "ios" ? "Installer DB.Mélo sur iPhone" : "Installer DB.Mélo"}
+                {env.platform === "ios" ? "Installer DB.Mélo sur iPhone" : "Installer DB.Mélo"}
               </h2>
               <button type="button" onClick={onClose} aria-label="Fermer" className="btn-quiet">
                 <X className="size-5" />
               </button>
             </div>
-            {download ? (
-              <AndroidChoices env={env} size={apk} canPrompt={canPrompt} install={async () => (await install()) && (onClose(), true)} freeze />
-            ) : canPrompt && !env.inApp ? (
-              <button type="button" onClick={async () => (await install()) && onClose()} className="btn btn-gold w-full text-base">
-                <Download className="size-5" /> Installer maintenant
-              </button>
-            ) : (
-              <InstallSteps env={env} />
-            )}
-            <p className="mt-5 text-xs text-muted">{download ? NO_PLAY_STORE : NO_STORE}</p>
+            <InstallOptions env={env} canPrompt={canPrompt} install={async () => (await install()) && onClose()} apk={apk} />
+            <p className="mt-5 text-xs text-muted">{NO_STORE}</p>
           </motion.div>
         </motion.div>
       )}
@@ -394,14 +422,12 @@ export function InstallSheet({ env, open, onClose }: { env: InstallEnv; open: bo
 export function InstallButton() {
   const { env, canPrompt, installed, install } = useInstall();
   const [open, setOpen] = useState(false);
-  // Vérifiée dès l'affichage : la fenêtre propose l'application Android sans attendre.
-  const apk = useAndroidApk(env?.platform === "android" && !installed);
-  // Sur téléphone, le bouton est toujours là : application à télécharger sur Android, invite native si
+  // Sur téléphone, le bouton est toujours là : la fenêtre d'installation de Chrome en un toucher si
   // possible, sinon les gestes à faire.
   if (!env || installed || (env.platform === "desktop" && !canPrompt)) return null;
   const mobile = env.platform !== "desktop";
   const onClick = async () => {
-    if (typeof apk !== "number" && canPrompt && (await install())) return;
+    if (canPrompt && (await install())) return;
     setOpen(true);
   };
   return (
@@ -423,13 +449,13 @@ export function InstallButton() {
 /* ───────────── Guide complet (page /installer) ───────────── */
 
 const OTHER_DEVICES: { label: string; env: InstallEnv; download?: boolean }[] = [
-  { label: "Android : télécharger l'application", env: { platform: "android", browser: "chrome", inApp: null }, download: true },
-  { label: "Android avec Chrome, sans téléchargement", env: { platform: "android", browser: "chrome", inApp: null } },
+  { label: "Android avec Chrome", env: { platform: "android", browser: "chrome", inApp: null } },
   { label: "Samsung (Samsung Internet)", env: { platform: "android", browser: "samsung", inApp: null } },
   { label: "iPhone et iPad (Safari)", env: { platform: "ios", browser: "safari", inApp: null } },
   { label: "Depuis Facebook, TikTok ou Instagram (Android)", env: { platform: "android", browser: "chrome", inApp: "Facebook, TikTok ou Instagram" } },
   { label: "Depuis Facebook, TikTok ou Instagram (iPhone)", env: { platform: "ios", browser: "safari", inApp: "Facebook, TikTok ou Instagram" } },
   { label: "Ordinateur", env: { platform: "desktop", browser: "chrome", inApp: null } },
+  { label: "Android : fichier d'installation (APK)", env: { platform: "android", browser: "other", inApp: null }, download: true },
 ];
 
 function PhoneQr() {
@@ -448,7 +474,6 @@ export function InstallGuide() {
   const { env, canPrompt, installed, install } = useInstall();
   const apk = useAndroidApk(true);
   if (!env) return <div className="card h-40 animate-pulse" />;
-  const download = env.platform === "android" && typeof apk === "number";
   return (
     <div className="space-y-6">
       <div className="card space-y-4 p-6">
@@ -456,16 +481,10 @@ export function InstallGuide() {
           <p className="flex items-center gap-2 text-success">
             <Check className="size-5" /> DB.Mélo est installée sur cet appareil.
           </p>
-        ) : download ? (
-          <AndroidChoices env={env} size={apk} canPrompt={canPrompt} install={install} />
-        ) : canPrompt ? (
-          <button type="button" onClick={install} className="btn btn-gold w-full text-base">
-            <Download className="size-5" /> Installer l&apos;application
-          </button>
         ) : (
-          <InstallSteps env={env} />
+          <InstallOptions env={env} canPrompt={canPrompt} install={install} apk={apk} />
         )}
-        <p className="text-sm text-muted">{download ? NO_PLAY_STORE : NO_STORE}</p>
+        <p className="text-sm text-muted">{NO_STORE}</p>
         {env.platform === "desktop" && <PhoneQr />}
       </div>
       <div>
@@ -487,6 +506,64 @@ export function InstallGuide() {
         </div>
       </div>
     </div>
+  );
+}
+
+/* ───────────── Notification d'installation ───────────── */
+
+const LATER_KEY = "dbmelo-installer-plus-tard";
+const LATER_MS = 3 * 24 * 3600_000;
+
+/**
+ * Dès que Chrome permet l'installation (après quelques secondes sur le site), une notification la
+ * propose en bas de l'écran : « Installer », puis « Installer » dans la fenêtre de Chrome, et c'est fait.
+ */
+export function InstallBanner() {
+  const { canPrompt, installed, install } = useInstall();
+  const pathname = usePathname();
+  const [later, setLater] = useState(true);
+  useEffect(() => {
+    try {
+      setLater(Date.now() - Number(localStorage.getItem(LATER_KEY) || 0) < LATER_MS);
+    } catch {
+      setLater(false);
+    }
+  }, []);
+  const close = () => {
+    setLater(true);
+    try {
+      localStorage.setItem(LATER_KEY, String(Date.now()));
+    } catch {}
+  };
+  // Pas pendant la création d'une chanson : la barre « Continuer » occupe déjà le bas de l'écran.
+  const show = canPrompt && !installed && !later && !pathname.startsWith("/studio");
+  return (
+    <AnimatePresence>
+      {show && (
+        <motion.div
+          role="dialog"
+          aria-label="Installer l'application DB.Mélo"
+          className="safe-bottom fixed inset-x-0 bottom-0 z-40 p-3 sm:right-4 sm:bottom-4 sm:left-auto sm:w-96"
+          initial={{ y: 120, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          exit={{ y: 120, opacity: 0 }}
+        >
+          <div className="card flex items-center gap-3 p-3 shadow-2xl shadow-black/60">
+            <img src="/icons/192" alt="" className="size-12 shrink-0 rounded-xl" />
+            <div className="min-w-0 flex-1">
+              <p className="font-display font-bold leading-tight">Installer DB.Mélo</p>
+              <p className="text-xs text-muted">Gratuit · vos chansons en un geste</p>
+            </div>
+            <button type="button" onClick={install} className="btn btn-gold min-h-10 shrink-0 px-4 py-2 text-sm">
+              Installer
+            </button>
+            <button type="button" onClick={close} aria-label="Plus tard" className="btn-quiet shrink-0 p-1">
+              <X className="size-4" />
+            </button>
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }
 

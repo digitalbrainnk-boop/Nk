@@ -175,7 +175,7 @@ Limite des navigateurs : sur iPhone, un site ne peut pas ajouter un fichier dire
 
 ### Application Android à télécharger
 
-Bouton **« Télécharger »** en haut de l'écran sur téléphone, page `dbmelo.com/telecharger` (→ `/installer`) : sur Android, l'application `DBMelo.apk` se télécharge depuis le site, sans Play Store ; sur iPhone, Apple n'autorisant que l'App Store, le site guide l'ajout à l'écran d'accueil.
+Bouton **« Télécharger »** en haut de l'écran sur téléphone, page `dbmelo.com/telecharger` (→ `/installer`). Sur Android, un toucher ouvre la fenêtre d'installation de Chrome (`beforeinstallprompt`) : « Installer », et l'application s'installe toute seule (WebAPK). Dès que Chrome le permet (environ 30 secondes sur le site et un toucher, règle de Chrome), une **notification** le propose en bas de l'écran (sauf dans le studio ; « Plus tard » la masque 3 jours). Avant cela, la fenêtre d'aide affiche « Préparation de l'installation… » puis s'allume d'elle-même, avec le menu ⋮ en secours. Le fichier `DBMelo.apk` reste proposé, replié, pour les navigateurs qui n'installent pas. Sur iPhone, Apple n'autorisant que l'App Store, le site guide l'ajout à l'écran d'accueil.
 
 - `android/` : projet Trusted Web Activity généré avec [Bubblewrap](https://github.com/GoogleChromeLabs/bubblewrap) (paquet `com.dbmelo.app`, Android 7.0 minimum). Il ouvre `https://dbmelo.com/?source=android` en plein écran dans Chrome, ou dans un WebView si Chrome est absent ; le site s'y reconnaît et masque alors ses boutons d'installation.
 - GitHub le compile **non signé** quand le dossier change, vérifie une signature d'essai avec `apksigner`, et le glisse dans le paquet o2switch.

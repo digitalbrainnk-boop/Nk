@@ -18,7 +18,7 @@ const FAQ = [
   { q: "Combien de temps faut-il ?", a: "Quelques minutes pour remplir le formulaire, puis 1 à 5 minutes de composition après le paiement." },
   { q: "Comment payer depuis mon pays ?", a: "Par Mobile Money dans votre monnaie (Orange Money, Wave, MTN MoMo, Moov, Airtel Money, M-Pesa… selon le pays), ou par carte Visa / Mastercard depuis n'importe quel pays d'Afrique." },
   { q: "Comment garder la chanson sur mon téléphone ?", a: "Un bouton « Télécharger & Sauvegarder » ouvre l'enregistrement natif : app Fichiers sur iPhone et iPad, Téléchargements et lecteurs de musique sur Android. Le MP3 contient le titre, l'artiste et la pochette." },
-  { q: "Puis-je télécharger l'application ?", a: "Oui. Sur Android, touchez « Télécharger » en haut de l'écran : l'application DBMelo.apk se télécharge directement depuis le site, sans passer par le Play Store. Sur iPhone, Apple n'autorise que l'App Store : DB.Mélo s'ajoute à l'écran d'accueil en deux gestes depuis Safari. Le guide complet est sur dbmelo.com/telecharger." },
+  { q: "Puis-je télécharger l'application ?", a: "Oui, gratuitement et sans Play Store. Sur Android, touchez « Télécharger » en haut de l'écran (ou « Installer » dans la notification), puis « Installer » dans la fenêtre de Chrome : l'application s'installe toute seule. Sur iPhone, Apple n'autorise que l'App Store : DB.Mélo s'ajoute à l'écran d'accueil en deux gestes depuis Safari. Le guide complet est sur dbmelo.com/telecharger." },
   { q: "À qui appartient la chanson ?", a: "Vous pouvez l'offrir, la partager et la diffuser dans un cadre personnel (fête, cérémonie, réseaux sociaux). Pour un usage commercial, contactez-nous." },
 ];
 
@@ -160,7 +160,7 @@ export default function Home() {
           <Smartphone className="size-14 shrink-0 text-gold" />
           <div className="flex-1">
             <h2 className="font-display text-2xl font-bold">L&apos;application sur votre téléphone</h2>
-            <p className="mt-2 text-muted">Téléchargez l&apos;application Android directement depuis le site, sans passer par le Play Store. Sur iPhone et iPad, DB.Mélo s&apos;ajoute à l&apos;écran d&apos;accueil en deux gestes. Vos chansons à portée de main, même hors ligne une fois téléchargées.</p>
+            <p className="mt-2 text-muted">Sur Android, un toucher suffit : l&apos;application s&apos;installe toute seule depuis le site, sans passer par le Play Store. Sur iPhone et iPad, DB.Mélo s&apos;ajoute à l&apos;écran d&apos;accueil en deux gestes. Vos chansons à portée de main, même hors ligne une fois téléchargées.</p>
           </div>
           <Link href="/installer" className="btn btn-gold">
             Télécharger l&apos;application
