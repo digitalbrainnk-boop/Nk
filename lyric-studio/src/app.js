@@ -73,7 +73,15 @@ const extOf = (name) =>
     .slice(1)
     .toLowerCase();
 const kindOf = (ext) =>
-  AUDIO_EXT.includes(ext) ? "audio" : VIDEO_EXT.includes(ext) ? "video" : IMAGE_EXT.includes(ext) ? "image" : FONT_EXT.includes(ext) ? "font" : null;
+  AUDIO_EXT.includes(ext)
+    ? "audio"
+    : VIDEO_EXT.includes(ext)
+      ? "video"
+      : IMAGE_EXT.includes(ext)
+        ? "image"
+        : FONT_EXT.includes(ext)
+          ? "font"
+          : null;
 
 const MAX_UPLOAD = Number(process.env.MAX_UPLOAD_MB || 4096) * 1024 * 1024;
 const upload = multer({ dest: TMP_DIR, limits: { fileSize: MAX_UPLOAD, fieldSize: 2 * 1024 * 1024, files: 3 } });
@@ -145,12 +153,22 @@ export function createApp() {
   });
   // Lien entre le site et l'application Android du Play Store (Trusted Web Activity).
   app.get("/.well-known/assetlinks.json", (req, res) => {
-    const pkg = process.env.ANDROID_PACKAGE;
-    const prints = String(process.env.ANDROID_SHA256 || "")
+    const s = getSettings();
+    const pkg = s.android_package;
+    const prints = String(s.android_sha256 || "")
       .split(",")
       .map((x) => x.trim())
       .filter(Boolean);
-    res.json(pkg && prints.length ? [{ relation: ["delegate_permission/common.handle_all_urls"], target: { namespace: "android_app", package_name: pkg, sha256_cert_fingerprints: prints } }] : []);
+    res.json(
+      pkg && prints.length
+        ? [
+            {
+              relation: ["delegate_permission/common.handle_all_urls"],
+              target: { namespace: "android_app", package_name: pkg, sha256_cert_fingerprints: prints },
+            },
+          ]
+        : [],
+    );
   });
   app.get("/sw.js", (req, res) => {
     res.setHeader("Cache-Control", "no-cache");
@@ -211,9 +229,15 @@ export function createApp() {
   });
 
   app.get("/api/me", (req, res) => res.json(accountInfo(need(req))));
+  // Au démarrage de l'application : connecté ou pas (sans erreur 401 dans la console).
+  app.get("/api/session", (req, res) => res.json({ me: req.user ? accountInfo(req.user) : null }));
   app.put("/api/me", express.json(), (req, res) => {
     const u = need(req);
-    res.json(accountInfo(updateUser(u.id, { name: String(req.body?.name ?? u.name).slice(0, 80), phone: String(req.body?.phone ?? u.phone).slice(0, 30) })));
+    res.json(
+      accountInfo(
+        updateUser(u.id, { name: String(req.body?.name ?? u.name).slice(0, 80), phone: String(req.body?.phone ?? u.phone).slice(0, 30) }),
+      ),
+    );
   });
   app.put("/api/me/password", express.json(), (req, res) => {
     const u = need(req);
@@ -225,7 +249,8 @@ export function createApp() {
   app.delete("/api/me", express.json(), (req, res) => {
     const u = need(req);
     if (!verifyPassword(u.id, req.body?.password)) throw new HttpError(400, "Mot de passe incorrect.");
-    if (u.role === "admin" && listUsers().filter((x) => x.role === "admin").length <= 1) throw new HttpError(400, "Tu es le seul administrateur : nomme d'abord un autre administrateur.");
+    if (u.role === "admin" && listUsers().filter((x) => x.role === "admin").length <= 1)
+      throw new HttpError(400, "Tu es le seul administrateur : nomme d'abord un autre administrateur.");
     deleteUserProjects(u.id);
     deleteUser(u.id);
     setCookie(req, res, "", 0);
@@ -273,7 +298,8 @@ export function createApp() {
     const patch = {};
     for (const k of ["name", "phone", "plan", "role", "disabled"]) if (b[k] !== undefined) patch[k] = b[k];
     if (b.plan_until !== undefined) patch.plan_until = b.plan_until ? Number(new Date(b.plan_until)) || null : null;
-    if (target.id === me.id && (patch.role === "user" || patch.disabled)) throw new HttpError(400, "Tu ne peux pas te retirer tes propres droits.");
+    if (target.id === me.id && (patch.role === "user" || patch.disabled))
+      throw new HttpError(400, "Tu ne peux pas te retirer tes propres droits.");
     res.json(updateUser(target.id, patch));
   });
   app.post("/api/admin/users/:id/password", (req, res) => {
@@ -325,7 +351,8 @@ export function createApp() {
       if (!req.file) throw new HttpError(400, "Ajoute un fichier audio ou vidéo.");
       const ext = extOf(req.file.originalname);
       const kind = kindOf(ext);
-      if (kind !== "audio" && kind !== "video") throw new HttpError(400, "Format non pris en charge : MP3, WAV, FLAC, AAC, M4A, OGG, MP4, MOV, MKV, WEBM.");
+      if (kind !== "audio" && kind !== "video")
+        throw new HttpError(400, "Format non pris en charge : MP3, WAV, FLAC, AAC, M4A, OGG, MP4, MOV, MKV, WEBM.");
       limits.newProject(user, req.file.size);
       const b = req.body || {};
       const lyricsText = String(b.lyrics || "").slice(0, 50_000);
@@ -344,7 +371,9 @@ export function createApp() {
         let audioName = name;
         if (isVideo && hasFfmpeg() && info?.audio) {
           audioName = name.replace(/^source/, "audio").replace(/\.\w+$/, ".m4a");
-          await extractAudio(projectFile(p.id, name), projectFile(p.id, audioName), { duration: info.duration }).catch(() => (audioName = name));
+          await extractAudio(projectFile(p.id, name), projectFile(p.id, audioName), { duration: info.duration }).catch(
+            () => (audioName = name),
+          );
         }
         const out = updateProject(p.id, (proj) => {
           proj.media.audio = { file: audioName, duration: info?.duration || 0, original: req.file.originalname.slice(0, 200) };
@@ -394,7 +423,11 @@ export function createApp() {
       }
       const transcript = await fetchTimestampedLyrics(taskId, track.audioId).catch((e) => ({ error: e.message }));
       const out = updateProject(p.id, (proj) => {
-        proj.media.audio = { file: audioName, duration: track.duration || probe(projectFile(p.id, audioName))?.duration || 0, original: "Suno" };
+        proj.media.audio = {
+          file: audioName,
+          duration: track.duration || probe(projectFile(p.id, audioName))?.duration || 0,
+          original: "Suno",
+        };
         proj.duration = proj.media.audio.duration;
         if (cover) proj.media.cover = { file: cover, kind: "image" };
         proj.suno = { taskId, audioId: track.audioId, versions: track.versions };
@@ -445,7 +478,8 @@ export function createApp() {
       if (!req.file) throw new HttpError(400, "Aucun fichier reçu.");
       const ext = extOf(req.file.originalname);
       const kind = kindOf(ext);
-      if (!["image", "video", "font"].includes(kind)) throw new HttpError(400, "Image (JPG, PNG, WEBP, GIF), vidéo (MP4, WEBM, MOV) ou police (TTF, OTF, WOFF) attendue.");
+      if (!["image", "video", "font"].includes(kind))
+        throw new HttpError(400, "Image (JPG, PNG, WEBP, GIF), vidéo (MP4, WEBM, MOV) ou police (TTF, OTF, WOFF) attendue.");
       limits.storage(user, req.file.size);
       const name = adoptFile(req.params.id, req.file.path, kind === "font" ? "font" : "asset", ext);
       refreshSize(req.params.id);
@@ -518,7 +552,10 @@ export function createApp() {
           update({ message: "Séparation de la voix par IA…" });
           const outDir = path.join(TMP_DIR, `demucs-${p.id}-${Date.now()}`);
           try {
-            const r = await separateWithDemucs(projectFile(p.id, p.media.audio.file), outDir, { signal, onProgress: (x) => update({ progress: x * 0.98 }) });
+            const r = await separateWithDemucs(projectFile(p.id, p.media.audio.file), outDir, {
+              signal,
+              onProgress: (x) => update({ progress: x * 0.98 }),
+            });
             addUsage(user.id, { stems: 1 });
             return saveStems(p.id, { vocals: r.vocals, instrumental: r.instrumental, ext: "wav", method: "demucs" });
           } finally {
@@ -533,7 +570,10 @@ export function createApp() {
       if (!p.suno?.taskId) throw new HttpError(400, "La séparation par Suno ne marche que pour les chansons créées avec Suno.");
       const job = startJob("stems", p.id, async ({ update, signal }) => {
         update({ message: "Séparation de la voix par Suno (1 à 3 minutes)…" });
-        const urls = await separateWithSuno(p.suno.taskId, p.suno.audioId, { signal, onStatus: (s) => update({ message: `Suno : ${s || "en cours"}…` }) });
+        const urls = await separateWithSuno(p.suno.taskId, p.suno.audioId, {
+          signal,
+          onStatus: (s) => update({ message: `Suno : ${s || "en cours"}…` }),
+        });
         const tmpV = path.join(TMP_DIR, `v-${p.id}-${Date.now()}.mp3`);
         const tmpI = path.join(TMP_DIR, `i-${p.id}-${Date.now()}.mp3`);
         await download(urls.instrumental, tmpI);
@@ -572,7 +612,8 @@ export function createApp() {
         const v = req.files?.vocals?.[0];
         const i = req.files?.instrumental?.[0];
         if (!v && !i) throw new HttpError(400, "Ajoute la voix seule et/ou l'instrumental.");
-        for (const f of [v, i].filter(Boolean)) if (kindOf(extOf(f.originalname)) !== "audio") throw new HttpError(400, "Fichier audio attendu (MP3, WAV, FLAC…).");
+        for (const f of [v, i].filter(Boolean))
+          if (kindOf(extOf(f.originalname)) !== "audio") throw new HttpError(400, "Fichier audio attendu (MP3, WAV, FLAC…).");
         limits.storage(user, (v?.size || 0) + (i?.size || 0));
         const vn = v ? adoptFile(req.params.id, v.path, "vocals", extOf(v.originalname)) : null;
         const inn = i ? adoptFile(req.params.id, i.path, "instrumental", extOf(i.originalname)) : null;
@@ -644,7 +685,15 @@ export function createApp() {
           update({ message: transcode ? "Conversion en H.264…" : "Ajout du son…" });
           const name = `export-${Date.now().toString(36)}${crypto.randomBytes(3).toString("hex")}.mp4`;
           try {
-            await muxVideo({ video: video.path, audio: audio?.path, out: projectFile(p.id, name), transcode, duration, signal, onProgress: (x) => update({ progress: x }) });
+            await muxVideo({
+              video: video.path,
+              audio: audio?.path,
+              out: projectFile(p.id, name),
+              transcode,
+              duration,
+              signal,
+              onProgress: (x) => update({ progress: x }),
+            });
           } catch (e) {
             removeFile(p.id, name);
             throw e;

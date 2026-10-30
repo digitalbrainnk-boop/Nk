@@ -168,13 +168,16 @@ N'importe quel serveur avec Node.js (VPS, Railway, Render, Fly.io…). Le dossie
 
 ## Lyric Studio : vidéos lyriques et karaoké
 
-Le dossier [`lyric-studio/`](lyric-studio/README.md) contient une application à part pour transformer une chanson
-(fichier audio/vidéo ou chanson Suno de Kie.ai) en **vidéo lyrique** ou **vidéo karaoké** synchronisée mot par mot,
-personnalisable (polices, couleurs, fond, image en haut, duo…) et exportée en MP4 720p / 1080p / 4K.
+Le dossier [`lyric-studio/`](lyric-studio/README.md) contient une application à vendre à tes clients : comptes,
+formules payantes (paiement Mobile Money validé par toi), espace administrateur, et un studio pour transformer une
+chanson en **vidéo lyrique** ou **karaoké** synchronisée mot par mot, entièrement personnalisable et exportée en MP4
+720p / 1080p / 4K. Elle s'installe sur Android comme une application.
 
 ```bash
-cd lyric-studio && npm install && npm start   # puis http://localhost:3500
+cd lyric-studio && npm install && npm start   # puis http://localhost:3500 (le premier compte = administrateur)
 ```
+
+Mise en ligne avec un nom de domaine et application Android : [lyric-studio/DEPLOIEMENT.md](lyric-studio/DEPLOIEMENT.md).
 
 ## Coûts
 

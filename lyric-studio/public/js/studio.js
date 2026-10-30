@@ -1,10 +1,12 @@
 // Le studio : aperçu, transport, paroles, frise, style, synchronisation, son et export d'un projet.
 import { h, toast, modal, fmtTime, fmtSize, debounce, progressBar, field, confirmBox } from "./ui.js";
 import { api, upload, waitJob, mediaUrl } from "./api.js";
-import { AudioEngine } from "./audio.js";
 import { Assets } from "./assets.js";
-import { Renderer } from "./core/render.js";
-import { normalizeStyle, frameSize, RESOLUTIONS } from "./core/style.js";
+import { Renderer, needsAudio } from "./core/render.js";
+import { normalizeStyle, frameSize, RESOLUTIONS, RESOLUTION_ORDER } from "./core/style.js";
+import { analysisTrack } from "./core/dsp.js";
+import { AudioEngine, channelsOf } from "./audio.js";
+import { upgradePrompt } from "./session.js";
 import { serializeLyrics } from "./core/lyrics.js";
 import { fixTimings, distributeWords, naturalDuration } from "./core/align.js";
 import { lineSpan } from "./core/timing.js";
@@ -31,12 +33,13 @@ function savePrefs(prefs) {
 }
 
 export class Studio {
-  constructor(root, project, caps) {
+  constructor(root, project, session) {
     this.root = root;
     project.style = normalizeStyle(project.style);
     project.lines ||= [];
     this.project = project;
-    this.caps = caps;
+    this.session = session;
+    this.caps = session.caps;
     this.prefs = loadPrefs();
     this.selected = { line: -1, word: -1 };
     this.audio = new AudioEngine();
@@ -192,6 +195,9 @@ export class Studio {
     this.timeline.fit();
     if (this.timeline.pps < 40) this.timeline.pps = 40;
     this.assets.update(p);
+    // Formule gratuite : le filigrane apparaît déjà dans l'aperçu (et dans l'export).
+    this.assets.extra.watermark = this.caps.watermark ? { text: this.caps.watermark } : null;
+    this.ensureAnalysis();
     await ensureFont(p.style, p);
     await this.audio.setPlayback(p.style);
     this.monoCheck();
@@ -394,14 +400,23 @@ export class Studio {
     } else this.lyrics.update(this.audio.time, true);
   }
 
+  /** Le visualiseur et les effets qui suivent les basses ont besoin du son analysé (calculé une fois). */
+  ensureAnalysis() {
+    if (this.assets.extra.audio || !this.audio.buffers.original || !needsAudio(this.project.style)) return;
+    const o = this.audio.buffers.original;
+    this.assets.extra.audio = analysisTrack(channelsOf(o), o.sampleRate);
+    this.needsRender = true;
+  }
+
   styleChanged(path, { live = false } = {}) {
     const p = this.project;
     this.needsRender = true;
+    if (path.startsWith("effects") || path.startsWith("top") || path === "preset") this.ensureAnalysis();
     if (path.startsWith("layout") || path === "preset") this.renderer.invalidate();
     if (path.startsWith("font") || path === "preset")
       ensureFont(p.style, p).then(() => ((this.needsRender = true), this.renderer.measures.clear()));
     if (path === "mode" || path === "guideVocals" || path === "preset") this.applyPlayback();
-    if (path.startsWith("background") || path.startsWith("top") || path === "preset") this.assets.update(p);
+    if (path.startsWith("background") || path.startsWith("top") || path.startsWith("logo") || path === "preset") this.assets.update(p);
     if (path === "aspect" || path === "preset") this.layoutPreview();
     if (path.startsWith("duo") || path === "preset") {
       this.timeline.invalidate();
@@ -777,7 +792,8 @@ export class Studio {
       this.stemsChanged();
       toast("Voix séparée ✓", "ok");
     } catch (e) {
-      if (e.name !== "AbortError") toast(e.message, "error", 7000);
+      if (e.upgrade) upgradePrompt(e.message);
+      else if (e.name !== "AbortError") toast(e.message, "error", 7000);
     } finally {
       dlg.close();
     }
@@ -807,16 +823,25 @@ export class Studio {
     });
     const keep = h("input", { type: "checkbox", checked: prefs.keepCopy !== false });
     const planBox = h("div", { class: "plan" }, "…");
+    const maxRes = RESOLUTION_ORDER.indexOf(this.caps.maxResolution || "4K");
+    if (RESOLUTION_ORDER.indexOf(resolution) > maxRes) resolution = RESOLUTION_ORDER[maxRes];
     const resButtons = Object.keys(RESOLUTIONS).map((r) => {
       const { width, height } = frameSize(p.style.aspect, r);
+      const locked = RESOLUTION_ORDER.indexOf(r) > maxRes;
       return h(
         "button",
         {
-          class: `seg-btn${r === resolution ? " on" : ""}`,
-          onclick: () => ((resolution = r), resButtons.forEach((b) => b.classList.toggle("on", b.dataset.r === r)), updatePlan()),
+          class: `seg-btn${r === resolution ? " on" : ""}${locked ? " locked" : ""}`,
+          title: locked ? "Réservé aux formules supérieures" : "",
+          onclick: () => {
+            if (locked) return upgradePrompt(`La qualité ${r} est réservée aux formules supérieures.`);
+            resolution = r;
+            resButtons.forEach((b) => b.classList.toggle("on", b.dataset.r === r));
+            updatePlan();
+          },
           dataset: { r },
         },
-        h("strong", {}, r),
+        h("strong", {}, locked ? `🔒 ${r}` : r),
         h("small", {}, ` ${width}×${height}`),
       );
     });
@@ -940,8 +965,12 @@ export class Studio {
     });
     const name = `${(p.title || "video").replace(/[\\/:*?"<>|]+/g, "").trim() || "video"} - ${resolution}${p.style.mode === "karaoke" ? " - karaoke" : ""}.mp4`;
     try {
+      // La formule autorise-t-elle cet export ? (qualité, nombre d'exports du mois)
+      const allowed = await api(`/api/projects/${p.id}/export-start`, { method: "POST", json: { resolution, duration: end - start } });
+      this.assets.extra.watermark = allowed.watermark ? { text: allowed.watermark } : null;
       await ensureFont(p.style, p);
       await this.assets.ready();
+      this.ensureAnalysis();
       info.textContent = "Préparation du son…";
       const channels = await this.audio.exportChannels(p.style);
       const sampleRate = this.audio.sampleRate;
@@ -1022,6 +1051,7 @@ export class Studio {
     } catch (e) {
       dlg.close();
       if (e.name === "AbortError") return toast("Export annulé.", "info");
+      if (e.upgrade) return upgradePrompt(e.message);
       console.error(e);
       modal({
         title: "L'export a échoué",

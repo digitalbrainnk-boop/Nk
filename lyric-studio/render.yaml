@@ -1,0 +1,23 @@
+# Hébergement sur Render (https://render.com) : New → Blueprint → ce dépôt,
+# chemin du Blueprint : lyric-studio/render.yaml. Puis Settings → Custom Domains pour ton nom de domaine.
+services:
+  - type: web
+    name: lyric-studio
+    runtime: docker
+    dockerfilePath: ./lyric-studio/Dockerfile
+    dockerContext: ./lyric-studio
+    buildFilter:
+      paths: ["lyric-studio/**"]
+    plan: starter # le disque permanent (projets des clients) demande une offre payante
+    healthCheckPath: /health
+    envVars:
+      - key: DATA_DIR
+        value: /data
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: TRANSCRIPTION_API_KEY
+        sync: false
+    disk:
+      name: studio-data
+      mountPath: /data
+      sizeGB: 20

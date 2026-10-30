@@ -2,6 +2,7 @@
 // -> alignement mot par mot des paroles collées, ou paroles écrites par l'IA si absentes.
 import { h, modal, toast, progressBar, field } from "./ui.js";
 import { api, upload, waitJob } from "./api.js";
+import { upgradePrompt } from "./session.js";
 import { channelsOf } from "./audio.js";
 import { speechWav, detectActivity } from "./core/dsp.js";
 import { syncLinesToReference, syncLinesByActivity } from "./core/align.js";
@@ -279,6 +280,7 @@ export async function runSync(studio, { choice, stems, provider, language }) {
     }
     step(`✗ ${e.message}`).fail(`✗ ${e.message}`);
     dlg.close();
+    if (e.upgrade) return upgradePrompt(e.message);
     modal({
       title: "La synchronisation a échoué",
       body: h("p", {}, e.message),

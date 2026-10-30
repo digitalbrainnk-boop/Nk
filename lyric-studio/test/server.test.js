@@ -12,6 +12,7 @@ process.env.KIE_POLL_MS = "5";
 for (const k of ["TRANSCRIPTION_API_KEY", "ELEVENLABS_API_KEY", "KIE_API_KEY", "ADMIN_EMAIL"]) process.env[k] = "";
 process.env.ANDROID_PACKAGE = "com.exemple.lyricstudio";
 process.env.ANDROID_SHA256 = "AA:BB";
+process.env.ANDROID_APP_URL = "";
 const { createApp } = await import("../src/app.js");
 const { encodeWav } = await import("../public/js/core/dsp.js");
 const { normalizeAlignedWords, findStemUrls } = await import("../src/suno.js");
@@ -89,24 +90,39 @@ test("inscription : le premier compte est administrateur, les suivants clients g
   assert.equal((await boss.json("/api/me")).status, 401);
   const refused = await boss.json("/api/auth/signup", { method: "POST", json: { email: "boss@test.fr", password: "Admin-Pass-1" } });
   assert.match(refused.data.error, /conditions/);
-  const a = await boss.json("/api/auth/signup", { method: "POST", json: { email: "Boss@Test.fr", password: "Admin-Pass-1", name: "Patron", accept: true } });
+  const a = await boss.json("/api/auth/signup", {
+    method: "POST",
+    json: { email: "Boss@Test.fr", password: "Admin-Pass-1", name: "Patron", accept: true },
+  });
   assert.equal(a.status, 200);
   assert.equal(a.data.user.role, "admin");
   assert.equal(a.data.user.email, "boss@test.fr");
-  const b = await alice.json("/api/auth/signup", { method: "POST", json: { email: "alice@test.fr", password: "Alice-Pass-1", accept: true } });
+  const b = await alice.json("/api/auth/signup", {
+    method: "POST",
+    json: { email: "alice@test.fr", password: "Alice-Pass-1", accept: true },
+  });
   assert.equal(b.data.user.role, "user");
   assert.equal(b.data.plan.id, "free");
   assert.equal(b.data.plan.watermark, true);
-  const dup = await bob.json("/api/auth/signup", { method: "POST", json: { email: "alice@test.fr", password: "Autre-Pass-1", accept: true } });
+  const dup = await bob.json("/api/auth/signup", {
+    method: "POST",
+    json: { email: "alice@test.fr", password: "Autre-Pass-1", accept: true },
+  });
   assert.equal(dup.status, 409);
   const weak = await bob.json("/api/auth/signup", { method: "POST", json: { email: "bob@test.fr", password: "court", accept: true } });
   assert.equal(weak.status, 400);
-  assert.equal((await bob.json("/api/auth/signup", { method: "POST", json: { email: "bob@test.fr", password: "Bob-Pass-12", accept: true } })).status, 200);
+  assert.equal(
+    (await bob.json("/api/auth/signup", { method: "POST", json: { email: "bob@test.fr", password: "Bob-Pass-12", accept: true } })).status,
+    200,
+  );
 });
 
 test("connexion, déconnexion, mauvais mot de passe", async () => {
   const c = client();
-  assert.equal((await c.json("/api/auth/login", { method: "POST", json: { email: "alice@test.fr", password: "faux-mot-de-passe" } })).status, 401);
+  assert.equal(
+    (await c.json("/api/auth/login", { method: "POST", json: { email: "alice@test.fr", password: "faux-mot-de-passe" } })).status,
+    401,
+  );
   const ok = await c.json("/api/auth/login", { method: "POST", json: { email: "ALICE@test.fr", password: "Alice-Pass-1" } });
   assert.equal(ok.status, 200);
   assert.equal((await c.json("/api/me")).data.user.email, "alice@test.fr");
@@ -199,7 +215,10 @@ test("formule gratuite : limites de projets, d'IA, de qualité ; filigrane", asy
 
 test("abonnement : demande du client, validation par l'administrateur, formule Pro active", async () => {
   assert.equal((await alice.json("/api/me/requests", { method: "POST", json: { plan: "inconnue" } })).status, 400);
-  const r = await alice.json("/api/me/requests", { method: "POST", json: { plan: "pro", months: 2, reference: "OM-123456", note: "Payé par Orange Money" } });
+  const r = await alice.json("/api/me/requests", {
+    method: "POST",
+    json: { plan: "pro", months: 2, reference: "OM-123456", note: "Payé par Orange Money" },
+  });
   assert.equal(r.status, 200);
   assert.equal((await alice.json("/api/admin/requests")).status, 403, "réservé à l'administrateur");
   const pending = (await boss.json("/api/admin/requests")).data;
@@ -243,7 +262,12 @@ test("administration : statistiques, comptes, mot de passe provisoire, suspensio
   assert.equal((await bob.json("/api/auth/login", { method: "POST", json: { email: "bob@test.fr", password } })).status, 200);
   const self = (await boss.json("/api/me")).data.user.id;
   assert.equal((await boss.json(`/api/admin/users/${self}`, { method: "PATCH", json: { role: "user" } })).status, 400);
-  const s = (await boss.json("/api/admin/settings", { method: "PUT", json: { transcription_api_key: "gsk_secret_1234", app_name: "Karaoké Pro", support_whatsapp: "+225000000" } })).data;
+  const s = (
+    await boss.json("/api/admin/settings", {
+      method: "PUT",
+      json: { transcription_api_key: "gsk_secret_1234", app_name: "Karaoké Pro", support_whatsapp: "+225000000" },
+    })
+  ).data;
   assert.equal(s.transcription_api_key, "••••1234");
   await boss.json("/api/admin/settings", { method: "PUT", json: { transcription_api_key: "••••1234" } });
   assert.equal((await boss.json("/api/admin/settings")).data.transcription_api_key, "••••1234", "clé masquée non écrasée");
@@ -282,7 +306,15 @@ test("transcription mot par mot : Whisper (Groq/OpenAI) puis ElevenLabs, minutes
   assert.match(none.data.error, /Aucun service de transcription/);
   await boss.json("/api/admin/settings", { method: "PUT", json: { transcription_api_key: "gsk_1" } });
   outside.length = 0;
-  mock = async () => Response.json({ text: "Bonjour toi", language: "french", words: [{ word: " Bonjour", start: 1.2, end: 1.6 }, { word: "toi", start: 1.7, end: 2 }] });
+  mock = async () =>
+    Response.json({
+      text: "Bonjour toi",
+      language: "french",
+      words: [
+        { word: " Bonjour", start: 1.2, end: 1.6 },
+        { word: "toi", start: 1.7, end: 2 },
+      ],
+    });
   const before = (await alice.json("/api/me")).data.usage.ai_seconds;
   const w = (await send({ prompt: "Bonjour toi", language: "fr" })).data;
   assert.deepEqual(w.words, [
@@ -300,7 +332,14 @@ test("transcription mot par mot : Whisper (Groq/OpenAI) puis ElevenLabs, minutes
   await boss.json("/api/admin/settings", { method: "PUT", json: { elevenlabs_api_key: "el_1" } });
   outside.length = 0;
   mock = async () =>
-    Response.json({ language_code: "fra", text: "Salut", words: [{ text: "Salut", start: 0.5, end: 0.9, type: "word" }, { text: " ", start: 0.9, end: 1, type: "spacing" }] });
+    Response.json({
+      language_code: "fra",
+      text: "Salut",
+      words: [
+        { text: "Salut", start: 0.5, end: 0.9, type: "word" },
+        { text: " ", start: 0.9, end: 1, type: "spacing" },
+      ],
+    });
   const e = (await send({ provider: "elevenlabs" })).data;
   assert.equal(e.provider, "elevenlabs");
   assert.deepEqual(e.words, [{ text: "Salut", start: 0.5, end: 0.9 }]);
@@ -321,13 +360,24 @@ test("paroles horodatées de Suno : lignes, couplets, repères retirés", () => 
   ]);
   assert.deepEqual(
     words.map((w) => [w.text, w.br || 0]),
-    [["Dans", 0], ["la", 0], ["nuit", 0], ["je", 1], ["rêve", 0], ["Oh", 2], ["oh", 0]],
+    [
+      ["Dans", 0],
+      ["la", 0],
+      ["nuit", 0],
+      ["je", 1],
+      ["rêve", 0],
+      ["Oh", 2],
+      ["oh", 0],
+    ],
   );
   assert.deepEqual([words[5].start, words[5].end, words[6].start], [4, 4.5, 4.5]);
-  assert.deepEqual(findStemUrls({ response: { vocal_url: "https://a/v.mp3", instrumental_url: "https://a/i.mp3", originUrl: "https://a/o.mp3" } }), {
-    vocals: "https://a/v.mp3",
-    instrumental: "https://a/i.mp3",
-  });
+  assert.deepEqual(
+    findStemUrls({ response: { vocal_url: "https://a/v.mp3", instrumental_url: "https://a/i.mp3", originUrl: "https://a/o.mp3" } }),
+    {
+      vocals: "https://a/v.mp3",
+      instrumental: "https://a/i.mp3",
+    },
+  );
 });
 
 test("import Suno : réservé aux formules qui l'incluent ; son, pochette, paroles, synchro", async () => {
@@ -342,14 +392,30 @@ test("import Suno : réservé aux formules qui l'incluent ; son, pochette, parol
           status: "SUCCESS",
           response: {
             sunoData: [
-              { id: "aud1", title: "Pour Awa", audioUrl: "https://cdn.test/a.mp3", imageUrl: "https://cdn.test/c.jpg", prompt: "[Verse]\nDans la nuit", duration: 1 },
+              {
+                id: "aud1",
+                title: "Pour Awa",
+                audioUrl: "https://cdn.test/a.mp3",
+                imageUrl: "https://cdn.test/c.jpg",
+                prompt: "[Verse]\nDans la nuit",
+                duration: 1,
+              },
               { id: "aud2", title: "Pour Awa v2", audioUrl: "https://cdn.test/b.mp3", duration: 1 },
             ],
           },
         },
       });
     if (url.includes("get-timestamped-lyrics"))
-      return Response.json({ code: 200, data: { alignedWords: [{ word: "Dans ", startS: 0.1, endS: 0.3 }, { word: "la ", startS: 0.3, endS: 0.5 }, { word: "nuit", startS: 0.5, endS: 0.9 }] } });
+      return Response.json({
+        code: 200,
+        data: {
+          alignedWords: [
+            { word: "Dans ", startS: 0.1, endS: 0.3 },
+            { word: "la ", startS: 0.3, endS: 0.5 },
+            { word: "nuit", startS: 0.5, endS: 0.9 },
+          ],
+        },
+      });
     if (url.endsWith(".mp3")) return new Response(wav, { headers: { "content-type": "audio/mpeg" } });
     if (url.endsWith(".jpg")) return new Response(new Uint8Array([0xff, 0xd8, 0xff]), { headers: { "content-type": "image/jpeg" } });
     return Response.json({ code: 404, msg: "?" });
@@ -363,7 +429,10 @@ test("import Suno : réservé aux formules qui l'incluent ; son, pochette, parol
   assert.equal(p.style.top.enabled, true);
   assert.ok(fs.existsSync(path.join(DATA, "projects", p.id, p.media.cover.file)));
   mock = async () => Response.json({ code: 401, msg: "bad key" });
-  assert.match((await boss.json("/api/projects/suno", { method: "POST", json: { taskId: "task-999999" } })).data.error, /Clé Kie.ai refusée/);
+  assert.match(
+    (await boss.json("/api/projects/suno", { method: "POST", json: { taskId: "task-999999" } })).data.error,
+    /Clé Kie.ai refusée/,
+  );
   await boss.json("/api/admin/settings", { method: "PUT", json: { kie_api_key: "" } });
 });
 
@@ -414,7 +483,9 @@ test("export : vidéo déjà complète gardée telle quelle, sinon ffmpeg ajoute
   }
   assert.equal(state.state, "done", state.error);
   const out = path.join(DATA, "projects", p.id, state.result.file);
-  const info = JSON.parse(spawnSync("ffprobe", ["-v", "error", "-print_format", "json", "-show_streams", out], { encoding: "utf8" }).stdout);
+  const info = JSON.parse(
+    spawnSync("ffprobe", ["-v", "error", "-print_format", "json", "-show_streams", out], { encoding: "utf8" }).stdout,
+  );
   assert.deepEqual(info.streams.map((s) => s.codec_type).sort(), ["audio", "video"]);
   assert.equal((await alice.json(`/api/projects/${p.id}`)).data.exports.length, 2);
   fs.rmSync(tmp, { recursive: true, force: true });

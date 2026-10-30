@@ -1,0 +1,32 @@
+# Serveur (VPS) avec ton nom de domaine et HTTPS automatique (Let's Encrypt, via Caddy).
+#   1. Le domaine pointe vers l'adresse IP du serveur (enregistrement DNS A).
+#   2. Dans .env : DOMAIN=tondomaine.com (et les autres réglages de .env.example).
+#   3. docker compose up -d --build
+services:
+  studio:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATA_DIR: /data
+    volumes:
+      - studio-data:/data
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on: [studio]
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  studio-data:
+  caddy-data:
+  caddy-config:

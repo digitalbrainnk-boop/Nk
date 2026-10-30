@@ -24,11 +24,27 @@ const SECTIONS = [
     title: "Format et mode",
     open: true,
     controls: [
-      G("mode", "Type de vidéo", [["lyric", "🎤 Lyrique (avec voix)"], ["karaoke", "🎶 Karaoké (sans voix)"]]),
-      R("guideVocals", "Voix guide", 0, 0.6, 0.05, pct, { show: (s) => s.mode === "karaoke", hint: "Garde un peu de la voix d'origine pour aider à chanter." }),
-      G("aspect", "Format", [["16:9", "16:9"], ["9:16", "9:16"], ["1:1", "1:1"], ["4:5", "4:5"]], {
-        hint: "16:9 YouTube · 9:16 TikTok, Reels, Statut · 1:1 et 4:5 Facebook, Instagram",
+      G("mode", "Type de vidéo", [
+        ["lyric", "🎤 Lyrique (avec voix)"],
+        ["karaoke", "🎶 Karaoké (sans voix)"],
+      ]),
+      R("guideVocals", "Voix guide", 0, 0.6, 0.05, pct, {
+        show: (s) => s.mode === "karaoke",
+        hint: "Garde un peu de la voix d'origine pour aider à chanter.",
       }),
+      G(
+        "aspect",
+        "Format",
+        [
+          ["16:9", "16:9"],
+          ["9:16", "9:16"],
+          ["1:1", "1:1"],
+          ["4:5", "4:5"],
+        ],
+        {
+          hint: "16:9 YouTube · 9:16 TikTok, Reels, Statut · 1:1 et 4:5 Facebook, Instagram",
+        },
+      ),
     ],
   },
   {
@@ -36,10 +52,28 @@ const SECTIONS = [
     open: true,
     controls: [
       { path: "font.family", type: "font", label: "Police" },
-      S("font.weight", "Épaisseur", [[300, "Fine"], [400, "Normale"], [500, "Moyenne"], [600, "Semi-grasse"], [700, "Grasse"], [800, "Très grasse"], [900, "Noire"]], { num: true }),
+      S(
+        "font.weight",
+        "Épaisseur",
+        [
+          [300, "Fine"],
+          [400, "Normale"],
+          [500, "Moyenne"],
+          [600, "Semi-grasse"],
+          [700, "Grasse"],
+          [800, "Très grasse"],
+          [900, "Noire"],
+        ],
+        { num: true },
+      ),
       T("font.italic", "Italique"),
       R("font.size", "Taille", 20, 200, 1, px),
-      G("font.transform", "Casse", [["none", "Normale"], ["uppercase", "MAJUSCULES"], ["lowercase", "minuscules"], ["capitalize", "Initiales"]]),
+      G("font.transform", "Casse", [
+        ["none", "Normale"],
+        ["uppercase", "MAJUSCULES"],
+        ["lowercase", "minuscules"],
+        ["capitalize", "Initiales"],
+      ]),
       R("font.letterSpacing", "Espace entre les lettres", -6, 30, 0.5, px),
       R("font.wordSpacing", "Espace entre les mots", -10, 60, 1, px),
       R("font.lineHeight", "Interligne", 0.8, 2.4, 0.05, num(2)),
@@ -54,7 +88,12 @@ const SECTIONS = [
       C("colors.sung", "Texte chanté", { show: (s) => !s.duo?.enabled, hint: "En mode duo : couleur de chaque chanteur (section Duo)." }),
       T("colors.sungGradient", "Dégradé sur le texte chanté", { show: (s) => !s.duo?.enabled }),
       C("colors.sung2", "2ᵉ couleur du dégradé", { show: (s) => s.colors.sungGradient && !s.duo?.enabled }),
-      S("pastLines", "Lignes déjà chantées", [["sung", "Restent colorées"], ["dim", "S'estompent"], ["text", "Reprennent la couleur du texte"], ["hide", "Disparaissent"]]),
+      S("pastLines", "Lignes déjà chantées", [
+        ["sung", "Restent colorées"],
+        ["dim", "S'estompent"],
+        ["text", "Reprennent la couleur du texte"],
+        ["hide", "Disparaissent"],
+      ]),
       R("futureOpacity", "Opacité des lignes à venir", 0.1, 1, 0.05, pct),
     ],
   },
@@ -106,12 +145,31 @@ const SECTIONS = [
     title: "Mise en page",
     open: false,
     controls: [
-      S("layout.display", "Affichage", [["single", "Une ligne à la fois"], ["alternate", "Alterné (karaoké classique)"], ["page", "Par page"], ["scroll", "Défilement"]]),
+      S("layout.display", "Affichage", [
+        ["single", "Une ligne à la fois"],
+        ["alternate", "Alterné (karaoké classique)"],
+        ["page", "Par page"],
+        ["scroll", "Défilement"],
+      ]),
       R("layout.lines", "Lignes à l'écran", 1, 6, 1, String, { show: (s) => s.layout.display !== "single" }),
-      G("layout.position", "Position", [["top", "Haut"], ["center", "Centre"], ["bottom", "Bas"], ["custom", "Libre"]]),
+      G("layout.position", "Position", [
+        ["top", "Haut"],
+        ["center", "Centre"],
+        ["bottom", "Bas"],
+        ["custom", "Libre"],
+      ]),
       R("layout.y", "Hauteur", 0.05, 0.95, 0.01, pct, { show: (s) => s.layout.position === "custom" }),
       R("layout.x", "Décalage gauche / droite", -0.5, 0.5, 0.01, pct),
-      G("layout.align", "Alignement", [["left", "Gauche"], ["center", "Centré"], ["right", "Droite"]], { hint: "En duo, chaque chanteur a son alignement." }),
+      G(
+        "layout.align",
+        "Alignement",
+        [
+          ["left", "Gauche"],
+          ["center", "Centré"],
+          ["right", "Droite"],
+        ],
+        { hint: "En duo, chaque chanteur a son alignement." },
+      ),
       R("layout.margin", "Marges", 0, 0.3, 0.01, pct),
       R("layout.maxWidth", "Largeur maximale du texte", 0.3, 1, 0.01, pct),
       R("layout.lineGap", "Espace entre les lignes", 0, 2, 0.05, num(2)),
@@ -144,21 +202,52 @@ const SECTIONS = [
     title: "Fond",
     open: false,
     controls: [
-      G("background.type", "Type", [["color", "Couleur"], ["gradient", "Dégradé"], ["image", "Image"], ["video", "Vidéo"]]),
+      G("background.type", "Type", [
+        ["color", "Couleur"],
+        ["gradient", "Dégradé"],
+        ["image", "Image"],
+        ["video", "Vidéo"],
+      ]),
       C("background.color", "Couleur", { show: (s) => s.background.type === "color" }),
       C("background.gradient.0", "Couleur 1", { show: (s) => s.background.type === "gradient" }),
       C("background.gradient.1", "Couleur 2", { show: (s) => s.background.type === "gradient" }),
-      C("background.gradient.2", "Couleur 3 (facultative)", { auto: true, autoLabel: "Aucune", show: (s) => s.background.type === "gradient" }),
-      G("background.gradientType", "Forme", [["linear", "Linéaire"], ["radial", "Circulaire"]], { show: (s) => s.background.type === "gradient" }),
-      R("background.angle", "Angle", 0, 360, 5, (v) => `${v}°`, { show: (s) => s.background.type === "gradient" && s.background.gradientType !== "radial" }),
-      T("background.animate", "Dégradé qui tourne lentement", { show: (s) => s.background.type === "gradient" && s.background.gradientType !== "radial" }),
+      C("background.gradient.2", "Couleur 3 (facultative)", {
+        auto: true,
+        autoLabel: "Aucune",
+        show: (s) => s.background.type === "gradient",
+      }),
+      G(
+        "background.gradientType",
+        "Forme",
+        [
+          ["linear", "Linéaire"],
+          ["radial", "Circulaire"],
+        ],
+        { show: (s) => s.background.type === "gradient" },
+      ),
+      R("background.angle", "Angle", 0, 360, 5, (v) => `${v}°`, {
+        show: (s) => s.background.type === "gradient" && s.background.gradientType !== "radial",
+      }),
+      T("background.animate", "Dégradé qui tourne lentement", {
+        show: (s) => s.background.type === "gradient" && s.background.gradientType !== "radial",
+      }),
       { path: "background.media", type: "asset", label: "Fichier", target: "background", show: media },
-      G("background.fit", "Cadrage", [["cover", "Remplir"], ["contain", "Entier"]], { show: media }),
+      G(
+        "background.fit",
+        "Cadrage",
+        [
+          ["cover", "Remplir"],
+          ["contain", "Entier"],
+        ],
+        { show: media },
+      ),
       R("background.blur", "Flou", 0, 80, 1, px, { show: media }),
       R("background.brightness", "Luminosité", 0.2, 2, 0.05, pct, { show: media }),
       R("background.saturation", "Saturation", 0, 2, 0.05, pct, { show: media }),
       T("background.motion", "Zoom lent (image)", { show: (s) => s.background.type === "image" }),
-      R("background.motionSpeed", "Vitesse du zoom", 0.2, 5, 0.1, num(1), { show: (s) => s.background.type === "image" && s.background.motion }),
+      R("background.motionSpeed", "Vitesse du zoom", 0.2, 5, 0.1, num(1), {
+        show: (s) => s.background.type === "image" && s.background.motion,
+      }),
       R("background.dim", "Assombrir", 0, 0.95, 0.05, pct, { show: (s) => s.background.type !== "color" }),
       C("background.tint", "Teinte de couleur"),
       R("background.tintOpacity", "Force de la teinte", 0, 1, 0.05, pct),
@@ -183,18 +272,43 @@ const SECTIONS = [
       R("effects.particleSize", "Taille", 0.2, 4, 0.1, num(1), { show: (s) => s.effects.particles !== "none" }),
       R("effects.particleSpeed", "Vitesse", 0, 5, 0.1, num(1), { show: (s) => s.effects.particles !== "none" }),
       R("effects.particleOpacity", "Opacité", 0.05, 1, 0.05, pct, { show: (s) => s.effects.particles !== "none" }),
-      S("effects.visualizer", "Visualiseur de musique", [["none", "Aucun"], ["bars", "Barres"], ["mirror", "Barres miroir"], ["wave", "Onde"], ["circle", "Cercle (autour de l'image)"]]),
+      S("effects.visualizer", "Visualiseur de musique", [
+        ["none", "Aucun"],
+        ["bars", "Barres"],
+        ["mirror", "Barres miroir"],
+        ["wave", "Onde"],
+        ["circle", "Cercle (autour de l'image)"],
+      ]),
       C("effects.vizColor", "Couleur", { show: (s) => s.effects.visualizer !== "none" }),
       C("effects.vizColor2", "2ᵉ couleur (dégradé)", { auto: true, autoLabel: "Aucune", show: (s) => s.effects.visualizer !== "none" }),
       R("effects.vizOpacity", "Opacité", 0.05, 1, 0.05, pct, { show: (s) => s.effects.visualizer !== "none" }),
       R("effects.vizHeight", "Hauteur", 0.03, 0.6, 0.01, pct, { show: (s) => s.effects.visualizer !== "none" }),
-      R("effects.vizBars", "Nombre de barres", 8, 128, 1, String, { show: (s) => ["bars", "mirror", "circle"].includes(s.effects.visualizer) }),
-      G("effects.vizPosition", "Position", [["bottom", "Bas"], ["center", "Centre"], ["top", "Haut"]], { show: (s) => ["bars", "mirror", "wave"].includes(s.effects.visualizer) }),
+      R("effects.vizBars", "Nombre de barres", 8, 128, 1, String, {
+        show: (s) => ["bars", "mirror", "circle"].includes(s.effects.visualizer),
+      }),
+      G(
+        "effects.vizPosition",
+        "Position",
+        [
+          ["bottom", "Bas"],
+          ["center", "Centre"],
+          ["top", "Haut"],
+        ],
+        { show: (s) => ["bars", "mirror", "wave"].includes(s.effects.visualizer) },
+      ),
       R("effects.beatZoom", "Le fond pulse avec les basses", 0, 0.12, 0.005, pct, { show: media }),
       T("effects.progress", "Barre de progression"),
       C("effects.progressColor", "Couleur de la barre", { show: (s) => s.effects.progress }),
       R("effects.progressHeight", "Épaisseur de la barre", 1, 30, 1, px, { show: (s) => s.effects.progress }),
-      G("effects.progressPosition", "Position de la barre", [["bottom", "Bas"], ["top", "Haut"]], { show: (s) => s.effects.progress }),
+      G(
+        "effects.progressPosition",
+        "Position de la barre",
+        [
+          ["bottom", "Bas"],
+          ["top", "Haut"],
+        ],
+        { show: (s) => s.effects.progress },
+      ),
     ],
   },
   {
@@ -206,12 +320,24 @@ const SECTIONS = [
       R("top.size", "Taille", 0.1, 0.9, 0.01, pct, { show: (s) => s.top.enabled }),
       R("top.y", "Position verticale", 0, 0.7, 0.01, pct, { show: (s) => s.top.enabled }),
       R("top.x", "Position horizontale", -0.45, 0.45, 0.01, pct, { show: (s) => s.top.enabled }),
-      G("top.shape", "Forme", [["rect", "Carré"], ["rounded", "Arrondi"], ["circle", "Rond"]], { show: (s) => s.top.enabled }),
+      G(
+        "top.shape",
+        "Forme",
+        [
+          ["rect", "Carré"],
+          ["rounded", "Arrondi"],
+          ["circle", "Rond"],
+        ],
+        { show: (s) => s.top.enabled },
+      ),
       R("top.radius", "Arrondi des coins", 0, 0.5, 0.01, pct, { show: (s) => s.top.enabled && s.top.shape === "rounded" }),
       R("top.border", "Bordure", 0, 30, 1, px, { show: (s) => s.top.enabled }),
       C("top.borderColor", "Couleur de la bordure", { show: (s) => s.top.enabled && s.top.border > 0 }),
       R("top.shadow", "Ombre", 0, 1, 0.05, pct, { show: (s) => s.top.enabled }),
-      R("top.spin", "Rotation (tours / minute)", -60, 60, 1, String, { show: (s) => s.top.enabled, hint: "33 = effet vinyle (avec la forme ronde)." }),
+      R("top.spin", "Rotation (tours / minute)", -60, 60, 1, String, {
+        show: (s) => s.top.enabled,
+        hint: "33 = effet vinyle (avec la forme ronde).",
+      }),
       R("top.pulse", "Grossit avec les basses", 0, 0.3, 0.01, pct, { show: (s) => s.top.enabled }),
     ],
   },
@@ -221,7 +347,17 @@ const SECTIONS = [
     controls: [
       T("logo.enabled", "Afficher mon logo", { hint: "Ton logo ou ta marque, dans un coin de la vidéo." }),
       { path: "logo.media", type: "asset", label: "Image du logo", target: "logo", show: (s) => s.logo.enabled },
-      G("logo.position", "Coin", [["top-left", "↖"], ["top-right", "↗"], ["bottom-left", "↙"], ["bottom-right", "↘"]], { show: (s) => s.logo.enabled }),
+      G(
+        "logo.position",
+        "Coin",
+        [
+          ["top-left", "↖"],
+          ["top-right", "↗"],
+          ["bottom-left", "↙"],
+          ["bottom-right", "↘"],
+        ],
+        { show: (s) => s.logo.enabled },
+      ),
       R("logo.size", "Taille", 0.03, 0.4, 0.01, pct, { show: (s) => s.logo.enabled }),
       R("logo.opacity", "Opacité", 0.1, 1, 0.05, pct, { show: (s) => s.logo.enabled }),
       R("logo.margin", "Marge", 0, 0.15, 0.005, pct, { show: (s) => s.logo.enabled }),
@@ -231,12 +367,28 @@ const SECTIONS = [
     title: "Duo",
     open: false,
     controls: [
-      T("duo.enabled", "Mode duo (plusieurs chanteurs)", { hint: "Dans les paroles : A:, B: ou AB: en début de ligne, ou clique sur la pastille d'une ligne." }),
+      T("duo.enabled", "Mode duo (plusieurs chanteurs)", {
+        hint: "Dans les paroles : A:, B: ou AB: en début de ligne, ou clique sur la pastille d'une ligne.",
+      }),
       T("duo.showNames", "Afficher le nom du chanteur", { show: (s) => s.duo.enabled }),
       ...[0, 1, 2].flatMap((i) => [
-        { path: `duo.singers.${i}.name`, type: "text", label: i === 2 ? "Ensemble (AB)" : `Chanteur ${i ? "B" : "A"}`, show: (s) => s.duo.enabled },
+        {
+          path: `duo.singers.${i}.name`,
+          type: "text",
+          label: i === 2 ? "Ensemble (AB)" : `Chanteur ${i ? "B" : "A"}`,
+          show: (s) => s.duo.enabled,
+        },
         C(`duo.singers.${i}.color`, "Couleur", { show: (s) => s.duo.enabled }),
-        G(`duo.singers.${i}.align`, "Alignement", [["left", "Gauche"], ["center", "Centre"], ["right", "Droite"]], { show: (s) => s.duo.enabled }),
+        G(
+          `duo.singers.${i}.align`,
+          "Alignement",
+          [
+            ["left", "Gauche"],
+            ["center", "Centre"],
+            ["right", "Droite"],
+          ],
+          { show: (s) => s.duo.enabled },
+        ),
       ]),
     ],
   },
@@ -299,7 +451,12 @@ export class Inspector {
         { class: "presets" },
         PRESETS.map((p) => h("button", { class: "preset", onclick: () => this.applyPreset(p) }, p.name)),
       ),
-      h("div", { class: "row gap wrap saved-head" }, h("strong", {}, "Mes styles"), h("button", { class: "btn small", onclick: () => this.saveCurrent() }, "+ Enregistrer ce style")),
+      h(
+        "div",
+        { class: "row gap wrap saved-head" },
+        h("strong", {}, "Mes styles"),
+        h("button", { class: "btn small", onclick: () => this.saveCurrent() }, "+ Enregistrer ce style"),
+      ),
       this.savedBox,
     );
     const sections = SECTIONS.map((sec) =>
@@ -341,7 +498,8 @@ export class Inspector {
     const cur = this.style;
     let next = mergeStyle(cur, patch);
     next.background.media = cur.background.media;
-    if (["image", "video"].includes(cur.background.type) && cur.background.media && !["image", "video"].includes(patch.background?.type)) next.background.type = cur.background.type;
+    if (["image", "video"].includes(cur.background.type) && cur.background.media && !["image", "video"].includes(patch.background?.type))
+      next.background.type = cur.background.type;
     next.top.media = cur.top.media;
     next.top.kind = cur.top.kind;
     if (next.top.enabled && !next.top.media) next.top.media = this.studio.project.media.cover?.file || null;
@@ -369,7 +527,10 @@ export class Inspector {
 
   renderSaved() {
     if (!this.savedBox) return;
-    if (!this.saved.length) return this.savedBox.replaceChildren(h("small", { class: "hint" }, "Enregistre tes réglages pour les réutiliser dans tes autres vidéos."));
+    if (!this.saved.length)
+      return this.savedBox.replaceChildren(
+        h("small", { class: "hint" }, "Enregistre tes réglages pour les réutiliser dans tes autres vidéos."),
+      );
     this.savedBox.replaceChildren(
       ...this.saved.map((p) =>
         h(
@@ -398,7 +559,12 @@ export class Inspector {
     const name = h("input", { type: "text", maxlength: "60", placeholder: "Ex. : Mariage doré" });
     modal({
       title: "Enregistrer ce style",
-      body: h("div", {}, h("p", { class: "hint" }, "Police, couleurs, effets, mise en page… (sans les images ni les vidéos du projet)."), name),
+      body: h(
+        "div",
+        {},
+        h("p", { class: "hint" }, "Police, couleurs, effets, mise en page… (sans les images ni les vidéos du projet)."),
+        name,
+      ),
       actions: [
         { label: "Annuler", onClick: (c) => c() },
         {
@@ -450,7 +616,14 @@ export class Inspector {
       case "range": {
         const out = h("span", { class: "range-value" });
         const input = h("input", { type: "range", min: def.min, max: def.max, step: def.step, "aria-label": def.label });
-        const exact = h("input", { type: "number", class: "range-num", min: def.min, max: def.max, step: def.step, "aria-label": `${def.label} (valeur exacte)` });
+        const exact = h("input", {
+          type: "number",
+          class: "range-num",
+          min: def.min,
+          max: def.max,
+          step: def.step,
+          "aria-label": `${def.label} (valeur exacte)`,
+        });
         const show = (v) => (out.textContent = (def.fmt || String)(Number(v)));
         sync = () => {
           input.value = val();

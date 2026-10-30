@@ -1,16 +1,17 @@
 // Appels au serveur du studio.
 
 export class ApiError extends Error {
-  constructor(message, status) {
+  constructor(message, status, data) {
     super(message);
     this.status = status;
+    this.upgrade = !!data?.upgrade;
   }
 }
 
 let onUnauthorized = () => {};
 export const setUnauthorizedHandler = (fn) => (onUnauthorized = fn);
 
-export async function api(path, { method = "GET", json, form, body, headers = {}, signal } = {}) {
+export async function api(path, { method = "GET", json, form, body, headers = {}, signal, quiet401 = false } = {}) {
   const opts = { method, headers: { ...headers }, signal };
   if (json !== undefined) {
     opts.headers["content-type"] = "application/json";
@@ -24,9 +25,9 @@ export async function api(path, { method = "GET", json, form, body, headers = {}
     if (e.name === "AbortError") throw e;
     throw new ApiError("Le studio ne répond pas : vérifie qu'il est bien lancé.", 0);
   }
-  if (res.status === 401 && !path.startsWith("/api/login")) onUnauthorized();
+  if (res.status === 401 && !quiet401 && !path.startsWith("/api/auth/")) onUnauthorized();
   const data = await res.json().catch(() => null);
-  if (!res.ok) throw new ApiError(data?.error || `Erreur ${res.status}`, res.status);
+  if (!res.ok) throw new ApiError(data?.error || `Erreur ${res.status}`, res.status, data);
   return data;
 }
 
@@ -43,7 +44,7 @@ export function upload(path, form, onProgress, { signal } = {}) {
       } catch {}
       if (xhr.status === 401) onUnauthorized();
       if (xhr.status >= 200 && xhr.status < 300) resolve(data);
-      else reject(new ApiError(data?.error || `Erreur ${xhr.status}`, xhr.status));
+      else reject(new ApiError(data?.error || `Erreur ${xhr.status}`, xhr.status, data));
     };
     xhr.onerror = () => reject(new ApiError("Envoi interrompu : vérifie ta connexion.", 0));
     signal?.addEventListener("abort", () => xhr.abort());

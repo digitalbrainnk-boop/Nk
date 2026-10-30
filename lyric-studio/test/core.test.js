@@ -22,8 +22,29 @@ import {
   retimeAfterEdit,
 } from "../public/js/core/align.js";
 import { schedule, visibleAt, countdownAt, titleAlpha, wordProgress } from "../public/js/core/timing.js";
-import { computePeaks, detectActivity, encodeWav, centerCancel, speechWav, mix, fft, analysisTrack, spectrumAt, waveAt, peakOf } from "../public/js/core/dsp.js";
-import { frameSize, defaultStyle, mergeStyle, PRESETS, normalizeStyle, shareableStyle, FONTS, DEFAULT_PLANS } from "../public/js/core/style.js";
+import {
+  computePeaks,
+  detectActivity,
+  encodeWav,
+  centerCancel,
+  speechWav,
+  mix,
+  fft,
+  analysisTrack,
+  spectrumAt,
+  waveAt,
+  peakOf,
+} from "../public/js/core/dsp.js";
+import {
+  frameSize,
+  defaultStyle,
+  mergeStyle,
+  PRESETS,
+  normalizeStyle,
+  shareableStyle,
+  FONTS,
+  DEFAULT_PLANS,
+} from "../public/js/core/style.js";
 import { Renderer, wrapRows, transformText, fontString, needsAudio } from "../public/js/core/render.js";
 
 const LYRICS = `[Couplet 1]
@@ -394,7 +415,14 @@ test("rendu : tous les effets de chant, animations, fonds, effets et médias", (
       colors: { sungGradient: i % 3 === 0, glow: i % 2 ? 20 : 0, sungOutline: i % 2 ? "#ff0000" : "", textOpacity: 0.7 },
       box: { enabled: i % 2 === 1, full: i % 4 === 1 },
       layout: { animation: anims[i], display: ["single", "alternate", "page", "scroll"][i % 4], x: 0.1 },
-      background: { type: ["color", "gradient", "image", "video"][i % 4], gradientType: i % 2 ? "radial" : "linear", animate: true, vignette: 0.4, tintOpacity: 0.2, brightness: 1.2 },
+      background: {
+        type: ["color", "gradient", "image", "video"][i % 4],
+        gradientType: i % 2 ? "radial" : "linear",
+        animate: true,
+        vignette: 0.4,
+        tintOpacity: 0.2,
+        brightness: 1.2,
+      },
       effects: { particles: particles[i % particles.length], visualizer: vizs[i % vizs.length], progress: true, beatZoom: 0.05 },
       top: { enabled: true, spin: 33, pulse: 0.1, shape: ["rect", "rounded", "circle"][i % 3] },
       logo: { enabled: true, position: ["top-left", "top-right", "bottom-left", "bottom-right"][i % 4] },
@@ -408,7 +436,11 @@ test("rendu : tous les effets de chant, animations, fonds, effets et médias", (
       r.draw(ctx, 1080, 1920, t, project, { bg: img, top: img, logo: img, audio, watermark: { text: "Fait avec Lyric Studio" } });
       const texts = calls.filter((c) => c[0] === "fillText").map((c) => c[1]);
       assert.ok(texts.includes("Fait avec Lyric Studio"), "filigrane");
-      if (t === 11.5) assert.ok(texts.some((x) => /merci/i.test(x)), `fin de vidéo (${i})`);
+      if (t === 11.5)
+        assert.ok(
+          texts.some((x) => /merci/i.test(x)),
+          `fin de vidéo (${i})`,
+        );
     }
   }
 });
@@ -426,7 +458,9 @@ test("anciens projets : réglages convertis, styles partageables, polices et for
   assert.equal(old.font.uppercase, undefined);
   assert.equal(old.layout.animation, "slide-up");
   assert.equal(old.background.gradient.length, 3);
-  const s = shareableStyle(mergeStyle(defaultStyle(), { background: { type: "image", media: "a.jpg" }, top: { enabled: true, media: "b.jpg" } }));
+  const s = shareableStyle(
+    mergeStyle(defaultStyle(), { background: { type: "image", media: "a.jpg" }, top: { enabled: true, media: "b.jpg" } }),
+  );
   assert.equal(s.background.media, null);
   assert.equal(s.background.type, "gradient");
   assert.equal(s.top.enabled, false);
@@ -452,7 +486,11 @@ test("son : FFT, spectre et forme d'onde pour le visualiseur", () => {
   const argmax = (x) => x.indexOf(Math.max(...x));
   assert.ok(argmax(Array.from(a.bands)) < argmax(Array.from(b.bands)), "les graves à gauche, les aigus à droite");
   assert.ok(a.bass > 0.5 && b.bass < 0.3, `basses : ${a.bass} / ${b.bass}`);
-  assert.equal(spectrumAt(low, 50, 32).bands.every((v) => v === 0), true, "silence après la fin");
+  assert.equal(
+    spectrumAt(low, 50, 32).bands.every((v) => v === 0),
+    true,
+    "silence après la fin",
+  );
   assert.equal(waveAt(low, 1, 64).length, 64);
   assert.equal(peakOf([new Float32Array([0.1, -0.7, 0.3])]).toFixed(2), "0.70");
 });

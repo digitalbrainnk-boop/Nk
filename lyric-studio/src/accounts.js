@@ -48,7 +48,9 @@ export const countUsers = () => db.prepare("SELECT COUNT(*) AS n FROM users").ge
 
 /** Le premier compte créé (ou celui de ADMIN_EMAIL) est administrateur. */
 export function createUser({ email, password, name = "", phone = "" }) {
-  email = String(email || "").trim().toLowerCase();
+  email = String(email || "")
+    .trim()
+    .toLowerCase();
   if (!validEmail(email)) throw new HttpError(400, "Adresse e-mail invalide.");
   checkNewPassword(password);
   if (getUserWithPassword(email)) throw new HttpError(409, "Un compte existe déjà avec cette adresse : connecte-toi.");
@@ -165,7 +167,13 @@ export function effectivePlan(user) {
 }
 
 export function usageOf(userId, month = monthKey()) {
-  return db.prepare("SELECT ai_seconds, exports, stems FROM usage WHERE user_id = ? AND month = ?").get(userId, month) || { ai_seconds: 0, exports: 0, stems: 0 };
+  return (
+    db.prepare("SELECT ai_seconds, exports, stems FROM usage WHERE user_id = ? AND month = ?").get(userId, month) || {
+      ai_seconds: 0,
+      exports: 0,
+      stems: 0,
+    }
+  );
 }
 
 export function addUsage(userId, { ai = 0, exports = 0, stems = 0 }) {
@@ -183,7 +191,15 @@ export const projectCount = (userId) => db.prepare("SELECT COUNT(*) AS n FROM pr
 export function accountInfo(user) {
   const plan = effectivePlan(user);
   return {
-    user: { id: user.id, email: user.email, name: user.name, phone: user.phone, role: user.role, plan: user.plan, plan_until: user.plan_until },
+    user: {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      phone: user.phone,
+      role: user.role,
+      plan: user.plan,
+      plan_until: user.plan_until,
+    },
     plan,
     usage: usageOf(user.id),
     storage: storageOf(user.id),
@@ -198,13 +214,15 @@ export const limits = {
   newProject(user, sizeBytes = 0) {
     if (user.role === "admin") return;
     const p = effectivePlan(user);
-    if (projectCount(user.id) >= p.maxProjects) throw QUOTA(`Ta formule ${p.name} permet ${p.maxProjects} projets : supprime-en un ou passe à une formule supérieure.`);
+    if (projectCount(user.id) >= p.maxProjects)
+      throw QUOTA(`Ta formule ${p.name} permet ${p.maxProjects} projets : supprime-en un ou passe à une formule supérieure.`);
     limits.storage(user, sizeBytes);
   },
   storage(user, extraBytes = 0) {
     if (user.role === "admin") return;
     const p = effectivePlan(user);
-    if (storageOf(user.id) + extraBytes > p.storageMb * 1024 * 1024) throw QUOTA(`Espace de stockage plein (${p.storageMb} Mo avec la formule ${p.name}).`);
+    if (storageOf(user.id) + extraBytes > p.storageMb * 1024 * 1024)
+      throw QUOTA(`Espace de stockage plein (${p.storageMb} Mo avec la formule ${p.name}).`);
   },
   duration(user, seconds) {
     if (user.role === "admin" || !seconds) return;
@@ -216,7 +234,9 @@ export const limits = {
     const p = effectivePlan(user);
     const used = usageOf(user.id).ai_seconds;
     if (used + seconds > p.aiMinutes * 60) {
-      throw QUOTA(`Minutes d'IA du mois épuisées (${p.aiMinutes} min avec la formule ${p.name}). Synchronise à la main, ou passe à une formule supérieure.`);
+      throw QUOTA(
+        `Minutes d'IA du mois épuisées (${p.aiMinutes} min avec la formule ${p.name}). Synchronise à la main, ou passe à une formule supérieure.`,
+      );
     }
   },
   stems(user) {
@@ -233,7 +253,8 @@ export const limits = {
     const p = effectivePlan(user);
     if (RESOLUTION_ORDER.indexOf(resolution) > RESOLUTION_ORDER.indexOf(p.maxResolution))
       throw QUOTA(`La qualité ${resolution} est réservée aux formules supérieures (${p.maxResolution} au plus avec ${p.name}).`);
-    if (usageOf(user.id).exports >= p.exportsPerMonth) throw QUOTA(`Tu as utilisé tes ${p.exportsPerMonth} exports du mois avec la formule ${p.name}.`);
+    if (usageOf(user.id).exports >= p.exportsPerMonth)
+      throw QUOTA(`Tu as utilisé tes ${p.exportsPerMonth} exports du mois avec la formule ${p.name}.`);
   },
 };
 
@@ -248,9 +269,16 @@ export function addPreset(userId, name, style) {
   if (!name || typeof style !== "object" || !style) throw new HttpError(400, "Style invalide.");
   const json = JSON.stringify(style);
   if (json.length > 100_000) throw new HttpError(400, "Style trop gros.");
-  if (db.prepare("SELECT COUNT(*) AS n FROM presets WHERE user_id = ?").get(userId).n >= 100) throw new HttpError(400, "100 styles au plus.");
+  if (db.prepare("SELECT COUNT(*) AS n FROM presets WHERE user_id = ?").get(userId).n >= 100)
+    throw new HttpError(400, "100 styles au plus.");
   const id = newId();
-  db.prepare("INSERT INTO presets (id, user_id, name, style, created_at) VALUES (?, ?, ?, ?, ?)").run(id, userId, String(name).slice(0, 60), json, now());
+  db.prepare("INSERT INTO presets (id, user_id, name, style, created_at) VALUES (?, ?, ?, ?, ?)").run(
+    id,
+    userId,
+    String(name).slice(0, 60),
+    json,
+    now(),
+  );
   return { id };
 }
 
@@ -305,7 +333,10 @@ export function stats() {
   return {
     users: one("SELECT COUNT(*) AS n FROM users").n,
     newUsers: one("SELECT COUNT(*) AS n FROM users WHERE created_at > ?", now() - 30 * 86400_000).n,
-    paying: one("SELECT COUNT(*) AS n FROM users WHERE plan != 'free' AND role != 'admin' AND (plan_until IS NULL OR plan_until > ?)", now()).n,
+    paying: one(
+      "SELECT COUNT(*) AS n FROM users WHERE plan != 'free' AND role != 'admin' AND (plan_until IS NULL OR plan_until > ?)",
+      now(),
+    ).n,
     projects: one("SELECT COUNT(*) AS n FROM projects").n,
     storage: one("SELECT COALESCE(SUM(size), 0) AS n FROM projects").n,
     aiMinutes: Math.round(one("SELECT COALESCE(SUM(ai_seconds), 0) AS n FROM usage WHERE month = ?", month).n / 60),

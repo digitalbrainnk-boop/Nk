@@ -1,10 +1,36 @@
-// Accueil : nouveau projet (fichier audio/vidéo ou chanson Suno), liste des projets, réglages.
-import { h, toast, modal, fmtTime, progressBar, field, confirmBox } from "./ui.js";
+// Mes vidéos : nouveau projet (fichier audio/vidéo ou chanson Suno), consommation de la formule, liste des projets.
+import { h, toast, fmtTime, fmtSize, progressBar, field, confirmBox } from "./ui.js";
 import { api, upload } from "./api.js";
+import { session, upgradePrompt, loadMe } from "./session.js";
 
 const ACCEPT = "audio/*,video/*,.mp3,.wav,.flac,.aac,.m4a,.ogg,.opus,.mp4,.mov,.mkv,.webm,.m4v";
 
-export async function renderHome(root, caps) {
+/** Jauges de la formule (projets, minutes d'IA, exports, stockage). */
+export function usageBars() {
+  const { plan, usage, storage, projects, user } = session.me;
+  if (user.role === "admin") return h("p", { class: "hint" }, "Administrateur : aucune limite.");
+  const bar = (label, used, max, fmt = String) => {
+    const x = max > 0 ? Math.min(1, used / max) : 1;
+    return h(
+      "div",
+      { class: `usage${x >= 1 ? " full" : x > 0.8 ? " high" : ""}` },
+      h("div", { class: "usage-head" }, h("span", {}, label), h("span", {}, `${fmt(used)} / ${fmt(max)}`)),
+      h("div", { class: "usage-track" }, h("div", { class: "usage-fill", style: { width: `${x * 100}%` } })),
+    );
+  };
+  return h(
+    "div",
+    { class: "usage-grid" },
+    bar("Projets", projects, plan.maxProjects),
+    bar("Minutes d'IA ce mois", Math.round(usage.ai_seconds / 60), plan.aiMinutes),
+    bar("Exports ce mois", usage.exports, plan.exportsPerMonth),
+    bar("Stockage", storage, plan.storageMb * 1024 * 1024, fmtSize),
+  );
+}
+
+export async function renderHome(root, nav) {
+  const caps = session.caps;
+  await loadMe().catch(() => {});
   let file = null;
   const fileInput = h("input", { type: "file", accept: ACCEPT, hidden: true, onchange: () => pick(fileInput.files[0]) });
   const dropLabel = h(
@@ -83,7 +109,8 @@ export async function renderHome(root, caps) {
       const p = await upload("/api/projects", form, (x) => bar.set(x * 0.95, x < 1 ? `Envoi… ${Math.round(x * 100)} %` : "Préparation…"));
       location.hash = `#/p/${p.id}`;
     } catch (e) {
-      toast(e.message, "error", 6000);
+      if (e.upgrade) upgradePrompt(e.message);
+      else toast(e.message, "error", 6000);
       create.disabled = false;
       bar.el.hidden = true;
     }
@@ -107,7 +134,8 @@ export async function renderHome(root, caps) {
           });
           location.hash = `#/p/${p.id}`;
         } catch (e) {
-          toast(e.message, "error", 7000);
+          if (e.upgrade) upgradePrompt(e.message);
+          else toast(e.message, "error", 7000);
           sunoBtn.disabled = false;
           sunoBtn.textContent = "Importer";
         }
@@ -123,7 +151,7 @@ export async function renderHome(root, caps) {
       { class: "hint" },
       "Chanson créée avec Suno via Kie.ai : le son, la pochette, les paroles et leur minutage exact sont récupérés (synchro parfaite, sans IA en plus).",
     ),
-    caps.kie ? null : h("p", { class: "hint warn" }, "Ajoute d'abord ta clé Kie.ai dans les Réglages."),
+
     h("div", { class: "grid2" }, taskId, audioId),
     sunoBtn,
   );
@@ -188,20 +216,26 @@ export async function renderHome(root, caps) {
   );
 
   const grid = h("div", { class: "projects" }, h("p", { class: "hint" }, "Chargement…"));
+  const me = session.me;
   const page = h(
     "div",
     { class: "home" },
     h(
-      "header",
-      { class: "home-head" },
-      h("h1", {}, h("span", { class: "logo" }, "🎤"), " Lyric Studio"),
-      h("p", { class: "tagline" }, "Vidéos lyriques et karaoké synchronisés mot par mot"),
-      h("button", { class: "btn", onclick: () => openSettings(caps) }, "⚙ Réglages"),
+      "section",
+      { class: "card plan-summary" },
+      h(
+        "div",
+        { class: "row gap wrap" },
+        h("h2", {}, `Bonjour${me.user.name ? ` ${me.user.name}` : ""} 👋`),
+        h("span", { class: `badge plan-${me.plan.id}` }, `Formule ${me.plan.name}`),
+        me.user.role !== "admin" && me.plan.id === "free" && h("a", { class: "btn primary small", href: "#/compte" }, "Passer à Pro"),
+      ),
+      usageBars(),
     ),
-    h("section", { class: "card new-project" }, h("h2", {}, "Nouvelle vidéo"), tabs, fileBox, sunoBox),
+    h("section", { class: "card new-project" }, h("h2", {}, "Nouvelle vidéo"), caps.kie ? tabs : null, fileBox, sunoBox),
     h("section", {}, h("h2", {}, "Mes projets"), grid),
   );
-  root.replaceChildren(page);
+  root.replaceChildren(h("div", { class: "app-page" }, nav(), page));
   await loadProjects(grid);
 }
 
@@ -246,7 +280,9 @@ async function loadProjects(grid) {
               class: "icon-btn",
               title: "Dupliquer",
               onclick: async () => {
-                await api(`/api/projects/${p.id}/duplicate`, { method: "POST" }).catch((e) => toast(e.message, "error"));
+                await api(`/api/projects/${p.id}/duplicate`, { method: "POST" }).catch((e) =>
+                  e.upgrade ? upgradePrompt(e.message) : toast(e.message, "error"),
+                );
                 loadProjects(grid);
               },
             },
@@ -269,99 +305,4 @@ async function loadProjects(grid) {
       ),
     ),
   );
-}
-
-const WHISPER_PRESETS = [
-  ["https://api.groq.com/openai/v1/audio/transcriptions", "whisper-large-v3", "Groq (gratuit, rapide)"],
-  ["https://api.openai.com/v1/audio/transcriptions", "whisper-1", "OpenAI"],
-];
-
-export async function openSettings(caps) {
-  const s = await api("/api/settings");
-  const inputs = {};
-  const text = (k, attrs = {}) =>
-    (inputs[k] = h("input", { type: "text", value: s[k] || "", autocomplete: "off", spellcheck: "false", ...attrs }));
-  const secret = (k) => text(k, { type: "password", placeholder: s[k] ? "clé enregistrée (laisser tel quel)" : "colle ta clé ici" });
-  const preset = h(
-    "select",
-    {
-      onchange: () => {
-        const p = WHISPER_PRESETS[Number(preset.value)];
-        if (p) {
-          inputs.transcription_url.value = p[0];
-          inputs.transcription_model.value = p[1];
-        }
-      },
-    },
-    WHISPER_PRESETS.map((p, i) => h("option", { value: String(i) }, p[2])),
-    h("option", { value: "x" }, "Autre service compatible"),
-  );
-  const idx = WHISPER_PRESETS.findIndex((p) => p[0] === s.transcription_url);
-  preset.value = idx >= 0 ? String(idx) : "x";
-  const provider = h(
-    "select",
-    {},
-    h("option", { value: "auto" }, "Automatique (ElevenLabs si sa clé est là)"),
-    h("option", { value: "whisper" }, "Whisper (Groq / OpenAI)"),
-    h("option", { value: "elevenlabs" }, "ElevenLabs Scribe"),
-  );
-  provider.value = s.transcription_provider || "auto";
-  inputs.transcription_provider = provider;
-  const ok = (b) => h("span", { class: b ? "ok" : "warn" }, b ? "✓ installé" : "✗ absent");
-  const body = h(
-    "div",
-    { class: "settings" },
-    h("h3", {}, "Transcription mot par mot (synchro automatique)"),
-    h(
-      "p",
-      { class: "hint" },
-      "Une de ces clés suffit. Groq est gratuit : console.groq.com/keys. ElevenLabs Scribe est le plus précis sur le chant.",
-    ),
-    field("Service préféré", provider),
-    h("div", { class: "grid2" }, field("Whisper", preset), field("Clé Whisper", secret("transcription_api_key"))),
-    h("div", { class: "grid2" }, field("Adresse", text("transcription_url")), field("Modèle", text("transcription_model"))),
-    field("Clé ElevenLabs", secret("elevenlabs_api_key")),
-    h("h3", {}, "Suno (Kie.ai)"),
-    field(
-      "Clé Kie.ai",
-      secret("kie_api_key"),
-      "Import des chansons Suno avec leurs paroles horodatées, et séparation de la voix par Suno.",
-    ),
-    h("h3", {}, "Sur cet ordinateur"),
-    h(
-      "table",
-      { class: "kv" },
-      h("tr", {}, h("th", {}, "ffmpeg"), h("td", {}, ok(caps.ffmpeg), " — vidéos MKV/MOV, finition des exports")),
-      h("tr", {}, h("th", {}, "Demucs"), h("td", {}, ok(caps.demucs), " — séparation de la voix gratuite (pip install demucs)")),
-    ),
-  );
-  modal({
-    title: "Réglages",
-    body,
-    wide: true,
-    actions: [
-      { label: "Annuler", onClick: (c) => c() },
-      {
-        label: "Enregistrer",
-        primary: true,
-        onClick: async (close) => {
-          const patch = {};
-          for (const [k, el] of Object.entries(inputs)) {
-            if (el.type === "password" && !el.value && s[k]) continue;
-            patch[k] = el.value;
-          }
-          try {
-            await api("/api/settings", { method: "PUT", json: patch });
-            Object.assign(caps, await api("/api/capabilities"));
-            toast("Réglages enregistrés.", "ok");
-            close();
-          } catch (e) {
-            toast(e.message, "error");
-          }
-        },
-      },
-    ],
-  });
-  // Les champs de clé gardent la valeur masquée : on les vide pour ne pas renvoyer « •••• ».
-  for (const k of ["transcription_api_key", "elevenlabs_api_key", "kie_api_key"]) inputs[k].value = "";
 }

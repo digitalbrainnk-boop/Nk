@@ -1,98 +1,93 @@
-# 🎤 Lyric Studio — vidéos lyriques et karaoké synchronisés mot par mot
+# 🎤 Lyric Studio — vidéos lyriques et karaoké synchronisées mot par mot
 
-Une application web pour créer des **vidéos lyriques** (voix gardée) et des **vidéos karaoké** (voix retirée) :
-tu importes une chanson, le studio récupère les paroles, les **synchronise mot par mot** avec le son, te laisse
-tout personnaliser, puis exporte une vidéo **MP4 en 720p, 1080p ou 4K**.
+Une application web **commercialisable** (comptes clients, formules payantes, espace administrateur) pour créer des
+**vidéos lyriques** (voix gardée) et des **vidéos karaoké** (voix retirée) : le client importe une chanson, le studio
+récupère les paroles, les **synchronise mot par mot**, laisse **tout personnaliser**, puis exporte une vidéo **MP4
+720p, 1080p ou 4K**. Elle s'installe sur Android comme une application.
 
-## Démarrer
+- **Tester tout de suite** : `cd lyric-studio && npm install && npm start`, puis http://localhost:3500
+  (le premier compte créé devient administrateur).
+- **Mettre en ligne avec ton nom de domaine, publier l'application Android** : voir [DEPLOIEMENT.md](DEPLOIEMENT.md).
 
-Il faut **Node.js 22.13 ou plus récent**.
+Il faut **Node.js 22.13 ou plus récent**. Facultatif : **ffmpeg** (vidéos MKV/MOV, finition des exports) et
+**Demucs** (`pip install demucs`, séparation de la voix par IA).
 
-```bash
-cd lyric-studio
-npm install
-npm start
-```
+## Pour les clients
 
-Ouvre **http://localhost:3500** (de préférence dans **Chrome** ou **Edge** : ils créent les MP4 eux-mêmes, très vite).
+- **Inscription / connexion** par e-mail, chacun ne voit que ses projets.
+- **Import** : audio (MP3, WAV, FLAC, AAC, M4A, OGG) ou vidéo (MP4, MOV, MKV, WEBM : la vidéo devient le fond).
+- **Synchronisation automatique** (bouton ✨) :
+  - **IA** (ElevenLabs Scribe ou Whisper Groq/OpenAI) : les paroles collées sont calées mot par mot (alignement
+    tolérant aux mots mal entendus, en trop ou manquants ; les mots incertains sont encadrés en orange) ; sans
+    paroles, l'IA les écrit ;
+  - **sans IA** : répartition sur les passages où la voix est détectée ;
+  - **à la main** : Espace (ou le bouton TAP) au début de chaque ligne, ou maintenu pendant chaque mot.
+- **Frise** : forme d'onde, mots et lignes déplaçables à la souris ou au doigt, zoom.
+- **Paroles** : correction d'un mot, découpe / fusion des lignes, découpe automatique des lignes trop longues,
+  décalage global, duo (`A:`, `B:`, `AB:`).
+- **Contrôle total du style** (chaque section se remet par défaut d'un clic) :
+  - police (70 Google Fonts classées, polices de l'appareil, ou police envoyée TTF/OTF/WOFF), épaisseur, italique,
+    taille, casse (MAJUSCULES, minuscules, Initiales), espacement des lettres et des mots, interligne ;
+  - couleurs du texte à chanter et chanté, opacités, dégradé sur le texte chanté, lignes passées et à venir ;
+  - effet de chant : remplissage progressif, mot par mot, mot qui saute, mot qui grossit, mot qui brille,
+    soulignement, ligne entière, aucun ; lueur réglable ;
+  - contour (et contour du texte chanté), ombre (flou, force, décalages) ;
+  - bandeau derrière le texte (ou pleine largeur), couleur, opacité, marges, arrondi ;
+  - mise en page : une ligne, alterné (karaoké), par page, défilement ; nombre de lignes, position, décalage,
+    alignement, marges, largeur maximale, espace entre les lignes ;
+  - animation d'apparition (fondu, glissements, zoom, chute avec rebond, flou, machine à écrire), durées des
+    fondus, avance et maintien des lignes ;
+  - fond : couleur, dégradé 2 ou 3 couleurs (linéaire, circulaire, qui tourne), image (zoom lent), vidéo ; flou,
+    luminosité, saturation, assombrissement, teinte, vignette ;
+  - effets : particules (bokeh, neige, étoiles, paillettes, cœurs, braises), visualiseur de musique (barres,
+    miroir, onde, cercle autour de la pochette), fond qui pulse avec les basses, barre de progression ;
+  - image ou vidéo en haut (taille, position, forme, bordure, ombre, rotation vinyle, pulsation) ;
+  - logo du client dans un coin ; duo (couleurs, côtés, noms affichés) ; titre de début ; message de fin ;
+  - 9 préréglages et **« Mes styles »** : enregistrer ses réglages et les réappliquer à d'autres vidéos.
+- **Export** MP4 720p / 1080p / 4K, 24 à 60 images/s, chanson entière ou extrait (TikTok, Reels, Statut).
+- **Mon compte** : formule, consommation du mois, demande d'abonnement avec référence de paiement Mobile Money,
+  profil, mot de passe, suppression du compte et de toutes ses données.
 
-Facultatif mais utile :
+## Pour toi (administrateur)
 
-| Outil | À quoi il sert | Installation |
-| --- | --- | --- |
-| **ffmpeg** | lire les vidéos MKV/MOV, terminer l'export quand le navigateur ne sait pas encoder le son ou le H.264 | `sudo apt install ffmpeg`, `brew install ffmpeg`, Termux : `pkg install ffmpeg` |
-| **Demucs** | séparer la voix et l'instrumental sur ton ordinateur (gratuit, excellente qualité) | `pip install demucs` |
+- **Tableau de bord** : clients, abonnés payants, demandes à vérifier, projets, exports et minutes d'IA du mois.
+- **Demandes** : le client paie, envoie la référence ; tu cliques « ✓ Paiement reçu » et sa formule est activée.
+- **Clients** : formule et date de fin, prolongation en un clic, suspension, mot de passe provisoire, suppression.
+- **Formules et prix** : nom, prix, période, projets, durée des chansons, minutes d'IA, exports, stockage, qualité
+  maximale, filigrane, voix séparée, import Suno ; ajout de formules.
+- **Site et IA** : nom de l'application, slogan, WhatsApp et e-mail du support, texte de paiement, inscriptions
+  ouvertes ou non, clés des services d'IA (partagées par tous les clients, limitées par les quotas), conditions
+  d'utilisation et politique de confidentialité, application Android.
 
-## Comment ça marche
+Formules par défaut (modifiables) : **Gratuit** (3 projets, 10 min d'IA par mois, 720p avec filigrane),
+**Pro** (sans filigrane, 1080p, voix séparée par IA), **Studio** (4K, import Suno, gros volumes).
 
-1. **Import** : fichier audio (MP3, WAV, FLAC, AAC, M4A, OGG) ou vidéo (MP4, MOV, MKV, WEBM). Une vidéo importée
-   devient le fond (son coupé), le son sert à la synchro. Ou **chanson Suno** (Kie.ai) : son, pochette, paroles et
-   minutage exact récupérés directement.
-2. **Paroles** : colle-les (une ligne par ligne à l'écran, ligne vide entre les couplets). Sans paroles, **l'IA les
-   écoute et les écrit**.
-3. **Synchronisation automatique** (bouton ✨) au choix :
-   - **Suno** : paroles horodatées de Suno (gratuit, parfait pour les chansons Suno) ;
-   - **IA** : ElevenLabs Scribe ou Whisper (Groq gratuit, OpenAI) écoute la chanson — de préférence la **voix
-     séparée** — et donne l'heure de chaque mot ; tes paroles sont ensuite **calées mot par mot** dessus (alignement
-     tolérant aux mots mal entendus, en trop ou manquants ; les mots incertains sont encadrés en orange) ;
-   - **Sans IA** : les lignes sont réparties sur les passages où la voix est détectée (approximatif, à retoucher) ;
-   - **À la main** : tu tapes Espace (ou le gros bouton TAP) au début de chaque ligne, ou tu gardes la touche
-     enfoncée pendant chaque mot.
-4. **Studio** : tout se règle en direct sur l'aperçu.
-5. **Export** MP4 720p / 1080p / 4K, 24 à 60 images/s, chanson entière ou extrait (TikTok, Reels, Statut).
+## Application Android
 
-## Le studio
-
-- **Frise** (en bas) : forme d'onde (mixage ou voix seule), lignes et mots. Glisse un mot pour le déplacer, ses bords
-  pour changer début et fin, une ligne (bande de couleur) pour la déplacer en entier. Ctrl + molette : zoom.
-- **Paroles** (à gauche) : clique un mot pour l'écouter, double-clic pour le corriger ; ✂ coupe la ligne avant le mot
-  sélectionné, ⤓ fusionne avec la suivante ; **Découper** coupe toutes les lignes trop longues ; **Décaler** avance ou
-  retarde toutes les paroles ; onglet **Texte** pour retoucher le texte brut (le timing des mots inchangés est gardé).
-- **Style** (à droite) : préréglages (Karaoké classique, Néon, Minimal, Story 9:16, Romance, Pochette), format
-  16:9 / 9:16 / 1:1 / 4:5, **police** (30+ Google Fonts, polices de l'ordinateur ou ta propre police TTF/OTF/WOFF),
-  taille, MAJUSCULES, couleurs (texte, chanté, contour, ombre/lueur), effet de chant (remplissage progressif, mot par
-  mot, ligne, aucun), affichage (une ligne, alterné, par page, défilement), position et alignement, animation
-  d'apparition, **fond** (couleur, dégradé, image avec zoom lent, vidéo ; flou, assombrissement), **image ou vidéo en
-  haut** (taille, position, forme carrée / arrondie / ronde, bordure), **mode duo**, titre d'intro et compte à rebours.
-- **Mode duo** : `A:`, `B:` ou `AB:` en début de ligne (ou `[Refrain - B]`), ou clic sur la pastille d'une ligne.
-  Chaque chanteur a sa couleur et son alignement.
-- **Karaoké** : la voix est retirée avec la voix séparée (Demucs, Suno ou tes propres pistes via le menu 🎚 Son) ;
-  sans séparation, ce qui est au centre du stéréo est retiré (les basses sont gardées). Réglage **voix guide** pour
-  garder un peu de voix.
-- Raccourcis : **Espace** lecture/pause · **←/→** déplacer le mot sélectionné de 10 ms (Maj : 100 ms) · **[ et ]**
-  début / fin du mot à la position de lecture · **Tab** mot suivant · **Ctrl+Z / Ctrl+Maj+Z** annuler / rétablir.
-- Enregistrement automatique ; les exports peuvent être gardés dans le projet pour les retélécharger.
-
-## Clés des services d'IA (⚙ Réglages)
-
-Une seule suffit pour la synchro par IA :
-
-- **Groq** (gratuit) : https://console.groq.com/keys — Whisper large v3, minutage des mots.
-- **OpenAI** : adresse `https://api.openai.com/v1/audio/transcriptions`, modèle `whisper-1`.
-- **ElevenLabs** : Scribe, le plus précis sur le chant.
-- **Kie.ai** : import des chansons Suno (paroles horodatées) et séparation de la voix par Suno.
-
-Les clés restent sur le serveur (fichier `data/settings.json`) et ne sont jamais renvoyées au navigateur.
-On peut aussi les mettre dans `.env` (voir `.env.example`).
+L'application est une **PWA** : depuis le site, « 📲 Installer l'application » l'ajoute aux applications du
+téléphone (plein écran, mise à jour automatique). Pour un fichier **APK** ou le **Play Store**, voir
+[DEPLOIEMENT.md](DEPLOIEMENT.md) (PWABuilder ou Bubblewrap, puis nom du paquet et empreinte dans l'administration).
 
 ## Export : comment la vidéo est fabriquée
 
-L'aperçu et l'export utilisent **le même moteur de rendu** (ce que tu vois est ce que tu obtiens). L'export est calculé
-image par image dans le navigateur (WebCodecs), donc plus vite que le temps réel, puis assemblé en MP4 :
+L'aperçu et l'export utilisent **le même moteur de rendu** : ce que tu vois est ce que tu obtiens. L'export est
+calculé image par image dans l'appareil du client (WebCodecs), plus vite que le temps réel, puis assemblé en MP4 :
 
-1. Chrome / Edge / Safari récents : **H.264 + AAC** directement dans le navigateur ;
-2. son AAC non disponible (Chromium, certains Linux) : la vidéo est envoyée au serveur, **ffmpeg** ajoute le son ;
+1. Chrome (Android, Windows, Mac), Edge, Safari récents : **H.264 + AAC** directement dans le navigateur ;
+2. son AAC non disponible (Chrome sur Linux) : le serveur ajoute le son avec **ffmpeg** ;
 3. H.264 non disponible : vidéo VP9/AV1, convertie en H.264 par ffmpeg ;
-4. sans WebCodecs (vieux navigateurs) : enregistrement en temps réel, converti par ffmpeg.
+4. sans WebCodecs : enregistrement en temps réel, converti par ffmpeg.
 
-Les très longs exports 4K ne restent pas entiers en mémoire : le fichier est écrit par morceaux. Un fond vidéo
-rallonge l'export (chaque image de la vidéo est recherchée exactement) ; une image ou un dégradé est le plus rapide.
+Les longs exports 4K sont écrits par morceaux (pas tout en mémoire). Un fond vidéo rallonge l'export (chaque image
+est recherchée exactement) ; une image ou un dégradé est le plus rapide.
 
-## Hébergement
+## Sécurité
 
-Par défaut le studio n'écoute que sur l'ordinateur (`127.0.0.1`), sans mot de passe. Pour l'ouvrir au réseau ou
-l'héberger : `HOST=0.0.0.0` et `STUDIO_PASSWORD=…` (un mot de passe est créé et affiché au démarrage si tu n'en mets
-pas). Les projets sont dans `data/` (ou `DATA_DIR`).
+Mots de passe chiffrés (scrypt), sessions par cookie `HttpOnly` / `SameSite`, limitation des essais de connexion,
+chaque projet et chaque fichier vérifiés au nom de son propriétaire, clés d'IA jamais envoyées au navigateur,
+en-têtes de sécurité (CSP…). Les limites des formules sont contrôlées par le serveur (projets, stockage, durée,
+minutes d'IA, séparation de voix, nombre et qualité des exports). Le filigrane est ajouté par l'appareil du client
+au moment du rendu.
 
 ## Tests
 
@@ -100,25 +95,25 @@ pas). Les projets sont dans `data/` (ou `DATA_DIR`).
 npm test
 ```
 
-Paroles, alignement mot par mot, affichage, traitement du son, rendu, API, import Suno, transcription (services
-simulés), séparation, export avec ffmpeg et mot de passe.
+Paroles, alignement mot par mot, affichage, son (FFT, détection de voix), rendu de tous les effets, comptes et
+sessions, isolement des clients, quotas des formules, demandes d'abonnement, administration, styles enregistrés,
+transcription (services simulés), import Suno, export avec ffmpeg, application installable.
 
 ## Organisation du code
 
 ```
 src/                 serveur (Express)
-  app.js             API : projets, médias (lecture par morceaux), IA, séparation, exports
+  app.js             API : comptes, projets, médias, IA, séparation, exports, administration, PWA
+  accounts.js        comptes, sessions, formules et quotas, styles enregistrés, demandes d'abonnement
+  db.js              base SQLite (comptes, consommation, index des projets…)
+  settings.js        réglages du site et clés d'IA
   store.js           projets sur le disque (data/projects/<id>/project.json + fichiers)
   transcribe.js      Whisper (Groq/OpenAI) et ElevenLabs Scribe : mots minutés
   suno.js            Kie.ai : morceau, paroles horodatées, séparation de la voix
-  stems.js           Demucs sur l'ordinateur
+  stems.js           Demucs (avec file d'attente)
   ffmpeg.js          extraction du son, assemblage et conversion des exports
-public/js/core/      code partagé navigateur + tests
-  lyrics.js          texte <-> lignes, duo, découpe des lignes longues
-  align.js           synchronisation mot par mot (alignement de séquences, voix détectée)
-  timing.js          quelles lignes à l'écran, quand et où
-  render.js          dessin d'une image (aperçu et export)
-  dsp.js             forme d'onde, détection de la voix, voix retirée au centre, WAV
-  style.js           styles, préréglages, polices, résolutions
-public/js/           interface : studio, frise, paroles, style, synchro, export
+public/js/core/      code partagé navigateur + tests (paroles, synchro, affichage, rendu, son, styles)
+public/js/           interface : accueil, compte, administration, studio, frise, paroles, style, export
+public/sw.js         service worker (application installable)
+Dockerfile, docker-compose.yml, Caddyfile, render.yaml   mise en ligne (voir DEPLOIEMENT.md)
 ```

@@ -58,8 +58,7 @@ export function wrapRows(widths, space, maxWidth) {
     cut = Math.max(1, Math.min(widths.length - 1, cut));
     const a = widths.slice(0, cut).reduce((x, y) => x + y, 0) + space * (cut - 1);
     const b = widths.slice(cut).reduce((x, y) => x + y, 0) + space * (widths.length - cut - 1);
-    if (a <= maxWidth && b <= maxWidth)
-      return [widths.slice(0, cut).map((_, i) => i), widths.slice(cut).map((_, i) => i + cut)];
+    if (a <= maxWidth && b <= maxWidth) return [widths.slice(0, cut).map((_, i) => i), widths.slice(cut).map((_, i) => i + cut)];
   }
   return rows;
 }
@@ -651,7 +650,7 @@ export class Renderer {
         if (!forceSung && timed) {
           if (hl === "word" && started && t < word.start + 0.3) s = 1 + 0.12 * (1 - ease((t - word.start) / 0.3));
           if (hl === "bounce" && active) dy = -0.22 * L.px * Math.sin(Math.PI * wordProgress(word, t));
-          if (hl === "scale") s = 1 + 0.2 * clamp01((t - word.start) / 0.1) * clamp01((word.end + 0.12 - t) / 0.12);
+          if (hl === "scale") s = 1 + 0.14 * clamp01((t - word.start) / 0.1) * clamp01((word.end + 0.12 - t) / 0.12);
         }
         if (s !== 1 || dy) {
           ctx.translate(x + wd.w / 2, y + dy);

@@ -28,6 +28,10 @@ const DEFAULTS = {
     "Paie par Mobile Money (Orange Money, MTN MoMo, Wave…) au numéro indiqué par le support, puis envoie la référence de la transaction ci-dessous. Ton compte est activé dès la vérification du paiement.",
   terms: "",
   privacy: "",
+  // Application Android (Play Store / APK) : valeurs données par PWABuilder ou Bubblewrap.
+  android_package: "",
+  android_sha256: "",
+  android_app_url: "",
 };
 
 const ENV = {
@@ -39,6 +43,9 @@ const ENV = {
   app_name: "APP_NAME",
   support_whatsapp: "SUPPORT_WHATSAPP",
   support_email: "SUPPORT_EMAIL",
+  android_package: "ANDROID_PACKAGE",
+  android_sha256: "ANDROID_SHA256",
+  android_app_url: "ANDROID_APP_URL",
 };
 
 export const SECRET_KEYS = ["transcription_api_key", "elevenlabs_api_key", "kie_api_key"];
@@ -103,6 +110,7 @@ export function publicConfig() {
     payment_instructions: s.payment_instructions,
     terms: s.terms,
     privacy: s.privacy,
+    android_app_url: s.android_app_url,
   };
 }
 
