@@ -3,8 +3,10 @@ import { mediaUrl } from "./api.js";
 
 export class Assets {
   constructor(onChange) {
-    this.items = { bg: null, top: null };
-    this.keys = { bg: null, top: null };
+    this.items = { bg: null, top: null, logo: null };
+    this.keys = { bg: null, top: null, logo: null };
+    // Données ajoutées par le studio : son analysé (visualiseur) et filigrane de la formule gratuite.
+    this.extra = { audio: null, watermark: null };
     this.onChange = onChange;
   }
 
@@ -14,6 +16,8 @@ export class Assets {
     const top = project.style.top;
     this.want("bg", bg.type === "image" || bg.type === "video" ? bg.media : null, bg.type, project);
     this.want("top", top.enabled ? top.media : null, top.kind || "image", project);
+    const logo = project.style.logo || {};
+    this.want("logo", logo.enabled ? logo.media : null, "image", project);
   }
 
   want(slot, file, kind, project) {
@@ -104,11 +108,12 @@ export class Assets {
   }
 
   current() {
-    return this.items;
+    return { ...this.items, ...this.extra };
   }
 
   destroy() {
     this.dispose("bg");
     this.dispose("top");
+    this.dispose("logo");
   }
 }

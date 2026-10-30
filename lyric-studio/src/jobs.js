@@ -36,3 +36,31 @@ export function runningJob(projectId, kind) {
   for (const { job } of jobs.values()) if (job.projectId === projectId && job.kind === kind && job.state === "running") return job;
   return null;
 }
+
+/** File d'attente : au plus `max` tâches lourdes en même temps, les autres attendent leur tour. */
+export function queue(max = 1) {
+  let active = 0;
+  const waiting = [];
+  const next = () => {
+    while (active < max && waiting.length) {
+      const w = waiting.shift();
+      if (w.signal?.aborted) {
+        w.reject(new Error("Annulé."));
+        continue;
+      }
+      active++;
+      Promise.resolve()
+        .then(w.fn)
+        .then(w.resolve, w.reject)
+        .finally(() => {
+          active--;
+          next();
+        });
+    }
+  };
+  return (fn, signal) =>
+    new Promise((resolve, reject) => {
+      waiting.push({ fn, resolve, reject, signal });
+      next();
+    });
+}

@@ -236,3 +236,97 @@ export function mix(tracks, length) {
   if (peak > 0.99) for (const ch of out) for (let i = 0; i < n; i++) ch[i] *= 0.99 / peak;
   return out;
 }
+
+/** Transformée de Fourier rapide en place (n puissance de 2). */
+export function fft(re, im) {
+  const n = re.length;
+  for (let i = 1, j = 0; i < n; i++) {
+    let bit = n >> 1;
+    for (; j & bit; bit >>= 1) j ^= bit;
+    j ^= bit;
+    if (i < j) {
+      [re[i], re[j]] = [re[j], re[i]];
+      [im[i], im[j]] = [im[j], im[i]];
+    }
+  }
+  for (let len = 2; len <= n; len <<= 1) {
+    const ang = (-2 * Math.PI) / len;
+    const wr = Math.cos(ang);
+    const wi = Math.sin(ang);
+    for (let i = 0; i < n; i += len) {
+      let cr = 1;
+      let ci = 0;
+      for (let k = 0; k < len / 2; k++) {
+        const a = i + k;
+        const b = a + len / 2;
+        const tr = re[b] * cr - im[b] * ci;
+        const ti = re[b] * ci + im[b] * cr;
+        re[b] = re[a] - tr;
+        im[b] = im[a] - ti;
+        re[a] += tr;
+        im[a] += ti;
+        const nr = cr * wr - ci * wi;
+        ci = cr * wi + ci * wr;
+        cr = nr;
+      }
+    }
+  }
+}
+
+/** Son mono allégé (11 025 Hz) pour le visualiseur et les effets qui suivent la musique. */
+export function analysisTrack(channels, sampleRate) {
+  const rate = 11025;
+  return { samples: resample(downmix(channels), sampleRate, rate), sampleRate: rate };
+}
+
+const SIZE = 1024;
+const win = Float32Array.from({ length: SIZE }, (_, i) => 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (SIZE - 1)));
+const re = new Float32Array(SIZE);
+const im = new Float32Array(SIZE);
+
+/**
+ * Spectre à l'instant t : `bands` valeurs de 0 à 1 (fréquences graves à gauche, échelle logarithmique)
+ * et `bass` (énergie des basses, 0 à 1). Ne dépend que de t : identique dans l'aperçu et l'export.
+ */
+export function spectrumAt(track, t, bands = 48) {
+  const { samples, sampleRate } = track;
+  const center = Math.floor(t * sampleRate);
+  for (let i = 0; i < SIZE; i++) {
+    const k = center - SIZE / 2 + i;
+    re[i] = (k >= 0 && k < samples.length ? samples[k] : 0) * win[i];
+    im[i] = 0;
+  }
+  fft(re, im);
+  const mag = new Float32Array(SIZE / 2);
+  for (let i = 0; i < SIZE / 2; i++) mag[i] = Math.sqrt(re[i] * re[i] + im[i] * im[i]) / (SIZE / 4);
+  const out = new Float32Array(bands);
+  const fMin = 50;
+  const fMax = Math.min(5000, sampleRate / 2);
+  const hz = sampleRate / SIZE;
+  for (let b = 0; b < bands; b++) {
+    const f0 = fMin * (fMax / fMin) ** (b / bands);
+    const f1 = fMin * (fMax / fMin) ** ((b + 1) / bands);
+    const i0 = Math.max(1, Math.floor(f0 / hz));
+    const i1 = Math.max(i0 + 1, Math.ceil(f1 / hz));
+    let m = 0;
+    for (let i = i0; i < i1 && i < mag.length; i++) m = Math.max(m, mag[i]);
+    // En décibels, ramené entre 0 et 1 (-60 dB -> 0).
+    out[b] = Math.max(0, Math.min(1, (20 * Math.log10(m + 1e-6) + 60) / 60));
+  }
+  let bass = 0;
+  for (let i = Math.floor(40 / hz); i <= Math.ceil(160 / hz); i++) bass = Math.max(bass, mag[i] || 0);
+  return { bands: out, bass: Math.max(0, Math.min(1, (20 * Math.log10(bass + 1e-6) + 40) / 40)) };
+}
+
+/** Forme d'onde autour de t (n points entre -1 et 1). */
+export function waveAt(track, t, n = 128, span = 0.04) {
+  const { samples, sampleRate } = track;
+  const start = Math.floor((t - span / 2) * sampleRate);
+  const len = Math.max(n, Math.floor(span * sampleRate));
+  const out = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const k = start + Math.floor((i / n) * len);
+    out[i] = k >= 0 && k < samples.length ? samples[k] : 0;
+  }
+  return out;
+}

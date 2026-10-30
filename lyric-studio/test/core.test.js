@@ -22,9 +22,9 @@ import {
   retimeAfterEdit,
 } from "../public/js/core/align.js";
 import { schedule, visibleAt, countdownAt, titleAlpha, wordProgress } from "../public/js/core/timing.js";
-import { computePeaks, detectActivity, encodeWav, centerCancel, speechWav, mix } from "../public/js/core/dsp.js";
-import { frameSize, defaultStyle, mergeStyle, PRESETS, normalizeStyle } from "../public/js/core/style.js";
-import { Renderer, wrapRows } from "../public/js/core/render.js";
+import { computePeaks, detectActivity, encodeWav, centerCancel, speechWav, mix, fft, analysisTrack, spectrumAt, waveAt, peakOf } from "../public/js/core/dsp.js";
+import { frameSize, defaultStyle, mergeStyle, PRESETS, normalizeStyle, shareableStyle, FONTS, DEFAULT_PLANS } from "../public/js/core/style.js";
+import { Renderer, wrapRows, transformText, fontString, needsAudio } from "../public/js/core/render.js";
 
 const LYRICS = `[Couplet 1]
 Dans la nuit, je pense à toi
@@ -347,7 +347,7 @@ function fakeCtx() {
     get(target, prop) {
       if (prop in target) return target[prop];
       if (prop === "measureText") return (s) => ({ width: s.length * 30 });
-      if (prop === "createLinearGradient") return () => ({ addColorStop() {} });
+      if (prop === "createLinearGradient" || prop === "createRadialGradient") return () => ({ addColorStop() {} });
       return (...args) => calls.push([prop, ...args]);
     },
     set(target, prop, v) {
@@ -374,4 +374,85 @@ test("rendu : dessine fond, titre, lignes, sans erreur dans tous les modes", () 
       }
     }
   }
+});
+
+test("rendu : tous les effets de chant, animations, fonds, effets et médias", () => {
+  const lines = timed("Dans la nuit\nJe pense à toi\nEncore", [5, 7, 9]);
+  const sr = 11025;
+  const samples = new Float32Array(sr * 12).map((_, i) => 0.5 * Math.sin((2 * Math.PI * 80 * i) / sr));
+  const audio = { samples, sampleRate: sr };
+  const img = { source: {}, width: 800, height: 800 };
+  const highlights = ["wipe", "word", "line", "bounce", "scale", "glow", "underline", "none"];
+  const anims = ["fade", "slide-up", "slide-down", "slide-left", "slide-right", "zoom", "drop", "blur", "typewriter", "none"];
+  const particles = ["none", "bokeh", "snow", "stars", "sparkles", "hearts", "embers"];
+  const vizs = ["none", "bars", "mirror", "wave", "circle"];
+  for (let i = 0; i < 10; i++) {
+    const style = mergeStyle(defaultStyle(), {
+      highlight: highlights[i % highlights.length],
+      pastLines: ["sung", "dim", "text", "hide"][i % 4],
+      font: { italic: i % 2 === 0, transform: ["none", "uppercase", "lowercase", "capitalize"][i % 4], wordSpacing: 4 },
+      colors: { sungGradient: i % 3 === 0, glow: i % 2 ? 20 : 0, sungOutline: i % 2 ? "#ff0000" : "", textOpacity: 0.7 },
+      box: { enabled: i % 2 === 1, full: i % 4 === 1 },
+      layout: { animation: anims[i], display: ["single", "alternate", "page", "scroll"][i % 4], x: 0.1 },
+      background: { type: ["color", "gradient", "image", "video"][i % 4], gradientType: i % 2 ? "radial" : "linear", animate: true, vignette: 0.4, tintOpacity: 0.2, brightness: 1.2 },
+      effects: { particles: particles[i % particles.length], visualizer: vizs[i % vizs.length], progress: true, beatZoom: 0.05 },
+      top: { enabled: true, spin: 33, pulse: 0.1, shape: ["rect", "rounded", "circle"][i % 3] },
+      logo: { enabled: true, position: ["top-left", "top-right", "bottom-left", "bottom-right"][i % 4] },
+      duo: { enabled: i % 2 === 0, showNames: true },
+      outro: { enabled: true },
+    });
+    const project = { title: "Titre", artist: "Artiste", lines, style, duration: 12 };
+    const r = new Renderer();
+    for (const t of [0, 5.05, 5.2, 7.3, 11.5]) {
+      const { ctx, calls } = fakeCtx();
+      r.draw(ctx, 1080, 1920, t, project, { bg: img, top: img, logo: img, audio, watermark: { text: "Fait avec Lyric Studio" } });
+      const texts = calls.filter((c) => c[0] === "fillText").map((c) => c[1]);
+      assert.ok(texts.includes("Fait avec Lyric Studio"), "filigrane");
+      if (t === 11.5) assert.ok(texts.some((x) => /merci/i.test(x)), `fin de vidéo (${i})`);
+    }
+  }
+});
+
+test("texte : majuscules, minuscules, initiales, italique", () => {
+  assert.equal(transformText("je t'aime à paris", "uppercase"), "JE T'AIME À PARIS");
+  assert.equal(transformText("Dans La NUIT", "lowercase"), "dans la nuit");
+  assert.equal(transformText("dans la nuit d'été", "capitalize"), "Dans La Nuit D'Été");
+  assert.match(fontString({ family: "Lobster", italic: true, weight: 400 }, 50), /^italic 400 50px "Lobster"/);
+});
+
+test("anciens projets : réglages convertis, styles partageables, polices et formules", () => {
+  const old = normalizeStyle({ font: { uppercase: true }, layout: { animation: "slide" }, background: { gradient: ["#000", "#fff"] } });
+  assert.equal(old.font.transform, "uppercase");
+  assert.equal(old.font.uppercase, undefined);
+  assert.equal(old.layout.animation, "slide-up");
+  assert.equal(old.background.gradient.length, 3);
+  const s = shareableStyle(mergeStyle(defaultStyle(), { background: { type: "image", media: "a.jpg" }, top: { enabled: true, media: "b.jpg" } }));
+  assert.equal(s.background.media, null);
+  assert.equal(s.background.type, "gradient");
+  assert.equal(s.top.enabled, false);
+  assert.ok(FONTS.length >= 60);
+  assert.equal(new Set(FONTS.map((f) => f.name)).size, FONTS.length, "pas de police en double");
+  for (const p of Object.values(DEFAULT_PLANS)) assert.ok(p.name && p.maxResolution && p.aiMinutes >= 0);
+  assert.equal(needsAudio(defaultStyle()), false);
+  assert.equal(needsAudio(mergeStyle(defaultStyle(), { effects: { visualizer: "bars" } })), true);
+});
+
+test("son : FFT, spectre et forme d'onde pour le visualiseur", () => {
+  const re = new Float32Array(8).fill(1);
+  const im = new Float32Array(8);
+  fft(re, im);
+  assert.ok(Math.abs(re[0] - 8) < 1e-5 && Math.abs(re[3]) < 1e-5);
+  const sr = 44100;
+  const tone = (f) => new Float32Array(sr * 2).map((_, i) => 0.8 * Math.sin((2 * Math.PI * f * i) / sr));
+  const low = analysisTrack([tone(100)], sr);
+  const high = analysisTrack([tone(3000)], sr);
+  assert.equal(low.sampleRate, 11025);
+  const a = spectrumAt(low, 1, 32);
+  const b = spectrumAt(high, 1, 32);
+  const argmax = (x) => x.indexOf(Math.max(...x));
+  assert.ok(argmax(Array.from(a.bands)) < argmax(Array.from(b.bands)), "les graves à gauche, les aigus à droite");
+  assert.ok(a.bass > 0.5 && b.bass < 0.3, `basses : ${a.bass} / ${b.bass}`);
+  assert.equal(spectrumAt(low, 50, 32).bands.every((v) => v === 0), true, "silence après la fin");
+  assert.equal(waveAt(low, 1, 64).length, 64);
+  assert.equal(peakOf([new Float32Array([0.1, -0.7, 0.3])]).toFixed(2), "0.70");
 });

@@ -108,12 +108,14 @@ export function schedule(lines, layout = {}) {
  * Chaque élément : { index, line, start, end, slot (place, peut être fractionnaire en défilement),
  *                    alpha, enter (0→1 à l'apparition), state: "future" | "current" | "past" }.
  */
-export function visibleAt(sched, t, fade = 0.3) {
+export function visibleAt(sched, t, fade = 0.3, { fadeOut = fade, animDuration = Math.max(fade * 1.5, 0.2) } = {}) {
   if (sched.mode === "scroll") return scrollAt(sched, t, fade);
   const out = [];
+  const fi = Math.max(0.01, fade);
+  const fo = Math.max(0.01, fadeOut);
   for (const x of sched.items) {
     if (t < x.appear - 0.001 || t >= x.disappear) continue;
-    const alpha = Math.min(1, (t - x.appear) / fade + 0.0001, (x.disappear - t) / fade);
+    const alpha = Math.min(1, (t - x.appear) / fi + 0.0001, (x.disappear - t) / fo);
     out.push({
       index: x.index,
       line: x.line,
@@ -121,7 +123,7 @@ export function visibleAt(sched, t, fade = 0.3) {
       end: x.end,
       slot: x.slot,
       alpha: clamp01(alpha),
-      enter: ease((t - x.appear) / Math.max(fade * 1.5, 0.2)),
+      enter: ease((t - x.appear) / Math.max(0.05, animDuration)),
       state: t < x.start ? "future" : t <= x.end ? "current" : "past",
     });
   }
