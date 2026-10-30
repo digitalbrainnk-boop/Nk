@@ -166,6 +166,16 @@ L'offre utilisée (Starter + disque de 1 Go) est payante (quelques dollars par m
 
 N'importe quel serveur avec Node.js (VPS, Railway, Render, Fly.io…). Le dossier `data/` contient la base de données, la session WhatsApp et les médias : il doit être **persistant** et **sauvegardé**. Ne le partage jamais (il donne accès à ton WhatsApp).
 
+## Lyric Studio : vidéos lyriques et karaoké
+
+Le dossier [`lyric-studio/`](lyric-studio/README.md) contient une application à part pour transformer une chanson
+(fichier audio/vidéo ou chanson Suno de Kie.ai) en **vidéo lyrique** ou **vidéo karaoké** synchronisée mot par mot,
+personnalisable (polices, couleurs, fond, image en haut, duo…) et exportée en MP4 720p / 1080p / 4K.
+
+```bash
+cd lyric-studio && npm install && npm start   # puis http://localhost:3500
+```
+
 ## Coûts
 
 - Claude : facturé à l'usage. Opus 5.5 est le plus intelligent ; Sonnet 5.5 ou Haiku 5.5 (dans Réglages) coûtent moins cher.
