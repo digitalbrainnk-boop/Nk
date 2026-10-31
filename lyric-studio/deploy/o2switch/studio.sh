@@ -1,5 +1,5 @@
 #!/bin/bash
-# Commandes de Lyric Studio chez o2switch :  studio <commande>
+# Commandes de Africa Lyrics chez o2switch :  studio <commande>
 #   studio maj         installer la dernière version
 #   studio journal     voir ce que fait le studio
 #   studio relancer    redémarrer le studio

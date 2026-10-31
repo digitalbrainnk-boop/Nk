@@ -1,4 +1,4 @@
-# Mettre Lyric Studio en ligne (nom de domaine, hébergement, application Android)
+# Mettre Africa Lyrics en ligne (nom de domaine, hébergement, application Android)
 
 Ce guide va de « je teste chez moi » à « mes clients s'inscrivent sur mon site et installent l'application ».
 

@@ -1,4 +1,4 @@
-# 🎤 Lyric Studio — vidéos lyriques et karaoké synchronisées mot par mot
+# 🎤 Africa Lyrics — vidéos lyriques et karaoké synchronisées mot par mot
 
 Une application web **commercialisable** (comptes clients, formules payantes, espace administrateur) pour créer des
 **vidéos lyriques** (voix gardée) et des **vidéos karaoké** (voix retirée) : le client importe une chanson, le studio

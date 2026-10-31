@@ -18,7 +18,7 @@ export async function loadMe() {
 }
 
 export const isAdmin = () => session.me?.user.role === "admin";
-export const appName = () => session.config?.app_name || "Lyric Studio";
+export const appName = () => session.config?.app_name || "Africa Lyrics";
 
 /** Une limite de la formule est atteinte : on explique et on propose de passer à la formule supérieure. */
 export function upgradePrompt(message) {

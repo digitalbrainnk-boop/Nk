@@ -202,11 +202,11 @@ test("formule gratuite : limites de projets, d'IA, de qualité ; filigrane", asy
   assert.equal((await alice.json(`/api/projects/${p.id}/export-start`, { method: "POST", json: { resolution: "1080p" } })).status, 402);
   const ok = await alice.json(`/api/projects/${p.id}/export-start`, { method: "POST", json: { resolution: "720p", duration: 30 } });
   assert.equal(ok.status, 200);
-  assert.equal(ok.data.watermark, "Fait avec Lyric Studio");
+  assert.equal(ok.data.watermark, "Fait avec Africa Lyrics");
   assert.equal((await alice.json("/api/me")).data.usage.exports, 1);
   const caps = (await alice.json("/api/capabilities")).data;
   assert.equal(caps.maxResolution, "720p");
-  assert.equal(caps.watermark, "Fait avec Lyric Studio");
+  assert.equal(caps.watermark, "Fait avec Africa Lyrics");
   assert.equal(caps.demucs, false);
   assert.equal((await alice.json(`/api/projects/${p.id}/stems`, { method: "POST", json: { method: "demucs" } })).status, 402);
   plans.free.maxProjects = 3;
@@ -277,7 +277,7 @@ test("administration : statistiques, comptes, mot de passe provisoire, suspensio
   assert.equal(pub.support_whatsapp, "+225000000");
   assert.equal(JSON.stringify(pub).includes("gsk_"), false, "aucune clé dans la config publique");
   assert.ok(pub.plans.free && pub.plans.pro);
-  await boss.json("/api/admin/settings", { method: "PUT", json: { transcription_api_key: "", app_name: "Lyric Studio" } });
+  await boss.json("/api/admin/settings", { method: "PUT", json: { transcription_api_key: "", app_name: "Africa Lyrics" } });
 });
 
 test("mes styles : enregistrer, lister, supprimer (propres à chaque client)", async () => {
@@ -495,7 +495,8 @@ test("export : vidéo déjà complète gardée telle quelle, sinon ffmpeg ajoute
 test("application installable : manifeste, lien Android, service worker", async () => {
   const m = await (await realFetch(`${BASE}/manifest.webmanifest`)).json();
   assert.equal(m.display, "standalone");
-  assert.equal(m.name, "Lyric Studio");
+  assert.equal(m.name, "Africa Lyrics");
+  assert.equal(m.short_name, "Africa Lyrics", "nom complet sous l'icône du téléphone");
   assert.ok(m.icons.some((i) => i.purpose === "maskable"));
   const links = await (await realFetch(`${BASE}/.well-known/assetlinks.json`)).json();
   assert.equal(links[0].target.package_name, "com.exemple.lyricstudio");

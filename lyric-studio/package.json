@@ -2,7 +2,7 @@
   "name": "lyric-studio",
   "version": "1.0.0",
   "private": true,
-  "description": "Lyric Studio : vidéos lyriques et karaoké synchronisées mot par mot, export MP4 720p / 1080p / 4K",
+  "description": "Africa Lyrics : vidéos lyriques et karaoké synchronisées mot par mot, export MP4 720p / 1080p / 4K",
   "type": "module",
   "scripts": {
     "start": "node --env-file-if-exists=.env --disable-warning=ExperimentalWarning src/server.js",

@@ -134,7 +134,8 @@ export function createApp() {
     res.type("application/manifest+json").json({
       id: "/",
       name: s.app_name,
-      short_name: s.app_name.slice(0, 12),
+      // Nom sous l'icône du téléphone : le nom entier s'il est court, sinon le premier mot.
+      short_name: s.app_name.length <= 15 ? s.app_name : s.app_name.split(/\s+/)[0].slice(0, 15),
       description: s.tagline,
       lang: "fr",
       start_url: "/?source=app",

@@ -17,7 +17,7 @@ const DEFAULTS = {
   transcription_provider: "auto",
   language: "",
   // Le site
-  app_name: "Lyric Studio",
+  app_name: "Africa Lyrics",
   tagline: "Tes chansons en vidéos lyriques et karaoké, synchronisées mot par mot",
   support_whatsapp: "",
   support_email: "",
@@ -121,5 +121,5 @@ export function publicConfig() {
 
 export const watermarkText = () => {
   const s = getSettings();
-  return String(s.watermark_text || "").replace(/\{app\}/g, s.app_name || "Lyric Studio");
+  return String(s.watermark_text || "").replace(/\{app\}/g, s.app_name || "Africa Lyrics");
 };

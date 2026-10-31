@@ -1,4 +1,4 @@
-// Fichier de démarrage de Lyric Studio chez o2switch (cPanel « Setup Node.js App », Passenger).
+// Fichier de démarrage de Africa Lyrics chez o2switch (cPanel « Setup Node.js App », Passenger).
 // Charge la configuration (.env, à côté de ce fichier), garde un journal, puis démarre
 // la version installée dans « actuelle » (avec ses propres dépendances).
 "use strict";
@@ -47,7 +47,7 @@ const version = (() => {
     return "?";
   }
 })();
-console.log(`\n[${new Date().toISOString()}] Démarrage de Lyric Studio (${version})`);
+console.log(`\n[${new Date().toISOString()}] Démarrage de Africa Lyrics (${version})`);
 // Le module SQLite de Node est signalé « expérimental » : avertissement sans conséquence, on le tait.
 const emitWarning = process.emitWarning.bind(process);
 process.emitWarning = (w, ...rest) => {
@@ -59,6 +59,6 @@ process.on("uncaughtException", (e) => console.error("Erreur :", e));
 process.on("unhandledRejection", (e) => console.error("Erreur :", e));
 
 import(pathToFileURL(path.join(APP, "actuelle", "src", "server.js")).href).catch((e) => {
-  console.error("❌ Lyric Studio n'a pas pu démarrer :", e);
+  console.error("❌ Africa Lyrics n'a pas pu démarrer :", e);
   process.exitCode = 1;
 });

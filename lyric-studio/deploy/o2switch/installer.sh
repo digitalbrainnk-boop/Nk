@@ -1,5 +1,5 @@
 #!/bin/bash
-# Lyric Studio chez o2switch : installe ou met à jour. À coller dans le Terminal de cPanel :
+# Africa Lyrics chez o2switch : installe ou met à jour. À coller dans le Terminal de cPanel :
 #   curl -fsSL https://raw.githubusercontent.com/digitalbrainnk-boop/Nk/ccr-78cf5167-8sfpbb/lyric-studio/deploy/o2switch/installer.sh | bash
 # Le paquet est préparé par GitHub (.github/workflows/studio-o2switch.yml) : rien à compiler sur le serveur.
 set -euo pipefail
@@ -9,7 +9,7 @@ DONNEES="$HOME/lyric-studio-donnees"     # comptes, projets, vidéos : conservé
 OUTILS="$HOME/lyric-studio-outils"       # commandes « studio » et ffmpeg
 PAQUET="${LS_PAQUET:-https://github.com/digitalbrainnk-boop/Nk/releases/download/studio-o2switch/studio-o2switch.tar.gz}"
 
-echo "=== Lyric Studio : installation sur o2switch ==="
+echo "=== Africa Lyrics : installation sur o2switch ==="
 mkdir -p "$APP/versions" "$APP/tmp" "$DONNEES" "$OUTILS"
 
 VERSION="$APP/versions/$(date +%Y%m%d-%H%M%S)"
@@ -93,7 +93,7 @@ if ! grep -q "# lyric-studio-outils" "$HOME/.bashrc" 2>/dev/null; then
 fi
 
 echo
-echo "=== Lyric Studio installé ! ==="
+echo "=== Africa Lyrics installé ! ==="
 if [ "$NOUVEAU" = 1 ]; then
   echo
   echo "Dernière étape dans cPanel → « Setup Node.js App » → « Create Application » :"

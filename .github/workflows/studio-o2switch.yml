@@ -1,7 +1,7 @@
-# Lyric Studio : prépare le paquet prêt à installer chez o2switch et le publie ici :
+# Africa Lyrics : prépare le paquet prêt à installer chez o2switch et le publie ici :
 #   https://github.com/digitalbrainnk-boop/Nk/releases/download/studio-o2switch/studio-o2switch.tar.gz
 # Le serveur l'installe avec lyric-studio/deploy/o2switch/installer.sh (commande « studio maj »).
-name: Lyric Studio — paquet o2switch
+name: Africa Lyrics — paquet o2switch
 
 on:
   push:
@@ -39,6 +39,6 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           gh release view studio-o2switch >/dev/null 2>&1 || gh release create studio-o2switch \
-            --prerelease --target "$GITHUB_SHA" --title "Lyric Studio pour o2switch" \
+            --prerelease --target "$GITHUB_SHA" --title "Africa Lyrics pour o2switch" \
             --notes "Paquet prêt à installer avec lyric-studio/deploy/o2switch/installer.sh, mis à jour à chaque modification du studio."
           gh release upload studio-o2switch "$RUNNER_TEMP/studio-o2switch.tar.gz" --clobber

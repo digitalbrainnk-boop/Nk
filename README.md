@@ -166,7 +166,7 @@ L'offre utilisée (Starter + disque de 1 Go) est payante (quelques dollars par m
 
 N'importe quel serveur avec Node.js (VPS, Railway, Render, Fly.io…). Le dossier `data/` contient la base de données, la session WhatsApp et les médias : il doit être **persistant** et **sauvegardé**. Ne le partage jamais (il donne accès à ton WhatsApp).
 
-## Lyric Studio : vidéos lyriques et karaoké
+## Africa Lyrics : vidéos lyriques et karaoké
 
 Le dossier [`lyric-studio/`](lyric-studio/README.md) contient une application à vendre à tes clients : comptes,
 formules payantes (paiement Mobile Money validé par toi), espace administrateur, et un studio pour transformer une

@@ -433,9 +433,9 @@ test("rendu : tous les effets de chant, animations, fonds, effets et médias", (
     const r = new Renderer();
     for (const t of [0, 5.05, 5.2, 7.3, 11.5]) {
       const { ctx, calls } = fakeCtx();
-      r.draw(ctx, 1080, 1920, t, project, { bg: img, top: img, logo: img, audio, watermark: { text: "Fait avec Lyric Studio" } });
+      r.draw(ctx, 1080, 1920, t, project, { bg: img, top: img, logo: img, audio, watermark: { text: "Fait avec Africa Lyrics" } });
       const texts = calls.filter((c) => c[0] === "fillText").map((c) => c[1]);
-      assert.ok(texts.includes("Fait avec Lyric Studio"), "filigrane");
+      assert.ok(texts.includes("Fait avec Africa Lyrics"), "filigrane");
       if (t === 11.5)
         assert.ok(
           texts.some((x) => /merci/i.test(x)),
