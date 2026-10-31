@@ -201,7 +201,8 @@ export function createApp() {
   const loginLimit = rateLimiter(8, 10 * 60_000);
   const signupLimit = rateLimiter(30, 60 * 60_000);
 
-  app.get("/api/public/config", (req, res) => res.json(publicConfig()));
+  // demucs : la séparation de voix par IA n'est promise sur la page des tarifs que si le serveur sait la faire.
+  app.get("/api/public/config", async (req, res) => res.json({ ...publicConfig(), demucs: await hasDemucs() }));
 
   app.post("/api/auth/signup", express.json(), (req, res) => {
     const b = req.body || {};

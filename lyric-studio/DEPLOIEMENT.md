@@ -15,7 +15,7 @@ npm start
 ```
 
 Ouvre **http://localhost:3500** dans Chrome. **Le premier compte que tu crées devient administrateur** :
-crée le tien en premier. Pour voir l'application comme un client, ouvre une fenêtre de navigation privée
+crée le tien en premier. (En ligne, c'est l'adresse `ADMIN_EMAIL` qui devient administrateur, personne d'autre.) Pour voir l'application comme un client, ouvre une fenêtre de navigation privée
 et crée un deuxième compte.
 
 ### Sur ton téléphone Android (Termux)
@@ -40,15 +40,28 @@ l'icône apparaît avec tes autres applications.
 
 | Solution | Prix indicatif | Pour qui |
 | --- | --- | --- |
-| **Serveur VPS + Docker** (recommandé) | 4 à 8 €/mois (Hetzner CX22, Contabo, OVH VPS…) | Le plus complet : ffmpeg inclus, HTTPS automatique, espace disque à volonté |
-| **Render** | ~7 $/mois + disque | Le plus simple : tout se fait dans le navigateur, sans ligne de commande |
-| o2switch (ton hébergeur actuel) | déjà payé | Possible pour démarrer, mais sans ffmpeg ni séparation de voix par IA, et les envois de gros fichiers sont limités |
+| **o2switch** (ton hébergeur actuel) | déjà payé | **Pour démarrer** : installation en une commande (section 4), domaine et HTTPS inclus |
+| Serveur VPS + Docker | 4 à 8 €/mois (Hetzner, Contabo, OVH…) | Quand tu as beaucoup de clients, ou pour la séparation de voix par IA (Demucs) |
+| Render | ~7 $/mois + disque | Tout dans le navigateur, sans ligne de commande |
 
-Pour la séparation de la voix par IA (Demucs) sur le serveur, prends un VPS avec **8 Go de mémoire**
-au moins (Hetzner CX32 ~8 €/mois). Sans Demucs, le karaoké retire la voix « au centre » et tes clients
-peuvent envoyer leurs propres pistes.
+### Ce que o2switch fait et ne fait pas
 
----
+Le gros du travail (dessin des images, encodage de la vidéo) se fait **dans le téléphone ou l'ordinateur du
+client**, pas sur le serveur : c'est pour cela qu'un hébergement mutualisé comme o2switch suffit.
+
+- ✅ Comptes, formules, paiements, administration, synchronisation par IA (Groq, OpenAI, ElevenLabs, Suno).
+- ✅ Domaine ou sous-domaine et certificat HTTPS gratuits (déjà inclus dans ton offre).
+- ✅ ffmpeg : installé automatiquement dans ton espace par l'installateur (s'il ne peut pas l'être, le studio
+  marche quand même : Chrome sur Android, Windows et Mac exporte le MP4 complet tout seul).
+- ❌ **Séparation de la voix par IA (Demucs)** : trop gourmande pour un hébergement mutualisé. Le karaoké
+  retire alors la voix « au centre » du son, les chansons Suno peuvent être séparées par Suno, et les clients
+  peuvent envoyer leurs propres pistes. La page des tarifs ne promet la séparation par IA que si le serveur la
+  fait.
+- ⚠️ L'espace disque est partagé avec tes autres sites : surveille-le (Administration → Tableau de bord), règle
+  le stockage de chaque formule en conséquence et fais des sauvegardes (`studio sauvegarde`).
+
+Quand le nombre de clients grandit, tu peux passer à un VPS sans rien perdre (sauvegarde → restauration du
+dossier des données).
 
 ## 3. Acheter le nom de domaine
 
@@ -59,11 +72,50 @@ peuvent envoyer leurs propres pistes.
    - un enregistrement **A** (ou CNAME vers `@`) : nom `www` → la même adresse.
 3. Attends quelques minutes (parfois jusqu'à quelques heures) que le domaine pointe vers le serveur.
 
+Chez o2switch : pas d'adresse IP à recopier, tout se fait dans cPanel (étape 4).
 Sur Render : Settings → **Custom Domains** → ajoute ton domaine et suis les indications DNS de Render.
 
 ---
 
-## 4. Installer sur un serveur VPS (Docker)
+## 4. Installer chez o2switch
+
+1. **Adresse du studio** — dans cPanel :
+   - avec ton domaine actuel : **Domaines** → crée un sous-domaine, par exemple `studio.tondomaine.com` ;
+   - avec un nouveau domaine acheté ailleurs : **Domaines** → ajoute-le, puis chez le registraire remplace les
+     serveurs DNS par ceux d'o2switch (indiqués dans ton espace client) ; un domaine pris chez o2switch est
+     prêt tout de suite.
+   - Le certificat HTTPS est créé automatiquement (cPanel → **Statut SSL/TLS** pour vérifier).
+2. **Installation** — cPanel → **Terminal**, colle cette ligne puis Entrée :
+   ```bash
+   curl -fsSL https://raw.githubusercontent.com/digitalbrainnk-boop/Nk/ccr-78cf5167-8sfpbb/lyric-studio/deploy/o2switch/installer.sh | bash
+   ```
+   Il demande **ton adresse e-mail** (elle seule deviendra administrateur) et **l'adresse du studio**
+   (`studio.tondomaine.com`).
+3. **Démarrage** — cPanel → **Setup Node.js App** → **Create Application** :
+   - Node.js version : **22** (la plus récente proposée) ;
+   - Application mode : Production ;
+   - Application root : `lyric-studio` ;
+   - Application URL : ton domaine ou sous-domaine ;
+   - Application startup file : `app.js` ;
+   - puis **Create** (pas besoin de « Run NPM Install »).
+4. Ouvre `https://studio.tondomaine.com`, **inscris-toi avec ton adresse e-mail** : tu es administrateur.
+
+Ensuite, dans un nouveau Terminal :
+
+| Commande | Effet |
+| --- | --- |
+| `studio maj` | installer la dernière version |
+| `studio journal` | voir ce que fait le studio (en cas de problème) |
+| `studio relancer` | redémarrer |
+| `studio retour` | revenir à la version précédente |
+| `studio sauvegarde` | copier comptes, projets et vidéos dans `~/lyric-studio-sauvegardes` |
+
+Les réglages de démarrage sont dans `~/lyric-studio/.env` et les données dans `~/lyric-studio-donnees` : une
+mise à jour ne touche ni à l'un ni à l'autre.
+
+---
+
+## 5. Installer sur un serveur VPS (Docker)
 
 Sur le serveur (Ubuntu ou Debian), une seule fois :
 
@@ -98,7 +150,7 @@ Renseigne `ADMIN_EMAIL` (et la clé Groq si tu veux), valide. Ajoute ensuite ton
 
 ---
 
-## 5. Régler ton site (Administration)
+## 6. Régler ton site (Administration)
 
 Une fois connecté avec le compte administrateur :
 
@@ -113,7 +165,7 @@ Une fois connecté avec le compte administrateur :
 
 ---
 
-## 6. L'application Android
+## 7. L'application Android
 
 ### a) Installation directe (déjà prête)
 
@@ -123,7 +175,7 @@ Installer l'application). L'application apparaît dans la liste des applications
 
 ### b) Fichier APK et Play Store
 
-Le site doit d'abord être en ligne avec son nom de domaine en HTTPS (étapes 3 et 4).
+Le site doit d'abord être en ligne avec son nom de domaine en HTTPS (étapes 3 et 4, ou 3 et 5).
 
 1. Va sur **https://www.pwabuilder.com**, entre `https://tondomaine.com`, puis **Package for stores →
    Android**.
@@ -150,10 +202,10 @@ bubblewrap build
 
 ---
 
-## 7. Coûts à prévoir
+## 8. Coûts à prévoir
 
 - Domaine : ~10 €/an.
-- Serveur : 4 à 8 €/mois (VPS) ou ~7 $/mois + disque (Render).
+- Serveur : rien de plus chez o2switch (déjà payé) ; sinon 4 à 8 €/mois (VPS) ou ~7 $/mois + disque (Render).
 - IA de synchronisation : Groq a une offre gratuite ; ensuite quelques centimes par heure d'audio.
   Les quotas des formules limitent la dépense par client.
 - Play Store : 25 $ une seule fois (facultatif).

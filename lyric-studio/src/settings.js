@@ -63,9 +63,14 @@ if (fs.existsSync(OLD)) {
   } catch {}
 }
 
+// Relu toutes les 2 secondes : une autre copie du serveur a peut-être enregistré des réglages.
 let cache = null;
+let cacheAt = 0;
 function stored() {
-  if (!cache) cache = Object.fromEntries(getStmt.all().map((r) => [r.key, JSON.parse(r.value)]));
+  if (!cache || Date.now() - cacheAt > 2000) {
+    cache = Object.fromEntries(getStmt.all().map((r) => [r.key, JSON.parse(r.value)]));
+    cacheAt = Date.now();
+  }
   return cache;
 }
 

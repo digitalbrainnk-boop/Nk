@@ -31,7 +31,7 @@ export function upgradePrompt(message) {
       h(
         "p",
         { class: "hint" },
-        "Les formules payantes enlèvent le filigrane, débloquent la Full HD et la 4K, la voix séparée par IA et plus de minutes d'IA.",
+        "Les formules payantes enlèvent le filigrane, débloquent la Full HD et la 4K, plus de projets et plus de minutes d'IA.",
       ),
     ),
     actions: [

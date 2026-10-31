@@ -94,7 +94,7 @@ const FEATURES = [
     "Synchronisation automatique",
     "L'IA écoute ta chanson et cale chaque mot au bon moment. Tu peux tout retoucher à la main, au doigt près.",
   ],
-  ["🎶", "Karaoké sans la voix", "La voix est retirée par IA pour chanter par-dessus, avec une petite voix guide si tu veux."],
+  ["🎶", "Karaoké sans la voix", "La voix est retirée automatiquement pour chanter par-dessus, avec une petite voix guide si tu veux."],
   ["🎨", "Tout se personnalise", "70 polices, couleurs, dégradés, lueur, bandeau, 10 animations, particules, visualiseur, ton logo…"],
   ["👥", "Duos", "Chaque chanteur a sa couleur, son côté de l'écran et son nom."],
   ["📱", "Sur ton téléphone", "Installe l'application sur Android et crée tes vidéos où tu veux."],
@@ -113,7 +113,7 @@ export function planCards(onPick) {
         `${p.exportsPerMonth} exports par mois`,
         `Jusqu'à ${p.maxResolution}`,
         p.watermark ? "Avec filigrane" : "Sans filigrane",
-        p.stems ? "Voix séparée par IA" : "Voix retirée simple",
+        p.stems && session.config?.demucs ? "Karaoké : voix séparée par IA" : "Karaoké : voix retirée automatiquement",
         `Chansons jusqu'à ${p.maxMinutes} min`,
       ];
       return h(

@@ -1,0 +1,44 @@
+# Lyric Studio : prépare le paquet prêt à installer chez o2switch et le publie ici :
+#   https://github.com/digitalbrainnk-boop/Nk/releases/download/studio-o2switch/studio-o2switch.tar.gz
+# Le serveur l'installe avec lyric-studio/deploy/o2switch/installer.sh (commande « studio maj »).
+name: Lyric Studio — paquet o2switch
+
+on:
+  push:
+    branches: [ccr-78cf5167-8sfpbb]
+    paths: ["lyric-studio/**", ".github/workflows/studio-o2switch.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: studio-o2switch
+  cancel-in-progress: true
+
+jobs:
+  paquet:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: lyric-studio
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: lyric-studio/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - name: Assemblage
+        run: bash deploy/o2switch/paquet.sh "$RUNNER_TEMP/studio-o2switch.tar.gz"
+      - name: Publication
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release view studio-o2switch >/dev/null 2>&1 || gh release create studio-o2switch \
+            --prerelease --target "$GITHUB_SHA" --title "Lyric Studio pour o2switch" \
+            --notes "Paquet prêt à installer avec lyric-studio/deploy/o2switch/installer.sh, mis à jour à chaque modification du studio."
+          gh release upload studio-o2switch "$RUNNER_TEMP/studio-o2switch.tar.gz" --clobber

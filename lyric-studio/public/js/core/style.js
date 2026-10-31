@@ -433,7 +433,7 @@ export const DEFAULT_PLANS = {
     stems: true,
     suno: false,
     storageMb: 5000,
-    features: "Sans filigrane · Full HD 1080p · Voix séparée par IA · Tous les styles",
+    features: "Sans filigrane · Full HD 1080p · 2 h d'IA par mois · Tous les styles",
   },
   studio: {
     name: "Studio",
@@ -448,6 +448,6 @@ export const DEFAULT_PLANS = {
     stems: true,
     suno: true,
     storageMb: 20000,
-    features: "Tout Pro · 4K · Import Suno · Gros volumes",
+    features: "Tout Pro · 4K · 10 h d'IA par mois · Gros volumes",
   },
 };

@@ -8,6 +8,8 @@ récupère les paroles, les **synchronise mot par mot**, laisse **tout personnal
 - **Tester tout de suite** : `cd lyric-studio && npm install && npm start`, puis http://localhost:3500
   (le premier compte créé devient administrateur).
 - **Mettre en ligne avec ton nom de domaine, publier l'application Android** : voir [DEPLOIEMENT.md](DEPLOIEMENT.md).
+  Chez **o2switch**, une seule commande dans le Terminal de cPanel installe tout (le paquet est préparé
+  automatiquement par GitHub).
 
 Il faut **Node.js 22.13 ou plus récent**. Facultatif : **ffmpeg** (vidéos MKV/MOV, finition des exports) et
 **Demucs** (`pip install demucs`, séparation de la voix par IA).

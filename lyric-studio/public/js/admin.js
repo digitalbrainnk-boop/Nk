@@ -350,7 +350,7 @@ const PLAN_FIELDS = [
   ["storageMb", "Stockage (Mo)", "number"],
   ["maxResolution", "Qualité maximale", "res"],
   ["watermark", "Filigrane sur les vidéos", "bool"],
-  ["stems", "Voix séparée par IA", "bool"],
+  ["stems", "Voix séparée par IA (serveur avec Demucs)", "bool"],
   ["suno", "Import Suno (Kie.ai)", "bool"],
 ];
 

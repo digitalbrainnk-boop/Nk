@@ -54,8 +54,12 @@ export function createUser({ email, password, name = "", phone = "" }) {
   if (!validEmail(email)) throw new HttpError(400, "Adresse e-mail invalide.");
   checkNewPassword(password);
   if (getUserWithPassword(email)) throw new HttpError(409, "Un compte existe déjà avec cette adresse : connecte-toi.");
-  const first = countUsers() === 0;
-  const admin = first || (process.env.ADMIN_EMAIL && process.env.ADMIN_EMAIL.toLowerCase() === email);
+  // Avec ADMIN_EMAIL (site en ligne), seule cette adresse devient administrateur : un inconnu qui
+  // s'inscrirait avant toi ne prend pas la main. Sans elle (essai en local), c'est le premier compte.
+  const adminEmail = String(process.env.ADMIN_EMAIL || "")
+    .trim()
+    .toLowerCase();
+  const admin = adminEmail ? adminEmail === email : countUsers() === 0;
   const id = newId();
   db.prepare("INSERT INTO users (id, email, name, phone, password, role, plan, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").run(
     id,

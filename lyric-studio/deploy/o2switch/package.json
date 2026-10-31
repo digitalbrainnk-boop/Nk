@@ -1,0 +1,6 @@
+{
+  "name": "lyric-studio-o2switch",
+  "private": true,
+  "description": "Démarrage de Lyric Studio chez o2switch (le code est dans « actuelle »)",
+  "type": "commonjs"
+}

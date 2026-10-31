@@ -52,6 +52,7 @@ function client() {
     if (set) cookie = set.split(";")[0].endsWith("=") ? "" : set.split(";")[0];
     return r;
   };
+  call.cookie = () => cookie;
   call.json = async (p, opts) => {
     const r = await call(p, opts);
     const data = await r.json().catch(() => null);
@@ -513,4 +514,70 @@ test("suppression du compte : projets et fichiers effacés", async () => {
   assert.equal((await c.json("/api/me", { method: "DELETE", json: { password: "Temp-Pass-1" } })).status, 200);
   assert.equal(fs.existsSync(path.join(DATA, "projects", p.id)), false);
   assert.equal((await c.json("/api/me")).status, 401);
+});
+
+// Chez un hébergeur (Passenger, o2switch), plusieurs copies du serveur partagent les mêmes données.
+import { spawn } from "node:child_process";
+
+async function startCopy(env) {
+  const port = 20000 + Math.floor(Math.random() * 20000);
+  const child = spawn(process.execPath, ["--disable-warning=ExperimentalWarning", "src/server.js"], {
+    env: { ...process.env, PORT: String(port), HOST: "127.0.0.1", ...env },
+    stdio: "ignore",
+  });
+  const base = `http://127.0.0.1:${port}`;
+  for (let i = 0; i < 100; i++) {
+    try {
+      if ((await realFetch(`${base}/health`)).ok) break;
+    } catch {}
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  return { child, base };
+}
+
+test("deux copies du serveur : une tâche lancée sur l'une se suit sur l'autre", { skip: !hasFfmpeg && "ffmpeg absent" }, async () => {
+  const copy = await startCopy({ DATA_DIR: DATA });
+  try {
+    const p = (await alice.json("/api/projects")).data[0];
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ls-vid-"));
+    const vid = path.join(tmp, "v.mp4");
+    spawnSync("ffmpeg", ["-y", "-f", "lavfi", "-i", "color=c=red:s=320x240:d=2", "-c:v", "libx264", "-pix_fmt", "yuv420p", vid]);
+    const form = new FormData();
+    form.append("video", new Blob([fs.readFileSync(vid)], { type: "video/mp4" }), "v.mp4");
+    form.append("audio", new Blob([sine(2)], { type: "audio/wav" }), "a.wav");
+    form.append("duration", "2");
+    const { job } = (await alice.json(`/api/projects/${p.id}/exports`, { method: "POST", form })).data;
+    // Le navigateur interroge l'autre copie, avec le même cookie.
+    let state;
+    for (let i = 0; i < 100; i++) {
+      const r = await realFetch(`${copy.base}/api/jobs/${job.id}`, { headers: { cookie: alice.cookie() } });
+      assert.equal(r.status, 200, "la copie connaît la session et la tâche");
+      state = await r.json();
+      if (state.state !== "running") break;
+      await new Promise((res) => setTimeout(res, 100));
+    }
+    assert.equal(state.state, "done", state.error);
+    assert.match(state.result.file, /^export-/);
+    fs.rmSync(tmp, { recursive: true, force: true });
+  } finally {
+    copy.child.kill();
+  }
+});
+
+test("site en ligne avec ADMIN_EMAIL : un inconnu inscrit en premier ne devient pas administrateur", async () => {
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), "ls-admin-"));
+  const copy = await startCopy({ DATA_DIR: data, ADMIN_EMAIL: "Chef@Studio.fr" });
+  try {
+    const signup = (email) =>
+      realFetch(`${copy.base}/api/auth/signup`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email, password: "Mot-De-Passe-1", accept: true }),
+      }).then((r) => r.json());
+    assert.equal((await signup("intrus@test.fr")).user.role, "user");
+    assert.equal((await signup("chef@studio.fr")).user.role, "admin");
+  } finally {
+    copy.child.kill();
+    fs.rmSync(data, { recursive: true, force: true });
+  }
 });
