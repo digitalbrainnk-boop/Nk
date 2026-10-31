@@ -190,7 +190,7 @@ function deleteAccount() {
             await api("/api/me", { method: "DELETE", json: { password: pass.value } });
             close();
             session.me = null;
-            location.hash = "#/";
+            location.hash = "#accueil";
             location.reload();
           } catch (e) {
             toast(e.message, "error");

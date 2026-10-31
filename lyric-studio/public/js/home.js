@@ -107,7 +107,7 @@ export async function renderHome(root, nav) {
     bar.el.hidden = false;
     try {
       const p = await upload("/api/projects", form, (x) => bar.set(x * 0.95, x < 1 ? `Envoi… ${Math.round(x * 100)} %` : "Préparation…"));
-      location.hash = `#/p/${p.id}`;
+      location.hash = `#p-${p.id}`;
     } catch (e) {
       if (e.upgrade) upgradePrompt(e.message);
       else toast(e.message, "error", 6000);
@@ -132,7 +132,7 @@ export async function renderHome(root, nav) {
             method: "POST",
             json: { taskId: taskId.value.trim(), audioId: audioId.value.trim() },
           });
-          location.hash = `#/p/${p.id}`;
+          location.hash = `#p-${p.id}`;
         } catch (e) {
           if (e.upgrade) upgradePrompt(e.message);
           else toast(e.message, "error", 7000);
@@ -228,7 +228,7 @@ export async function renderHome(root, nav) {
         { class: "row gap wrap" },
         h("h2", {}, `Bonjour${me.user.name ? ` ${me.user.name}` : ""} 👋`),
         h("span", { class: `badge plan-${me.plan.id}` }, `Formule ${me.plan.name}`),
-        me.user.role !== "admin" && me.plan.id === "free" && h("a", { class: "btn primary small", href: "#/compte" }, "Passer à Pro"),
+        me.user.role !== "admin" && me.plan.id === "free" && h("a", { class: "btn primary small", href: "#compte" }, "Passer à Pro"),
       ),
       usageBars(),
     ),
@@ -255,13 +255,13 @@ async function loadProjects(grid) {
         { class: "project-card" },
         h(
           "a",
-          { href: `#/p/${p.id}`, class: `thumb aspect-${p.aspect.replace(":", "-")}` },
+          { href: `#p-${p.id}`, class: `thumb aspect-${p.aspect.replace(":", "-")}` },
           p.thumb ? h("img", { src: p.thumb, alt: "", loading: "lazy" }) : h("span", { class: "thumb-ph" }, "🎵"),
         ),
         h(
           "div",
           { class: "project-info" },
-          h("a", { href: `#/p/${p.id}`, class: "project-title" }, p.title || "Sans titre"),
+          h("a", { href: `#p-${p.id}`, class: "project-title" }, p.title || "Sans titre"),
           h("small", {}, [p.artist, p.duration ? fmtTime(p.duration, 0) : null, `${p.lines} lignes`].filter(Boolean).join(" · ")),
           h(
             "div",

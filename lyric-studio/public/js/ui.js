@@ -132,3 +132,47 @@ export function progressBar() {
 export function field(label, control, hint) {
   return h("label", { class: "field" }, h("span", { class: "field-label" }, label), control, hint && h("small", { class: "hint" }, hint));
 }
+
+/** Stockage du navigateur qui ne casse jamais (navigation privée, page intégrée…). */
+export const safeStorage = {
+  get(key) {
+    try {
+      return sessionStorage.getItem(key);
+    } catch {
+      return null;
+    }
+  },
+  set(key, value) {
+    try {
+      sessionStorage.setItem(key, value);
+    } catch {}
+  },
+  remove(key) {
+    try {
+      sessionStorage.removeItem(key);
+    } catch {}
+  },
+};
+
+/** Demande un texte dans une fenêtre du site (les fenêtres du navigateur sont bloquées dans certaines vues). */
+export function promptBox(title, { placeholder = "", value = "", ok = "OK", hint = "" } = {}) {
+  return new Promise((resolve) => {
+    let answered = false;
+    const input = h("input", { type: "text", placeholder, value });
+    const done = (close) => {
+      answered = true;
+      close();
+      resolve(input.value.trim() || null);
+    };
+    const dlg = modal({
+      title,
+      body: h("div", {}, hint && h("p", { class: "hint" }, hint), input),
+      onClose: () => !answered && resolve(null),
+      actions: [
+        { label: "Annuler", onClick: (close) => close() },
+        { label: ok, primary: true, onClick: done },
+      ],
+    });
+    input.addEventListener("keydown", (e) => e.key === "Enter" && done(dlg.close));
+  });
+}

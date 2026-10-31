@@ -1,6 +1,7 @@
 // Le studio : aperçu, transport, paroles, frise, style, synchronisation, son et export d'un projet.
 import { h, toast, modal, fmtTime, fmtSize, debounce, progressBar, field, confirmBox } from "./ui.js";
-import { api, upload, waitJob, mediaUrl } from "./api.js";
+import { api, upload, waitJob, downloadUrl } from "./api.js";
+import { downloadFile } from "./download.js";
 import { Assets } from "./assets.js";
 import { Renderer, needsAudio } from "./core/render.js";
 import { normalizeStyle, frameSize, RESOLUTIONS, RESOLUTION_ORDER } from "./core/style.js";
@@ -84,7 +85,7 @@ export class Studio {
     const topbar = h(
       "header",
       { class: "topbar" },
-      h("a", { class: "btn ghost", href: "#/" }, "← Projets"),
+      h("a", { class: "btn ghost", href: "#accueil" }, "← Projets"),
       this.titleInput,
       h(
         "div",
@@ -854,7 +855,7 @@ export class Studio {
       const how =
         plan.kind === "realtime"
           ? "Enregistrement en temps réel"
-          : `MP4 ${plan.video.mux === "avc" ? "H.264" : plan.video.mux.toUpperCase()}${plan.audio ? " + son AAC" : ""}, calculé dans ton navigateur${plan.server.audio || plan.server.transcode ? ", terminé par le serveur (ffmpeg)" : ""}`;
+          : `MP4 ${plan.video.mux === "avc" ? "H.264" : plan.video.mux.toUpperCase()}${plan.audio ? ` + son ${plan.audio.mux === "opus" ? "Opus" : "AAC"}` : ""}, calculé dans ton navigateur${plan.server.audio || plan.server.transcode ? ", terminé par le serveur (ffmpeg)" : ""}`;
       planBox.replaceChildren(h("span", {}, `⚙ ${how}`));
       if (plan.warning) planBox.append(h("p", { class: "hint warn" }, plan.warning));
     };
@@ -867,7 +868,18 @@ export class Studio {
           h(
             "div",
             { class: "export-item" },
-            h("a", { href: `${mediaUrl(p, x.file)}?dl=1`, download: "" }, `⬇ ${x.label || "Vidéo"}`),
+            h(
+              "button",
+              {
+                class: "btn small",
+                onclick: () =>
+                  downloadFile({
+                    url: downloadUrl(p, x.file),
+                    filename: `${(p.title || "video").replace(/[\\/:*?"<>|]+/g, "").trim() || "video"} - ${x.label || "export"}.mp4`,
+                  }),
+              },
+              `⬇ ${x.label || "Vidéo"}`,
+            ),
             h("small", {}, `${new Date(x.at).toLocaleString("fr-FR")} · ${fmtSize(x.size)}`),
             h(
               "button",
@@ -1013,7 +1025,7 @@ export class Studio {
           signal: controller.signal,
         });
         const done = r.job ? await waitJob(r.job, (j) => bar.set(0.9 + j.progress * 0.1, j.message), { signal: controller.signal }) : r;
-        url = `${done.url}?dl=1`;
+        url = downloadUrl(p, done.file);
         blob = null;
       } else {
         url = URL.createObjectURL(blob);
@@ -1035,7 +1047,8 @@ export class Studio {
       bar.set(1, "Terminé ✓");
       dlg.close();
       const size = blob ? ` (${fmtSize(blob.size)})` : "";
-      const a = h("a", { class: "btn primary big", href: url, download: name }, `⬇ Télécharger la vidéo${size}`);
+      const save = () => downloadFile({ blob, url, filename: name });
+      const a = h("button", { class: "btn primary big", onclick: save }, `⬇ Télécharger la vidéo${size}`);
       modal({
         title: "Vidéo prête 🎉",
         body: h(
@@ -1047,7 +1060,8 @@ export class Studio {
         ),
         actions: [{ label: "Fermer", onClick: (c) => c() }],
       });
-      a.click();
+      // Sur le site, le téléchargement part tout seul ; ailleurs (démonstration), le bouton le lance.
+      if (!window.claude?.use) save();
     } catch (e) {
       dlg.close();
       if (e.name === "AbortError") return toast("Export annulé.", "info");

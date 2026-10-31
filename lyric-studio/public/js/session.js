@@ -19,6 +19,8 @@ export async function loadMe() {
 
 export const isAdmin = () => session.me?.user.role === "admin";
 export const appName = () => session.config?.app_name || "Africa Lyrics";
+/** Icône du site (la version de démonstration la fournit elle-même). */
+export const iconUrl = () => window.AFRICA_LYRICS_ICON || "/icon.svg";
 
 /** Une limite de la formule est atteinte : on explique et on propose de passer à la formule supérieure. */
 export function upgradePrompt(message) {
@@ -36,7 +38,7 @@ export function upgradePrompt(message) {
     ),
     actions: [
       { label: "Plus tard", onClick: (c) => c() },
-      { label: "Voir les formules", primary: true, onClick: (c) => (c(), (location.hash = "#/compte")) },
+      { label: "Voir les formules", primary: true, onClick: (c) => (c(), (location.hash = "#compte")) },
     ],
   });
 }

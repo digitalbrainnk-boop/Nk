@@ -16,8 +16,11 @@ window.addEventListener("appinstalled", () => {
   for (const b of buttons) b.hidden = true;
 });
 
+// Version de démonstration (page intégrée) : pas d'installation possible.
+const demo = () => !!window.AFRICA_LYRICS_DEMO;
+
 export function registerServiceWorker() {
-  if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
+  if (!demo() && "serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
 }
 
 function explain() {
@@ -65,7 +68,7 @@ export function installButton(size = "") {
   );
   // Sur ordinateur sans invitation du navigateur, le bouton n'apparaît pas ; sur téléphone on explique.
   const mobile = /android|iphone|ipad|ipod/i.test(navigator.userAgent);
-  b.hidden = standalone() || (!deferred && !mobile);
+  b.hidden = demo() || standalone() || (!deferred && !mobile);
   buttons.add(b);
   return b;
 }

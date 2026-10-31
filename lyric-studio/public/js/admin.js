@@ -1,6 +1,6 @@
 // Administration : chiffres, demandes d'abonnement à valider, clients, formules et prix,
 // réglages du site (nom, contact, paiement, conditions) et clés des services d'IA.
-import { h, toast, modal, field, fmtSize, confirmBox } from "./ui.js";
+import { h, toast, modal, field, fmtSize, confirmBox, promptBox, safeStorage } from "./ui.js";
 import { api } from "./api.js";
 import { session, loadConfig, fmtDate } from "./session.js";
 
@@ -13,7 +13,7 @@ const TABS = [
 ];
 
 export async function renderAdmin(root, nav) {
-  let tab = sessionStorage.getItem("admin-tab") || "stats";
+  let tab = safeStorage.get("admin-tab") || "stats";
   const body = h("div", { class: "admin-body" });
   const tabs = h(
     "div",
@@ -25,9 +25,7 @@ export async function renderAdmin(root, nav) {
           class: `tab${id === tab ? " on" : ""}`,
           onclick: (e) => {
             tab = id;
-            try {
-              sessionStorage.setItem("admin-tab", id);
-            } catch {}
+            safeStorage.set("admin-tab", id);
             tabs.querySelectorAll(".tab").forEach((b) => b.classList.toggle("on", b === e.target));
             show();
           },
@@ -408,8 +406,11 @@ async function plansView(body) {
           "button",
           {
             class: "btn",
-            onclick: () => {
-              const id = prompt("Identifiant de la nouvelle formule (lettres minuscules, ex. : business) :");
+            onclick: async () => {
+              const id = await promptBox("Nouvelle formule", {
+                placeholder: "business",
+                hint: "Identifiant en lettres minuscules, sans espace.",
+              });
               if (!id || !/^[a-z][a-z0-9_-]{1,20}$/.test(id) || plans[id]) return toast("Identifiant invalide ou déjà pris.", "error");
               plans[id] = { ...plans.pro, name: id[0].toUpperCase() + id.slice(1) };
               render();

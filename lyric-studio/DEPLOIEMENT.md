@@ -188,7 +188,7 @@ Le site doit d'abord être en ligne avec son nom de domaine en HTTPS (étapes 3 
    l'application affiche une barre d'adresse en haut.
 4. Play Store : crée un compte développeur Google Play (25 $ une seule fois), crée l'application, envoie
    le fichier .aab, ajoute des captures d'écran et l'adresse de la politique de confidentialité :
-   `https://tondomaine.com/#/confidentialite`.
+   `https://tondomaine.com/#confidentialite`.
 5. Colle le lien du Play Store (ou de l'APK) dans **Lien de téléchargement** : un bouton
    « Télécharger sur Android » apparaît sur la page d'accueil.
 

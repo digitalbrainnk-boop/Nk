@@ -71,3 +71,13 @@ export async function waitJob(job, onProgress, { signal } = {}) {
 }
 
 export const mediaUrl = (project, file) => (file ? `/media/${project.id}/${encodeURIComponent(file)}` : null);
+
+/** Adresse qui télécharge le fichier (au lieu de l'afficher). */
+export const downloadUrl = (project, file) => `${mediaUrl(project, file)}?dl=1`;
+
+/** Contenu d'un fichier du projet (son, police…). */
+export async function fetchMedia(url) {
+  const res = await fetch(url);
+  if (!res.ok) throw new ApiError(`Fichier introuvable (${res.status}).`, res.status);
+  return res.arrayBuffer();
+}

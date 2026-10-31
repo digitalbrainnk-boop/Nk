@@ -1,6 +1,6 @@
 // Panneau des paroles : texte brut (coller, corriger) et liste des lignes (mots cliquables,
 // découpe, fusion, chanteur, suppression), avec le mot chanté surligné pendant la lecture.
-import { h, fmtTime, toast } from "./ui.js";
+import { h, fmtTime, toast, promptBox } from "./ui.js";
 import { parseLyrics, serializeLyrics, splitLongLines, splitLineAt, mergeWithNext, tokenize, uid, cloneLines } from "./core/lyrics.js";
 import { retimeAfterEdit, shiftAll, distributeWords } from "./core/align.js";
 import { lineSpan } from "./core/timing.js";
@@ -295,8 +295,8 @@ export class LyricsPanel {
     this.studio.setLines(lines, "Ligne supprimée");
   }
 
-  addLine() {
-    const text = prompt("Texte de la nouvelle ligne :");
+  async addLine() {
+    const text = await promptBox("Nouvelle ligne", { placeholder: "Texte de la ligne", ok: "Ajouter" });
     if (!text?.trim()) return;
     const last = this.p.lines.at(-1);
     const words = tokenize(text.trim()).map((t) => ({ id: uid("w"), text: t, start: null, end: null }));

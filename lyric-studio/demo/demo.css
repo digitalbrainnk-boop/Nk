@@ -1,0 +1,52 @@
+/* Version de démonstration */
+#demo-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px 12px;
+  flex-wrap: wrap;
+  padding: 6px max(16px, env(safe-area-inset-right, 0px)) 6px max(16px, env(safe-area-inset-left, 0px));
+  background: #2a1a3a;
+  border-bottom: 1px solid #4a2d63;
+  color: var(--text);
+  font-size: 12.5px;
+}
+.demo-tag {
+  background: var(--gold);
+  color: #1a1200;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  border-radius: 6px;
+  padding: 2px 7px;
+}
+.demo-text {
+  flex: 1 1 260px;
+  min-width: 0;
+  color: #d9cfe6;
+}
+.demo-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.demo-actions button {
+  border: 1px solid #6b4a8a;
+  background: #3a2550;
+  color: var(--text);
+  border-radius: 8px;
+  padding: 5px 10px;
+  font: inherit;
+  cursor: pointer;
+}
+.demo-actions button:hover,
+.demo-actions button:focus-visible {
+  background: var(--accent2);
+  border-color: var(--accent2);
+}
+.studio {
+  height: calc(100dvh - var(--demo-bar, 0px) - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+}
+.site,
+.app-page,
+.login-wrap {
+  min-height: calc(100vh - var(--demo-bar, 0px));
+}

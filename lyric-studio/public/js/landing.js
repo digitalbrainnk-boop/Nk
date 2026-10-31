@@ -1,7 +1,7 @@
 // Pages publiques : accueil (présentation, démo animée, tarifs), inscription, connexion, conditions.
 import { h, toast, modal } from "./ui.js";
 import { api } from "./api.js";
-import { session, loadMe, appName, whatsappLink } from "./session.js";
+import { session, loadMe, appName, whatsappLink, iconUrl } from "./session.js";
 import { Renderer } from "./core/render.js";
 import { mergeStyle, defaultStyle, frameSize } from "./core/style.js";
 import { parseLyrics } from "./core/lyrics.js";
@@ -12,14 +12,14 @@ export function topNav({ cta = true } = {}) {
   return h(
     "header",
     { class: "site-nav" },
-    h("a", { class: "brand", href: "#/" }, h("img", { src: "/icon.svg", alt: "", width: 30, height: 30 }), appName()),
+    h("a", { class: "brand", href: "#accueil" }, h("img", { src: iconUrl(), alt: "", width: 30, height: 30 }), appName()),
     h(
       "nav",
       {},
-      h("a", { href: "#/#fonctions" }, "Fonctions"),
-      h("a", { href: "#/tarifs" }, "Tarifs"),
-      h("a", { href: "#/connexion" }, "Connexion"),
-      cta && h("a", { class: "btn primary small", href: "#/inscription" }, "Essai gratuit"),
+      h("a", { href: "#fonctions" }, "Fonctions"),
+      h("a", { href: "#tarifs" }, "Tarifs"),
+      h("a", { href: "#connexion" }, "Connexion"),
+      cta && h("a", { class: "btn primary small", href: "#inscription" }, "Essai gratuit"),
     ),
   );
 }
@@ -36,8 +36,8 @@ export function footer() {
       { class: "footer-links" },
       wa && h("a", { href: wa, target: "_blank", rel: "noopener" }, "💬 WhatsApp"),
       c.support_email && h("a", { href: `mailto:${c.support_email}` }, `✉ ${c.support_email}`),
-      h("a", { href: "#/cgu" }, "Conditions d'utilisation"),
-      h("a", { href: "#/confidentialite" }, "Confidentialité"),
+      h("a", { href: "#cgu" }, "Conditions d'utilisation"),
+      h("a", { href: "#confidentialite" }, "Confidentialité"),
     ),
     h("small", { class: "hint" }, `© ${new Date().getFullYear()} ${appName()}`),
   );
@@ -156,8 +156,8 @@ export function renderLanding(root) {
       h(
         "div",
         { class: "row gap wrap" },
-        h("a", { class: "btn primary big", href: "#/inscription" }, "Créer mon compte gratuit"),
-        h("a", { class: "btn big", href: "#/connexion" }, "J'ai déjà un compte"),
+        h("a", { class: "btn primary big", href: "#inscription" }, "Créer mon compte gratuit"),
+        h("a", { class: "btn big", href: "#connexion" }, "J'ai déjà un compte"),
       ),
       installButton("big"),
       c.android_app_url &&
@@ -204,10 +204,9 @@ export function renderLanding(root) {
     "section",
     { class: "pricing", id: "tarifs" },
     h("h2", {}, "Tarifs"),
-    planCards(() => (location.hash = "#/inscription")),
+    planCards(() => (location.hash = "#inscription")),
   );
   root.replaceChildren(h("div", { class: "site" }, topNav(), hero, features, steps, pricing, footer()));
-  if (location.hash.includes("#fonctions")) document.getElementById("fonctions")?.scrollIntoView();
 }
 
 export function renderPricing(root) {
@@ -221,7 +220,7 @@ export function renderPricing(root) {
         { class: "pricing page" },
         h("h1", {}, "Tarifs"),
         h("p", { class: "lead" }, "Commence gratuitement, passe à une formule payante quand tu veux. Paiement par Mobile Money."),
-        planCards((id) => (location.hash = session.me ? "#/compte" : "#/inscription")),
+        planCards((id) => (location.hash = session.me ? "#compte" : "#inscription")),
       ),
       footer(),
     ),
@@ -273,7 +272,7 @@ export function renderLogin(root, onDone) {
         h("button", { class: "btn ghost small", type: "button", onclick: forgot }, "Mot de passe oublié ?"),
       ],
     },
-    alt: h("p", { class: "hint" }, "Pas encore de compte ? ", h("a", { href: "#/inscription" }, "Créer un compte gratuit")),
+    alt: h("p", { class: "hint" }, "Pas encore de compte ? ", h("a", { href: "#inscription" }, "Créer un compte gratuit")),
   });
 }
 
@@ -367,9 +366,9 @@ export function renderSignup(root, onDone) {
             "span",
             {},
             "J'accepte les ",
-            h("a", { href: "#/cgu", target: "_blank" }, "conditions d'utilisation"),
+            h("a", { href: "#cgu", target: "_blank" }, "conditions d'utilisation"),
             " et la ",
-            h("a", { href: "#/confidentialite", target: "_blank" }, "politique de confidentialité"),
+            h("a", { href: "#confidentialite", target: "_blank" }, "politique de confidentialité"),
             ".",
           ),
         ),
@@ -377,7 +376,7 @@ export function renderSignup(root, onDone) {
         btn,
       ],
     },
-    alt: h("p", { class: "hint" }, "Déjà un compte ? ", h("a", { href: "#/connexion" }, "Se connecter")),
+    alt: h("p", { class: "hint" }, "Déjà un compte ? ", h("a", { href: "#connexion" }, "Se connecter")),
   });
 }
 

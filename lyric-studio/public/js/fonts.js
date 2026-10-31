@@ -1,6 +1,6 @@
 // Chargement des polices : Google Fonts (liste du studio), polices de l'ordinateur, polices envoyées.
 import { FONTS, SYSTEM_FONTS } from "./core/style.js";
-import { mediaUrl } from "./api.js";
+import { mediaUrl, fetchMedia } from "./api.js";
 
 const links = new Map(); // famille -> promesse de chargement de la feuille de style
 const custom = new Set();
@@ -32,7 +32,8 @@ export async function ensureFont(style, project) {
   const own = (style.customFonts || []).find((f) => f.family === family);
   if (own && !custom.has(family)) {
     try {
-      const face = new FontFace(family, `url(${mediaUrl(project, own.file)})`);
+      // Police lue en mémoire (pas d'adresse à charger : marche partout, démonstration comprise).
+      const face = new FontFace(family, await fetchMedia(mediaUrl(project, own.file)));
       document.fonts.add(await face.load());
       custom.add(family);
     } catch {

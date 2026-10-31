@@ -91,10 +91,15 @@ export async function pickVideo(width, height, fps, short) {
   return null;
 }
 
-export async function pickAudio(sampleRate, channels) {
+/** Son AAC (lu partout) ; sinon, si demandé, Opus (Chrome, Android, VLC… mais pas toujours l'iPhone). */
+export async function pickAudio(sampleRate, channels, { opus = false } = {}) {
   if (typeof AudioEncoder === "undefined") return null;
   const aac = await firstSupported([{ codec: "mp4a.40.2", sampleRate, numberOfChannels: channels, bitrate: 192000 }], AudioEncoder);
   if (aac) return { config: aac, mux: "aac" };
+  if (opus) {
+    const o = await firstSupported([{ codec: "opus", sampleRate, numberOfChannels: channels, bitrate: 160000 }], AudioEncoder);
+    if (o) return { config: o, mux: "opus" };
+  }
   return null;
 }
 
@@ -117,7 +122,8 @@ export async function exportPlan(style, resolution, fps, caps, sampleRate) {
         : "Export en temps réel au format WebM (ton navigateur ne sait pas créer de MP4 et ffmpeg n'est pas installé). Chrome ou Edge font de vrais MP4.",
     };
   }
-  const audio = await pickAudio(sampleRate, 2);
+  // Sans ffmpeg pour ajouter le son AAC, mieux vaut un son Opus qu'une vidéo muette.
+  const audio = await pickAudio(sampleRate, 2, { opus: !caps.ffmpeg });
   const transcode = video.transcode && caps.ffmpeg;
   let warning = null;
   if (video.transcode && !caps.ffmpeg)
@@ -125,6 +131,8 @@ export async function exportPlan(style, resolution, fps, caps, sampleRate) {
   if (!audio && !caps.ffmpeg)
     warning =
       "Ton navigateur ne sait pas encoder le son en AAC et ffmpeg n'est pas installé : la vidéo sera muette. Utilise Chrome ou Edge.";
+  if (audio?.mux === "opus")
+    warning = "Son au format Opus : la vidéo se lit dans Chrome, sur Android et dans VLC, mais peut-être pas sur iPhone.";
   return { kind: "webcodecs", width, height, video, audio, server: { audio: !audio && caps.ffmpeg, transcode }, warning };
 }
 
@@ -149,7 +157,7 @@ export async function renderVideo(opts) {
   const muxer = new Muxer({
     target: new StreamTarget({ onData: (data, pos) => sink.write(data, pos), chunked: true, chunkSize: 8 * 1024 * 1024 }),
     video: { codec: video.mux, width, height, frameRate: fps },
-    audio: withAudio ? { codec: "aac", sampleRate, numberOfChannels: 2 } : undefined,
+    audio: withAudio ? { codec: audio.mux, sampleRate, numberOfChannels: 2 } : undefined,
     fastStart: false,
     firstTimestampBehavior: "offset",
   });

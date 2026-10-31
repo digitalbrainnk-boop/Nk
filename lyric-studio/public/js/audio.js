@@ -1,6 +1,6 @@
 // Son du projet : décodage, forme d'onde, piste karaoké, lecture.
 // La lecture passe par un <audio> (horloge fiable), la piste karaoké calculée est un WAV en mémoire.
-import { mediaUrl } from "./api.js";
+import { mediaUrl, fetchMedia } from "./api.js";
 import { centerCancel, mix, encodeWav, computePeaks, peakOf } from "./core/dsp.js";
 
 export const channelsOf = (buf) => Array.from({ length: buf.numberOfChannels }, (_, c) => buf.getChannelData(c));
@@ -25,9 +25,7 @@ export class AudioEngine extends EventTarget {
   }
 
   async decode(url) {
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`Son introuvable (${res.status}).`);
-    const data = await res.arrayBuffer();
+    const data = await fetchMedia(url);
     try {
       return await this.context.decodeAudioData(data);
     } catch {
