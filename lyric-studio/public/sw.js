@@ -1,6 +1,6 @@
 // Service worker : rend l'application installable (Android, ordinateur) et garde l'interface
 // disponible si le réseau coupe. Les données (projets, sons, vidéos) passent toujours par le serveur.
-const CACHE = "lyric-studio-v2";
+const CACHE = "lyric-studio-v3";
 
 self.addEventListener("install", (e) => {
   e.waitUntil(

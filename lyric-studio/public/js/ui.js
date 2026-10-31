@@ -54,7 +54,7 @@ export function modal({ title, body, actions = [], wide = false, onClose, closab
         closable && h("button", { class: "icon-btn", title: "Fermer", "aria-label": "Fermer", onclick: close }, "✕"),
       ),
       h("div", { class: "dialog-body" }, body),
-      actions.length &&
+      actions.length > 0 &&
         h(
           "footer",
           {},

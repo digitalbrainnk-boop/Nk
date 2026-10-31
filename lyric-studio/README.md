@@ -44,6 +44,15 @@ Il faut **Node.js 22.13 ou plus récent**. Facultatif : **ffmpeg** (vidéos MKV/
   - effets : particules (bokeh, neige, étoiles, paillettes, cœurs, braises), visualiseur de musique (barres,
     miroir, onde, cercle autour de la pochette), fond qui pulse avec les basses, barre de progression ;
   - image ou vidéo en haut (taille, position, forme, bordure, ombre, rotation vinyle, pulsation) ;
+  - **édition directe sur l'aperçu** : toucher les paroles ou un calque pour le déplacer au doigt ou à la souris
+    (aimanté au centre), l'agrandir (poignée rose) ou le tourner (poignée violette) ; grille de 9 positions, texte
+    vertical sur un côté, flèches du clavier pour ajuster, Suppr pour retirer un calque ;
+  - **calques et superpositions** : autant d'images, de vidéos et d'éléments décoratifs que voulu (bandeau,
+    cadre, vinyle avec la pochette au centre, soleil, lumière, anneau), devant ou derrière les paroles ; position,
+    taille, rotation, miroir, opacité, forme, bordure, ombre, fusion (éclaircir, assombrir, incrustation, néon…),
+    animation (flotte, zoom lent, balance, tourne, bat avec les basses), moment d'apparition et de disparition ;
+  - bouton **« ➕ Ajouter »** : fond, calque, vinyle avec la pochette, mises en scène en un clic (image d'un côté,
+    paroles de l'autre ; paroles verticales), logo, éléments décoratifs ;
   - logo du client dans un coin ; duo (couleurs, côtés, noms affichés) ; titre de début ; message de fin ;
   - 9 préréglages et **« Mes styles »** : enregistrer ses réglages et les réappliquer à d'autres vidéos.
 - **Export** MP4 720p / 1080p / 4K, 24 à 60 images/s, chanson entière ou extrait (TikTok, Reels, Statut).

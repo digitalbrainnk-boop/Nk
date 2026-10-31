@@ -138,6 +138,7 @@ export function defaultStyle() {
       align: "center",
       margin: 0.07,
       maxWidth: 1,
+      rotate: 0, // rotation du bloc de texte (degrés) : 90 ou -90 = texte vertical sur un côté
       lineGap: 0.25,
       preRoll: 2.5,
       hold: 1.2,
@@ -221,9 +222,67 @@ export function defaultStyle() {
     },
     outro: { enabled: false, text: "Merci d'avoir regardé ❤", duration: 4, color: "" },
     customFonts: [],
+    layers: [], // calques : images, vidéos ou éléments décoratifs posés n'importe où (voir newLayer)
   };
 }
 
+/** Éléments décoratifs dessinés par le studio (pas de fichier à envoyer). */
+export const GRAPHICS = [
+  ["panel", "Bandeau de couleur"],
+  ["frame", "Cadre"],
+  ["vinyl", "Vinyle"],
+  ["sun", "Soleil"],
+  ["leak", "Lumière"],
+  ["ring", "Anneau"],
+];
+
+/** Modes de fusion d'un calque avec ce qui est dessous. */
+export const BLENDS = [
+  ["normal", "Normal"],
+  ["screen", "Éclaircir (lumières)"],
+  ["multiply", "Assombrir"],
+  ["overlay", "Incrustation"],
+  ["soft-light", "Lumière douce"],
+  ["lighter", "Addition (néon)"],
+  ["difference", "Différence"],
+];
+
+let layerCount = 0;
+/**
+ * Nouveau calque. kind : image, video (fichier envoyé) ou shape (élément décoratif, voir GRAPHICS).
+ * Position (x, y) = centre du calque, en fraction de la largeur et de la hauteur de la vidéo ;
+ * size = hauteur en fraction du petit côté.
+ */
+export function newLayer(kind = "image", fields = {}) {
+  layerCount = (layerCount + 1) % 1e6;
+  return {
+    id: `c${Date.now().toString(36)}${layerCount.toString(36)}`,
+    kind,
+    media: null,
+    graphic: "panel",
+    color: "#ffd23f",
+    color2: "#ff4d8d",
+    aspect: 1, // largeur / hauteur des éléments rectangulaires (bandeau, cadre)
+    x: 0.78,
+    y: 0.5,
+    size: 0.45,
+    rotate: 0,
+    flip: false,
+    opacity: 1,
+    shape: "rounded", // rect, rounded, circle (images et vidéos)
+    radius: 0.06,
+    border: 0,
+    borderColor: "#ffffff",
+    shadow: 0.35,
+    blend: "normal",
+    front: false, // devant les paroles
+    anim: "none", // none, float, zoom, spin, pulse, sway
+    animSpeed: 1,
+    start: 0, // apparaît à (secondes)
+    end: 0, // disparaît à (0 = jusqu'à la fin)
+    ...fields,
+  };
+}
 export const PRESETS = [
   {
     id: "karaoke",
@@ -374,6 +433,7 @@ export function normalizeStyle(style) {
   if (s.layout.animation === "slide") s.layout.animation = "slide-up";
   if (!Array.isArray(s.background.gradient)) s.background.gradient = defaultStyle().background.gradient;
   while (s.background.gradient.length < 3) s.background.gradient.push("");
+  s.layers = (Array.isArray(s.layers) ? s.layers : []).filter((l) => l && typeof l === "object").map((l) => newLayer(l.kind, l));
   return s;
 }
 
@@ -387,6 +447,8 @@ export function shareableStyle(style) {
   s.logo.media = null;
   s.logo.enabled = false;
   s.customFonts = [];
+  // Les éléments décoratifs suivent le style ; les images et vidéos restent dans leur projet.
+  s.layers = (s.layers || []).filter((l) => l.kind === "shape").map((l) => ({ ...l, media: null }));
   delete s.mode;
   delete s.guideVocals;
   return s;

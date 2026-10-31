@@ -2,7 +2,7 @@
 // comptes, formules, projets, styles, demandes d'abonnement. Rien n'est envoyé nulle part et tout s'efface
 // quand la page se ferme. La synchronisation par IA et les traitements du serveur (ffmpeg, Demucs) n'y sont pas.
 import { parseLyrics, serializeLyrics } from "../public/js/core/lyrics.js";
-import { defaultStyle, mergeStyle, normalizeStyle, PRESETS, DEFAULT_PLANS, RESOLUTION_ORDER } from "../public/js/core/style.js";
+import { defaultStyle, mergeStyle, normalizeStyle, newLayer, PRESETS, DEFAULT_PLANS, RESOLUTION_ORDER } from "../public/js/core/style.js";
 import { encodeWav } from "../public/js/core/dsp.js";
 
 export class ApiError extends Error {
@@ -700,6 +700,25 @@ function sampleSong(timings) {
   return new Blob([encodeWav([L, R], sr)], { type: "audio/wav" });
 }
 
+/** Pochette d'exemple (coucher de soleil sur la savane), dessinée en SVG. */
+function sampleCover() {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="800" viewBox="0 0 800 800">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2d1b4e"/><stop offset="0.45" stop-color="#ff4d8d"/><stop offset="0.75" stop-color="#ff9f1a"/>
+    </linearGradient>
+    <radialGradient id="sun"><stop offset="0" stop-color="#fff3b0"/><stop offset="0.6" stop-color="#ffd23f"/><stop offset="1" stop-color="#ff9f1a"/></radialGradient>
+  </defs>
+  <rect width="800" height="800" fill="url(#sky)"/>
+  <circle cx="400" cy="470" r="170" fill="url(#sun)"/>
+  <path d="M0 560 Q200 520 400 560 T800 548 V800 H0Z" fill="#1a0f1f"/>
+  <path d="M560 560 L572 430 L560 430 L548 560Z M470 420 Q565 360 690 415 Q600 445 470 420Z" fill="#1a0f1f"/>
+  <path d="M120 560 L128 470 L120 470 L112 560Z M60 465 Q125 425 200 462 Q130 482 60 465Z" fill="#1a0f1f"/>
+  <text x="400" y="700" font-family="Arial Black, Arial, sans-serif" font-size="64" font-weight="900" fill="#ffd23f" text-anchor="middle" letter-spacing="4">SOUS LE SOLEIL</text>
+</svg>`;
+  return new Blob([svg], { type: "image/svg+xml" });
+}
+
 function sampleProject(owner, styleId) {
   const text =
     "[Couplet]\nSous le soleil d'Abidjan\nOn danse jusqu'au matin\n\n[Refrain]\nChante avec moi mon ami\nL'Afrique est dans nos mains";
@@ -729,6 +748,8 @@ function sampleProject(owner, styleId) {
   const name = "source-exemple.wav";
   putFile(p.id, name, sampleSong(all));
   p.media.audio = { file: name, duration: 24, original: "exemple.wav" };
+  putFile(p.id, "pochette.svg", sampleCover());
+  p.media.cover = { file: "pochette.svg" };
   return p;
 }
 
@@ -770,7 +791,37 @@ export const DEMO_ACCOUNTS = {
     status: "pending",
     created_at: now() - 3600_000,
   });
-  sampleProject(boss.id, "afro");
+  // Exemple « mise en scène » : paroles à gauche, vinyle qui tourne à droite avec la pochette au centre.
+  const show = sampleProject(boss.id, "afro");
+  Object.assign(show.style.layout, { position: "custom", x: -0.19, y: 0.5, align: "left", maxWidth: 0.55 });
+  show.style.layers = [
+    newLayer("shape", {
+      graphic: "leak",
+      color: "#ffb347",
+      color2: "#ff4d8d",
+      x: 0.08,
+      y: 0.1,
+      size: 0.9,
+      aspect: 1.6,
+      blend: "screen",
+      opacity: 0.7,
+      anim: "float",
+      shadow: 0,
+    }),
+    newLayer("shape", {
+      graphic: "ring",
+      color: "#ffd23f",
+      color2: "#ff4d8d",
+      x: 0.74,
+      y: 0.5,
+      size: 0.8,
+      blend: "lighter",
+      anim: "pulse",
+      shadow: 0,
+    }),
+    newLayer("shape", { graphic: "vinyl", media: "pochette.svg", x: 0.74, y: 0.5, size: 0.72, anim: "spin", animSpeed: 0.8 }),
+  ];
+  show.title = "Sous le soleil (calques)";
   sampleProject(awa.id, "karaoke");
 })();
 

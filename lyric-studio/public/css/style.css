@@ -807,6 +807,9 @@ input[type="range"] {
   cursor: pointer;
 }
 canvas.preview {
+  touch-action: none;
+}
+canvas.preview {
   background: #000;
   box-shadow: 0 10px 40px #000a;
   border-radius: 4px;
@@ -1080,6 +1083,223 @@ canvas.preview {
 .asset-name {
   color: var(--muted);
   font-size: 12px;
+}
+
+/* Édition directe sur l'aperçu, calques et menu Ajouter */
+.edit-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  min-height: 42px;
+  border-top: 1px solid var(--line);
+  background: var(--panel);
+  overflow-x: auto;
+  white-space: nowrap;
+  scrollbar-width: thin;
+}
+.edit-bar .hint {
+  white-space: normal;
+  font-size: 12px;
+}
+.edit-bar strong {
+  margin-right: 4px;
+  color: var(--gold);
+}
+.edit-bar .btn,
+.edit-bar .icon-btn {
+  flex: none;
+}
+.add-btn {
+  background: linear-gradient(135deg, var(--gold), #ff9f1a);
+  color: #1a1206;
+  border-color: transparent;
+  font-weight: 700;
+}
+.grid9 {
+  display: grid;
+  grid-template-columns: repeat(3, 44px);
+  grid-template-rows: repeat(3, 30px);
+  gap: 3px;
+  padding: 4px;
+  width: max-content;
+  border-radius: 10px;
+  background: var(--panel2);
+  border: 1px solid var(--line);
+}
+.grid9-btn {
+  border: 0;
+  border-radius: 6px;
+  background: #ffffff0d;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 14px;
+}
+.grid9-btn:hover {
+  background: #ffffff1f;
+  color: var(--text);
+}
+.grid9-btn.on {
+  background: var(--accent2);
+  color: #fff;
+}
+.layers-box {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.layer-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.layer-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--panel2);
+  cursor: pointer;
+}
+.layer-item.on {
+  border-color: var(--accent);
+  background: #ff4d8d14;
+}
+.layer-icon {
+  width: 22px;
+  text-align: center;
+}
+.layer-name {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.layer-actions {
+  display: flex;
+  gap: 2px;
+}
+.layer-actions .icon-btn {
+  width: 28px;
+  height: 28px;
+  font-size: 13px;
+}
+.layer-settings {
+  border-top: 1px dashed var(--line);
+  padding-top: 6px;
+}
+.layer-settings h4 {
+  margin: 4px 0 8px;
+  font-size: 13px;
+  color: var(--gold);
+}
+.graphic-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+  gap: 6px;
+}
+.graphic-grid[hidden] {
+  display: none;
+}
+.graphic-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 6px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--panel2);
+  cursor: pointer;
+  font-size: 12px;
+}
+.graphic-btn:hover {
+  border-color: var(--accent);
+}
+.graphic-icon {
+  width: 38px;
+  height: 38px;
+  display: block;
+}
+.g-panel {
+  border-radius: 4px;
+  background: linear-gradient(90deg, #000c 50%, transparent 50%), linear-gradient(135deg, #7c6cff, #ff4d8d);
+}
+.g-frame {
+  border-radius: 6px;
+  border: 3px solid var(--gold);
+  box-shadow:
+    inset 0 0 0 3px #0000,
+    inset 0 0 0 5px #fff;
+}
+.g-vinyl {
+  border-radius: 50%;
+  background: radial-gradient(circle, #111 6%, #ff4d8d 7% 33%, #0b0b0e 34%), #0b0b0e;
+  box-shadow: inset 0 0 0 1px #ffffff22;
+}
+.g-sun {
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--gold) 30%, #ff7a0088 31%, transparent 70%);
+}
+.g-leak {
+  border-radius: 50%;
+  background: radial-gradient(ellipse at 40% 40%, #ffb347, #ff4d8d88 45%, transparent 70%);
+}
+.g-ring {
+  border-radius: 50%;
+  border: 3px solid var(--accent2);
+  box-shadow:
+    0 0 10px var(--accent),
+    inset 0 0 8px var(--accent);
+}
+.add-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 8px;
+}
+.add-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: linear-gradient(135deg, #22223a, #2a1d36);
+  cursor: pointer;
+  text-align: left;
+}
+.add-tile:hover {
+  border-color: var(--gold);
+}
+.add-tile small {
+  color: var(--muted);
+  font-size: 12px;
+}
+.add-icon {
+  font-size: 22px;
+  margin-bottom: 4px;
+}
+@media (max-width: 520px) {
+  .add-tile {
+    padding: 10px;
+  }
+  .add-tile strong {
+    font-size: 13px;
+  }
+  .add-tile small {
+    font-size: 11px;
+  }
+}
+.add-menu h3 {
+  margin: 16px 0 8px;
+  font-size: 14px;
 }
 
 /* Frise */

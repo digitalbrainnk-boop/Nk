@@ -1,4 +1,4 @@
-// Images et vidéos du projet (fond, média du haut) prêtes à dessiner.
+// Images et vidéos du projet (fond, média du haut, logo, calques) prêtes à dessiner.
 import { mediaUrl } from "./api.js";
 
 export class Assets {
@@ -18,6 +18,21 @@ export class Assets {
     this.want("top", top.enabled ? top.media : null, top.kind || "image", project);
     const logo = project.style.logo || {};
     this.want("logo", logo.enabled ? logo.media : null, "image", project);
+    // Un emplacement par calque image ou vidéo ; ceux des calques supprimés sont libérés.
+    const wanted = new Set();
+    for (const l of project.style.layers || []) {
+      // Les éléments décoratifs peuvent aussi porter une image (la pochette au centre du vinyle).
+      if (!l.media || !["image", "video", "shape"].includes(l.kind)) continue;
+      wanted.add(`layer:${l.id}`);
+      this.want(`layer:${l.id}`, l.media, l.kind === "video" ? "video" : "image", project);
+    }
+    for (const slot of Object.keys(this.keys)) {
+      if (slot.startsWith("layer:") && !wanted.has(slot)) {
+        this.dispose(slot);
+        delete this.keys[slot];
+        delete this.items[slot];
+      }
+    }
   }
 
   want(slot, file, kind, project) {
@@ -108,12 +123,12 @@ export class Assets {
   }
 
   current() {
-    return { ...this.items, ...this.extra };
+    const layers = {};
+    for (const [slot, item] of Object.entries(this.items)) if (item && slot.startsWith("layer:")) layers[slot.slice(6)] = item;
+    return { bg: this.items.bg, top: this.items.top, logo: this.items.logo, layers, ...this.extra };
   }
 
   destroy() {
-    this.dispose("bg");
-    this.dispose("top");
-    this.dispose("logo");
+    for (const slot of Object.keys(this.items)) this.dispose(slot);
   }
 }

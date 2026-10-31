@@ -44,6 +44,8 @@ import {
   shareableStyle,
   FONTS,
   DEFAULT_PLANS,
+  newLayer,
+  GRAPHICS,
 } from "../public/js/core/style.js";
 import { Renderer, wrapRows, transformText, fontString, needsAudio } from "../public/js/core/render.js";
 
@@ -493,4 +495,88 @@ test("son : FFT, spectre et forme d'onde pour le visualiseur", () => {
   );
   assert.equal(waveAt(low, 1, 64).length, 64);
   assert.equal(peakOf([new Float32Array([0.1, -0.7, 0.3])]).toFixed(2), "0.70");
+});
+
+test("calques : images, vidéos et éléments posés n'importe où, devant ou derrière les paroles", () => {
+  const lines = timed("Dans la nuit\nJe pense à toi", [5, 7]);
+  const img = { source: {}, width: 1600, height: 900 };
+  const layers = [
+    newLayer("image", { media: "a.jpg", x: 0.75, y: 0.5, size: 0.5, rotate: 10, shape: "circle", border: 4, anim: "spin" }),
+    newLayer("video", { media: "b.mp4", front: true, blend: "screen", anim: "float", start: 4, end: 8 }),
+    ...GRAPHICS.map(([g], i) =>
+      newLayer("shape", { graphic: g, anim: ["none", "zoom", "sway", "pulse", "spin", "float"][i], flip: i % 2 === 0 }),
+    ),
+    newLayer("image", { media: "pas-encore-charge.jpg" }),
+  ];
+  const style = mergeStyle(defaultStyle(), { layers });
+  const project = { title: "T", artist: "A", lines, style, duration: 12 };
+  const assets = { layers: { [layers[0].id]: img, [layers[1].id]: img } };
+  const r = new Renderer();
+  const { ctx, calls } = fakeCtx();
+  r.draw(ctx, 1920, 1080, 5.2, project, assets);
+  // Image, vidéo (visible de 4 à 8 s) et les 6 éléments ; l'image pas encore chargée est ignorée.
+  assert.equal(r.boxes.layers.length, 2 + GRAPHICS.length);
+  const b0 = r.boxes.layers.find((b) => b.id === layers[0].id);
+  assert.ok(Math.abs(b0.px - 0.75 * 1920) < 1e-6 && Math.abs(b0.py - 540) < 1e-6, "centre du calque");
+  assert.ok(Math.abs(b0.h - 0.5 * 1080) < 1e-6 && Math.abs(b0.w - b0.h) < 1e-6, "rond : carré, taille = part du petit côté");
+  assert.ok(calls.some((c) => c[0] === "drawImage"));
+  // Ordre : calques de derrière, paroles, calques de devant.
+  const drawIdx = calls.findIndex((c) => c[0] === "drawImage");
+  const textIdx = calls.findIndex((c) => c[0] === "fillText" && c[1] === "nuit");
+  const lastDraw = calls.findLastIndex((c) => c[0] === "drawImage");
+  assert.ok(drawIdx < textIdx && textIdx < lastDraw, "image derrière, vidéo devant les paroles");
+  // En dehors de sa fenêtre de temps, la vidéo n'est pas dessinée.
+  const r2 = new Renderer();
+  r2.draw(fakeCtx().ctx, 1920, 1080, 9, project, assets);
+  assert.ok(!r2.boxes.layers.some((b) => b.id === layers[1].id));
+  assert.equal(needsAudio(mergeStyle(defaultStyle(), { layers: [newLayer("shape", { anim: "pulse" })] })), true);
+});
+
+test("paroles : placées n'importe où, tournées, avec leur cadre pour les attraper", () => {
+  const lines = timed("Dans la nuit", [5]);
+  const at = (layout) => {
+    const project = {
+      title: "",
+      lines,
+      style: mergeStyle(defaultStyle(), { layout: { display: "single", ...layout } }),
+    };
+    const r = new Renderer();
+    r.draw(fakeCtx().ctx, 1920, 1080, 5.2, project, {});
+    return r.boxes.text;
+  };
+  const center = at({ position: "custom", x: 0, y: 0.5 });
+  assert.ok(Math.abs(center.px - 960) < 1e-6 && Math.abs(center.py - 540) < 1e-6);
+  assert.ok(Math.abs(center.x + center.w / 2 - 960) < 1, "centré");
+  // À gauche : le texte part du bord gauche du cadre (marge 7 %), décalé de x.
+  const left = at({ position: "custom", x: -0.2, y: 0.2, align: "left", maxWidth: 0.5 });
+  const A = 1920 * 0.86 * 0.5;
+  assert.ok(Math.abs(left.x - (960 - 0.2 * 1920 - A / 2)) < 1e-6, `bord gauche ${left.x}`);
+  assert.ok(Math.abs(left.py - 216) < 1e-6);
+  const right = at({ position: "custom", x: 0.2, align: "right", maxWidth: 0.5 });
+  assert.ok(Math.abs(right.x + right.w - (960 + 0.2 * 1920 + A / 2)) < 1e-6, "bord droit");
+  // Texte vertical : rotation enregistrée et largeur mesurée sur la hauteur de l'image.
+  const vertical = at({ position: "custom", x: -0.4, y: 0.5, rotate: -90 });
+  assert.ok(Math.abs(vertical.rot + Math.PI / 2) < 1e-9);
+  assert.ok(Math.abs(vertical.px - (960 - 0.4 * 1920)) < 1e-6);
+  // Sans ligne à l'écran, un cadre fantôme permet quand même de déplacer les paroles.
+  const r = new Renderer();
+  r.draw(fakeCtx().ctx, 1920, 1080, 0.5, { title: "", lines, style: defaultStyle() }, {});
+  assert.ok(r.boxes.text?.ghost && r.boxes.text.w > 0);
+});
+
+test("calques : nouveaux, complétés, et seuls les éléments décoratifs suivent un style enregistré", () => {
+  const a = newLayer("image", { media: "x.jpg" });
+  const b = newLayer("shape", { graphic: "vinyl" });
+  assert.notEqual(a.id, b.id);
+  assert.equal(a.opacity, 1);
+  const s = normalizeStyle({ layers: [{ kind: "image", media: "x.jpg", id: "k1" }, null, "bad"] });
+  assert.equal(s.layers.length, 1);
+  assert.equal(s.layers[0].id, "k1");
+  assert.equal(s.layers[0].blend, "normal");
+  assert.equal(normalizeStyle({}).layout.rotate, 0);
+  const shared = shareableStyle(mergeStyle(defaultStyle(), { layers: [a, b] }));
+  assert.deepEqual(
+    shared.layers.map((l) => l.kind),
+    ["shape"],
+  );
 });

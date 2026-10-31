@@ -4,7 +4,7 @@ import { api, upload, waitJob, downloadUrl } from "./api.js";
 import { downloadFile } from "./download.js";
 import { Assets } from "./assets.js";
 import { Renderer, needsAudio } from "./core/render.js";
-import { normalizeStyle, frameSize, RESOLUTIONS, RESOLUTION_ORDER } from "./core/style.js";
+import { normalizeStyle, frameSize, newLayer, GRAPHICS, RESOLUTIONS, RESOLUTION_ORDER } from "./core/style.js";
 import { analysisTrack } from "./core/dsp.js";
 import { AudioEngine, channelsOf } from "./audio.js";
 import { upgradePrompt } from "./session.js";
@@ -18,6 +18,7 @@ import { LyricsPanel } from "./lyrics-panel.js";
 import { Inspector } from "./inspector.js";
 import { openSyncDialog } from "./sync.js";
 import { exportPlan, renderVideo, audioWav } from "./exporter.js";
+import { CanvasEditor } from "./canvas-edit.js";
 
 const PREFS_KEY = "lyric-studio-prefs";
 function loadPrefs() {
@@ -101,6 +102,12 @@ export class Studio {
         ),
         h(
           "button",
+          { class: "btn add-btn", title: "Ajouter : fond, image, vidéo, élément décoratif, logo", onclick: () => this.addMenu() },
+          "➕",
+          h("span", { class: "long" }, " Ajouter"),
+        ),
+        h(
+          "button",
           { class: "btn accent2", title: "Synchroniser les paroles", onclick: () => openSyncDialog(this) },
           "✨",
           h("span", { class: "long" }, " Synchroniser"),
@@ -109,7 +116,13 @@ export class Studio {
       ),
     );
     this.canvas = h("canvas", { class: "preview", "aria-label": "Aperçu de la vidéo" });
-    this.previewWrap = h("div", { class: "preview-wrap", onclick: () => this.audio.toggle() }, this.canvas);
+    // Toucher l'aperçu : voir canvas-edit.js (sélection, déplacement). Autour de l'image : lecture / pause.
+    this.previewWrap = h(
+      "div",
+      { class: "preview-wrap", onclick: (e) => e.target === this.previewWrap && this.audio.toggle() },
+      this.canvas,
+    );
+    this.editBar = h("div", { class: "edit-bar" });
     this.playBtn = h("button", { class: "play-btn", title: "Lecture / pause (Espace)", onclick: () => this.audio.toggle() }, "▶");
     this.timeLabel = h("span", { class: "time" }, "0:00.0");
     this.tapBar = h("div", { class: "tap-bar", hidden: true });
@@ -135,7 +148,7 @@ export class Studio {
     );
     this.leftPanel = h("aside", { class: "panel left", "data-tab": "lyrics" });
     this.rightPanel = h("aside", { class: "panel right", "data-tab": "style" });
-    const stage = h("section", { class: "stage", "data-tab": "preview" }, this.previewWrap, this.tapBar, transport);
+    const stage = h("section", { class: "stage", "data-tab": "preview" }, this.previewWrap, this.editBar, this.tapBar, transport);
     this.tlContainer = h("div", { class: "tl-container" });
     this.waveBtn = h("button", { class: "btn small", onclick: () => this.toggleWave() }, "Onde : mixage");
     const tlTools = h(
@@ -152,15 +165,17 @@ export class Studio {
       ),
     );
     const tl = h("div", { class: "timeline-wrap" }, tlTools, this.tlContainer);
-    const tabs = h(
+    const tabs = (this.tabsNav = h(
       "nav",
       { class: "mobile-tabs" },
       [
         ["lyrics", "Paroles"],
         ["preview", "Aperçu"],
         ["style", "Style"],
-      ].map(([id, label]) => h("button", { class: id === "preview" ? "on" : "", onclick: (e) => this.mobileTab(id, e.target) }, label)),
-    );
+      ].map(([id, label]) =>
+        h("button", { class: id === "preview" ? "on" : "", dataset: { tab: id }, onclick: (e) => this.mobileTab(id, e.target) }, label),
+      ),
+    ));
     this.el = h(
       "div",
       { class: "studio", "data-mobile": "preview" },
@@ -193,6 +208,7 @@ export class Studio {
     this.lyrics = new LyricsPanel(this.leftPanel, this);
     this.inspector = new Inspector(this.rightPanel, this);
     this.timeline = new Timeline(this.tlContainer, this);
+    this.editor = new CanvasEditor(this, this.editBar);
     this.timeline.fit();
     if (this.timeline.pps < 40) this.timeline.pps = 40;
     this.assets.update(p);
@@ -237,6 +253,12 @@ export class Studio {
     this.assets.destroy();
   }
 
+  /** Affiche un onglet sur téléphone (sans effet sur grand écran, où tout est visible). */
+  showTab(id) {
+    const btn = this.tabsNav?.querySelector(`[data-tab="${id}"]`);
+    if (btn && getComputedStyle(this.tabsNav).display !== "none") this.mobileTab(id, btn);
+  }
+
   mobileTab(id, btn) {
     this.el.dataset.mobile = id;
     btn.parentElement.querySelectorAll("button").forEach((b) => b.classList.toggle("on", b === btn));
@@ -272,6 +294,7 @@ export class Studio {
       this.assets.sync(t, playing);
       if (playing || this.needsRender || t !== lastT) {
         this.renderer.draw(this.ctx, this.canvas.width, this.canvas.height, t, this.project, this.assets.current());
+        this.editor.drawOverlay(this.ctx);
         this.needsRender = false;
         lastT = t;
       }
@@ -417,7 +440,18 @@ export class Studio {
     if (path.startsWith("font") || path === "preset")
       ensureFont(p.style, p).then(() => ((this.needsRender = true), this.renderer.measures.clear()));
     if (path === "mode" || path === "guideVocals" || path === "preset") this.applyPlayback();
-    if (path.startsWith("background") || path.startsWith("top") || path.startsWith("logo") || path === "preset") this.assets.update(p);
+    if (
+      path.startsWith("background") ||
+      path.startsWith("top") ||
+      path.startsWith("logo") ||
+      path.startsWith("layers") ||
+      path === "preset"
+    )
+      this.assets.update(p);
+    if (path.startsWith("layers")) {
+      this.ensureAnalysis();
+      if (!live) this.editor?.renderBar();
+    }
     if (path === "aspect" || path === "preset") this.layoutPreview();
     if (path.startsWith("duo") || path === "preset") {
       this.timeline.invalidate();
@@ -501,6 +535,16 @@ export class Studio {
     }
     if (mod && e.key.toLowerCase() === "y") return e.preventDefault(), this.redo();
     if (mod && e.key.toLowerCase() === "s") return e.preventDefault(), this.save.flush();
+    // Élément choisi sur l'aperçu : flèches = déplacer, Suppr = retirer le calque, Échap = désélectionner.
+    const picked = this.editor?.sel;
+    if (picked && !mod) {
+      const step = e.shiftKey ? 0.02 : 0.004;
+      const arrows = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };
+      if (arrows[e.key]) return (e.preventDefault(), this.editor.nudge(...arrows[e.key]));
+      if (e.key === "Escape") return this.editor.select(null);
+      if ((e.key === "Delete" || e.key === "Backspace") && picked.kind === "layer")
+        return (e.preventDefault(), this.removeLayer(picked.id));
+    }
     const sel = this.selectedWord();
     switch (e.key) {
       case " ":
@@ -696,6 +740,290 @@ export class Studio {
     fixTimings(this.project.lines);
     this.timingChanged(true);
     toast("Synchro à la main enregistrée. Ajuste les détails dans la frise.", "ok");
+  }
+
+  // ---------- Calques (images, vidéos, éléments posés par-dessus le fond) ----------
+  layerChanged(label) {
+    this.styleChanged(`layers.${label}`, {});
+    this.inspector.renderLayers();
+    this.editor.renderBar();
+  }
+
+  addLayer(layer) {
+    this.project.style.layers.push(layer);
+    this.inspector.layerSel = layer.id;
+    this.layerChanged("add");
+    this.editor.select({ kind: "layer", id: layer.id });
+    this.showTab("preview");
+    toast("Ajouté ! Déplace-le sur l'aperçu, agrandis-le (●) ou tourne-le (●).", "ok", 3000);
+    return layer;
+  }
+
+  duplicateLayer(id) {
+    const layers = this.project.style.layers;
+    const i = layers.findIndex((l) => l.id === id);
+    if (i < 0) return;
+    const { id: _, ...copy } = structuredClone(layers[i]);
+    const l = newLayer(copy.kind, { ...copy, x: copy.x + 0.04, y: copy.y + 0.04 });
+    layers.splice(i + 1, 0, l);
+    this.inspector.layerSel = l.id;
+    this.layerChanged("duplicate");
+    this.editor.select({ kind: "layer", id: l.id });
+  }
+
+  removeLayer(id) {
+    const layers = this.project.style.layers;
+    const i = layers.findIndex((l) => l.id === id);
+    if (i < 0) return;
+    layers.splice(i, 1);
+    if (this.editor.sel?.id === id) this.editor.select(null);
+    this.layerChanged("remove");
+    toast("Calque supprimé (Ctrl+Z pour annuler).", "info", 2500);
+  }
+
+  /** dir = 1 : vers le dessus ; -1 : vers le dessous. */
+  moveLayer(id, dir) {
+    const layers = this.project.style.layers;
+    const i = layers.findIndex((l) => l.id === id);
+    const j = i + dir;
+    if (i < 0 || j < 0 || j >= layers.length) return;
+    [layers[i], layers[j]] = [layers[j], layers[i]];
+    this.layerChanged("order");
+  }
+
+  /** Emplacement conseillé d'une image posée par-dessus, selon le format. */
+  mediaSpot() {
+    const { width: W, height: H } = frameSize(this.project.style.aspect, "1080p");
+    if (W > H * 1.2) return { x: 0.76, y: 0.5, size: 0.55 };
+    if (H > W * 1.2) return { x: 0.5, y: 0.3, size: 0.5 };
+    return { x: 0.5, y: 0.34, size: 0.45 };
+  }
+
+  /** Réglages de départ de chaque élément décoratif, adaptés au format de la vidéo. */
+  graphicDefaults(g) {
+    const { width: W, height: H } = frameSize(this.project.style.aspect, "1080p");
+    const m = Math.min(W, H);
+    const wide = W >= H;
+    switch (g) {
+      case "frame":
+        return {
+          graphic: g,
+          color: "#ffd23f",
+          color2: "#ffffff",
+          x: 0.5,
+          y: 0.5,
+          size: (H * 0.92) / m,
+          aspect: (W - H * 0.08) / (H * 0.92),
+          radius: 0.03,
+          shadow: 0,
+        };
+      case "vinyl":
+        return {
+          graphic: g,
+          color: "#ff4d8d",
+          color2: "#ffd23f",
+          ...(wide ? { x: 0.78, y: 0.5, size: 0.7 } : { x: 0.5, y: 0.3, size: 0.7 }),
+          anim: "spin",
+          animSpeed: 0.8,
+        };
+      case "sun":
+        return { graphic: g, color: "#ffd23f", color2: "#ff7a00", x: wide ? 0.82 : 0.75, y: 0.2, size: 0.55, blend: "screen", shadow: 0 };
+      case "leak":
+        return {
+          graphic: g,
+          color: "#ffb347",
+          color2: "#ff4d8d",
+          x: 0.1,
+          y: 0.12,
+          size: 0.9,
+          aspect: 1.6,
+          blend: "screen",
+          opacity: 0.8,
+          anim: "float",
+          shadow: 0,
+        };
+      case "ring":
+        return {
+          graphic: g,
+          color: "#7c6cff",
+          color2: "#ff4d8d",
+          x: 0.5,
+          y: wide ? 0.5 : 0.3,
+          size: 0.6,
+          blend: "lighter",
+          anim: "pulse",
+          shadow: 0,
+        };
+      default:
+        // Bandeau sombre sur une moitié de l'image (16:9) ou en bas (vertical) : les paroles se lisent bien dessus.
+        return wide
+          ? {
+              graphic: "panel",
+              color: "#000000",
+              color2: "#000000",
+              opacity: 0.55,
+              x: 0.25,
+              y: 0.5,
+              size: H / m,
+              aspect: (W * 0.5) / H,
+              radius: 0,
+              shadow: 0,
+            }
+          : {
+              graphic: "panel",
+              color: "#000000",
+              color2: "#000000",
+              opacity: 0.55,
+              x: 0.5,
+              y: 0.8,
+              size: (H * 0.4) / m,
+              aspect: W / (H * 0.4),
+              radius: 0,
+              shadow: 0,
+            };
+    }
+  }
+
+  /** Choisir un fichier image ou vidéo sur l'appareil et l'envoyer dans le projet. */
+  chooseFile(accept = "image/*,video/*") {
+    return new Promise((resolve) => {
+      const input = h("input", { type: "file", accept });
+      input.addEventListener("change", async () => {
+        const file = input.files[0];
+        if (!file) return resolve(null);
+        const form = new FormData();
+        form.append("file", file);
+        toast("Envoi du fichier…", "info", 1500);
+        try {
+          const a = await upload(`/api/projects/${this.project.id}/assets`, form);
+          if (a.kind !== "image" && a.kind !== "video") {
+            toast("Choisis une image ou une vidéo.", "error");
+            return resolve(null);
+          }
+          resolve(a);
+        } catch (e) {
+          if (e.upgrade) upgradePrompt(e.message);
+          else toast(e.message, "error");
+          resolve(null);
+        }
+      });
+      input.click();
+    });
+  }
+
+  /** Nouveau calque image/vidéo, ou nouveau fichier pour un calque existant (replaceId). */
+  async pickLayerFile(replaceId) {
+    const a = await this.chooseFile();
+    if (!a) return;
+    const old = replaceId && this.project.style.layers.find((l) => l.id === replaceId);
+    if (old) {
+      Object.assign(old, { media: a.file, kind: a.kind });
+      return this.layerChanged("media");
+    }
+    this.addLayer(newLayer(a.kind, { media: a.file, ...this.mediaSpot() }));
+  }
+
+  /** Image portée par un élément décoratif (étiquette du vinyle). */
+  async setLayerImage(id) {
+    const a = await this.chooseFile("image/*");
+    const l = this.project.style.layers.find((x) => x.id === id);
+    if (!a || !l) return;
+    if (a.kind !== "image") return toast("Choisis une image.", "error");
+    l.media = a.file;
+    this.layerChanged("media");
+  }
+
+  async setBackgroundFile() {
+    const a = await this.chooseFile();
+    if (!a) return;
+    Object.assign(this.project.style.background, { media: a.file, type: a.kind });
+    this.styleChanged("background.media", {});
+    this.inspector.refresh();
+    toast("Fond changé ✓", "ok", 2000);
+  }
+
+  async setLogoFile() {
+    const a = await this.chooseFile("image/*");
+    if (!a) return;
+    if (a.kind !== "image") return toast("Le logo doit être une image (PNG conseillé).", "error");
+    Object.assign(this.project.style.logo, { media: a.file, enabled: true });
+    this.styleChanged("logo.media", {});
+    this.inspector.refresh();
+  }
+
+  /** Mise en scène : une image d'un côté, les paroles de l'autre (ou image en haut, paroles en bas en vertical). */
+  async sideBySide(side) {
+    const style = this.project.style;
+    let l = style.layers.find((x) => x.kind === "image" || x.kind === "video");
+    if (!l) {
+      const cover = this.project.media.cover;
+      const a = cover ? { file: cover.file, kind: "image" } : await this.chooseFile();
+      if (!a) return;
+      l = newLayer(a.kind, { media: a.file });
+      style.layers.push(l);
+    }
+    const { width: W, height: H } = frameSize(style.aspect, "1080p");
+    if (W > H * 1.2) {
+      Object.assign(l, { x: side === "right" ? 0.75 : 0.25, y: 0.5, size: 0.62, rotate: 0 });
+      this.inspector.placeText(side === "right" ? -1 : 1, 0, 0);
+    } else {
+      Object.assign(l, { x: 0.5, y: 0.3, size: 0.5, rotate: 0 });
+      this.inspector.placeText(0, 1, 0);
+    }
+    this.inspector.layerSel = l.id;
+    this.layerChanged("layout");
+    this.editor.select({ kind: "layer", id: l.id });
+    this.showTab("preview");
+  }
+
+  addMenu() {
+    const m = this.project.media;
+    const tile = (icon, title, sub, fn) =>
+      h(
+        "button",
+        { class: "add-tile", type: "button", onclick: () => (dlg.close(), fn()) },
+        h("span", { class: "add-icon" }, icon),
+        h("strong", {}, title),
+        h("small", {}, sub),
+      );
+    const graphics = h(
+      "div",
+      { class: "graphic-grid" },
+      GRAPHICS.map(([g, label]) =>
+        h(
+          "button",
+          { class: "graphic-btn", type: "button", onclick: () => (dlg.close(), this.addLayer(newLayer("shape", this.graphicDefaults(g)))) },
+          h("span", { class: `graphic-icon g-${g}` }),
+          label,
+        ),
+      ),
+    );
+    const body = h(
+      "div",
+      { class: "add-menu" },
+      h(
+        "div",
+        { class: "add-tiles" },
+        tile("🌄", "Fond", "Image ou vidéo derrière tout", () => this.setBackgroundFile()),
+        tile("🖼", "Image ou vidéo par-dessus", "Sur un côté, en vignette… (calque)", () => this.pickLayerFile()),
+        m.cover &&
+          tile("💿", "Vinyle avec ta pochette", "Un disque qui tourne, la pochette au centre", () =>
+            this.addLayer(newLayer("shape", { ...this.graphicDefaults("vinyl"), media: m.cover.file })),
+          ),
+        tile("◧", "Image à droite, paroles à gauche", "Mise en scène en un clic", () => this.sideBySide("right")),
+        tile("◨", "Image à gauche, paroles à droite", "Mise en scène en un clic", () => this.sideBySide("left")),
+        tile("↕", "Paroles verticales", "Le long du bord gauche", () => this.inspector.placeText(-1, 0, -90)),
+        tile("🏷", "Logo", "Ta marque dans un coin", () => this.setLogoFile()),
+      ),
+      h("h3", {}, "Éléments décoratifs"),
+      graphics,
+      h(
+        "p",
+        { class: "hint" },
+        "Astuce : sur l'aperçu, touche les paroles ou un calque pour le déplacer, l'agrandir (● rose) ou le tourner (● violet).",
+      ),
+    );
+    const dlg = modal({ title: "Ajouter", body, wide: true });
   }
 
   // ---------- Son : voix séparée ----------

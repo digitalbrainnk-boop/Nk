@@ -21,7 +21,11 @@ export function transformText(text, transform) {
 }
 
 /** Le style demande-t-il l'analyse du son (visualiseur, pulsation) ? */
-export const needsAudio = (style) => style.effects?.visualizer !== "none" || style.top?.pulse > 0 || style.effects?.beatZoom > 0;
+export const needsAudio = (style) =>
+  style.effects?.visualizer !== "none" ||
+  style.top?.pulse > 0 ||
+  style.effects?.beatZoom > 0 ||
+  !!style.layers?.some((l) => l.anim === "pulse");
 
 /**
  * Coupe une ligne en rangées qui tiennent dans maxWidth.
@@ -146,6 +150,19 @@ export class Renderer {
     const topBox = style.top?.enabled ? this.topBox(W, H, style.top, assets.top) : null;
     if (fx.visualizer && fx.visualizer !== "none" && assets.audio) this.drawVisualizer(ctx, W, H, t, fx, audio, assets.audio, topBox, u);
     if (topBox) this.drawTop(ctx, t, style.top, assets.top, topBox, u, bass);
+    // Position de chaque élément sur l'image (pour les attraper à la souris ou au doigt dans l'aperçu).
+    this.boxes = { text: null, layers: [] };
+    const layers = style.layers || [];
+    this.drawLayers(
+      ctx,
+      W,
+      H,
+      t,
+      layers.filter((l) => !l.front),
+      assets.layers || {},
+      u,
+      bass,
+    );
     const anchorY = this.anchorY(style.layout, H, topBox);
     const sched = this.schedule(project);
     if (style.intro?.title) {
@@ -155,11 +172,22 @@ export class Renderer {
     const L = style.layout;
     const visible = visibleAt(sched, t, L.fadeIn ?? 0.3, { fadeOut: L.fadeOut ?? 0.3, animDuration: L.animDuration ?? 0.45 });
     if (visible.length) this.drawLines(ctx, W, H, t, project, sched, visible, anchorY, u);
+    if (!this.boxes.text) this.boxes.text = this.ghostTextBox(style, W, H, anchorY, u);
     if (style.intro?.countdown && style.mode === "karaoke") {
       const cd = countdownAt(sched, t);
       if (cd) this.drawCountdown(ctx, W, cd, style, anchorY, u, sched);
     }
     if (style.outro?.enabled) this.drawOutro(ctx, W, H, t, project, sched, u, topBox);
+    this.drawLayers(
+      ctx,
+      W,
+      H,
+      t,
+      layers.filter((l) => l.front),
+      assets.layers || {},
+      u,
+      bass,
+    );
     if (fx.progress && project.duration > 0) this.drawProgress(ctx, W, H, t, project.duration, fx, u);
     if (style.logo?.enabled && assets.logo) this.drawLogo(ctx, W, H, style.logo, assets.logo);
     if (assets.watermark) this.drawWatermark(ctx, W, H, assets.watermark.text, u);
@@ -464,7 +492,17 @@ export class Renderer {
   }
 
   /** Mise en page d'une ligne : rangées et position de chaque mot (relative). */
-  layoutLine(ctx, style, line, W, u) {
+  /** Bloc de paroles : centre horizontal, largeur disponible, rotation (texte vertical : on mesure sur la hauteur). */
+  textFrame(style, W, H) {
+    const L = style.layout;
+    const rot = ((L.rotate || 0) * Math.PI) / 180;
+    const vertical = Math.abs(Math.sin(rot)) > Math.SQRT1_2;
+    const frameW = vertical ? H : W;
+    const A = frameW * (1 - 2 * (L.margin ?? 0.07)) * Math.max(0.15, Math.min(1, L.maxWidth ?? 1));
+    return { cx: W / 2 + (L.x || 0) * W, rot, frameW, A };
+  }
+
+  layoutLine(ctx, style, line, W, u, H = W) {
     const font = style.font;
     const px = (font.size || 64) * u;
     const f = fontString(font, px);
@@ -474,8 +512,7 @@ export class Renderer {
     const texts = line.words.map((w) => this.textFor(style, w.text));
     const widths = texts.map((tx) => this.measure(ctx, f, spacing, tx));
     const space = this.measure(ctx, f, spacing, " ") + (font.wordSpacing || 0) * u;
-    const L = style.layout;
-    const maxWidth = W * (1 - 2 * (L.margin ?? 0.07)) * Math.max(0.2, Math.min(1, L.maxWidth ?? 1));
+    const maxWidth = this.textFrame(style, W, H).A;
     const rows = wrapRows(widths, space, maxWidth).map((idx) => {
       const width = idx.reduce((s, i) => s + widths[i], 0) + space * (idx.length - 1);
       let x = 0;
@@ -486,22 +523,34 @@ export class Renderer {
       });
       return { width, words };
     });
-    return { font: f, px, spacing, rows, lineH: px * (font.lineHeight || 1.3), maxWidth };
+    return { font: f, px, spacing, space, rows, lineH: px * (font.lineHeight || 1.3), maxWidth };
   }
 
-  lineX(style, line, W, rowWidth) {
+  lineX(style, line, W, rowWidth, H = W) {
     const duo = style.duo?.enabled ? style.duo.singers?.[line.singer || 0] : null;
     const align = duo?.align || style.layout.align || "center";
-    const margin = W * (style.layout.margin ?? 0.07);
-    const shift = (style.layout.x || 0) * W;
-    return (align === "left" ? margin : align === "right" ? W - margin - rowWidth : (W - rowWidth) / 2) + shift;
+    const { cx, A } = this.textFrame(style, W, H);
+    return align === "left" ? cx - A / 2 : align === "right" ? cx + A / 2 - rowWidth : cx - rowWidth / 2;
+  }
+
+  /** Zone du texte quand aucune ligne n'est affichée (pour pouvoir le déplacer quand même). */
+  ghostTextBox(style, W, H, anchorY, u) {
+    const { cx, rot, A } = this.textFrame(style, W, H);
+    const h =
+      (style.font.size || 64) *
+      u *
+      (style.font.lineHeight || 1.3) *
+      Math.max(1, style.layout.display === "single" ? 1 : Math.min(3, style.layout.lines || 2));
+    const w = Math.min(A, (style.font.size || 64) * u * 8);
+    const x = style.layout.align === "left" ? cx - A / 2 : style.layout.align === "right" ? cx + A / 2 - w : cx - w / 2;
+    return { x, y: anchorY - h / 2, w, h, px: cx, py: anchorY, rot, ghost: true };
   }
 
   drawLines(ctx, W, H, t, project, sched, visible, anchorY, u) {
     const style = project.style;
     if (style.pastLines === "hide") visible = visible.filter((v) => v.state !== "past");
     if (!visible.length) return;
-    const layouts = new Map(visible.map((v) => [v, this.layoutLine(ctx, style, v.line, W, u)]));
+    const layouts = new Map(visible.map((v) => [v, this.layoutLine(ctx, style, v.line, W, u, H)]));
     const gap = (style.font.size || 64) * u * (style.layout.lineGap ?? 0.25);
     const pos = new Map();
     if (sched.mode === "scroll") {
@@ -529,6 +578,26 @@ export class Renderer {
         pos.set(v, tops[v.slot] + (slotH[v.slot] - L.rows.length * L.lineH) / 2);
       }
     }
+    // Le bloc tourne autour de son centre (texte penché ou vertical sur un côté).
+    const { cx, rot, frameW } = this.textFrame(style, W, H);
+    ctx.save();
+    if (rot) {
+      ctx.translate(cx, anchorY);
+      ctx.rotate(rot);
+      ctx.translate(-cx, -anchorY);
+    }
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minY = Infinity;
+    let maxY = -Infinity;
+    for (const v of visible) {
+      const L = layouts.get(v);
+      L.rowX = L.rows.map((row) => this.lineX(style, v.line, W, row.width, H));
+      L.rows.forEach((row, i) => ((minX = Math.min(minX, L.rowX[i])), (maxX = Math.max(maxX, L.rowX[i] + row.width))));
+      minY = Math.min(minY, pos.get(v));
+      maxY = Math.max(maxY, pos.get(v) + L.rows.length * L.lineH);
+    }
+    this.boxes.text = { x: minX, y: minY, w: maxX - minX, h: maxY - minY, px: cx, py: anchorY, rot };
     // Bandeau pleine largeur derrière tout le bloc.
     const box = style.box;
     if (box?.enabled && box.full) {
@@ -538,11 +607,12 @@ export class Renderer {
       ctx.save();
       ctx.globalAlpha = Math.max(...visible.map((v) => v.alpha));
       ctx.fillStyle = hexToRgba(box.color, box.opacity ?? 0.45);
-      roundRectPath(ctx, 0, top, W, bottom - top, (box.radius || 0) * u);
+      roundRectPath(ctx, rot ? cx - frameW / 2 : 0, top, rot ? frameW : W, bottom - top, (box.radius || 0) * u);
       ctx.fill();
       ctx.restore();
     }
     for (const v of visible) this.drawLine(ctx, W, t, style, v, layouts.get(v), pos.get(v), u);
+    ctx.restore();
   }
 
   drawLine(ctx, W, t, style, item, L, top, u) {
@@ -564,7 +634,7 @@ export class Renderer {
     const anim = style.layout.animation || "fade";
     const e = item.enter ?? 1;
     const blockH = L.rows.length * L.lineH;
-    const rowX = L.rows.map((row) => this.lineX(style, item.line, W, row.width));
+    const rowX = L.rowX || L.rows.map((row) => this.lineX(style, item.line, W, row.width));
     ctx.save();
     ctx.globalAlpha = alpha;
     if (e < 1) {
@@ -575,9 +645,10 @@ export class Renderer {
       else if (anim === "drop") ctx.translate(0, -(1 - easeOutBack(e)) * 90 * u);
       else if (anim === "zoom") {
         const s = 0.8 + 0.2 * e;
-        ctx.translate(W / 2, top + blockH / 2);
+        const mid = (Math.min(...rowX) + Math.max(...L.rows.map((r, i) => rowX[i] + r.width))) / 2;
+        ctx.translate(mid, top + blockH / 2);
         ctx.scale(s, s);
-        ctx.translate(-W / 2, -(top + blockH / 2));
+        ctx.translate(-mid, -(top + blockH / 2));
       } else if (anim === "blur" && "filter" in ctx) ctx.filter = `blur(${((1 - e) * 14 * u).toFixed(1)}px)`;
     }
 
@@ -650,7 +721,11 @@ export class Renderer {
         if (!forceSung && timed) {
           if (hl === "word" && started && t < word.start + 0.3) s = 1 + 0.12 * (1 - ease((t - word.start) / 0.3));
           if (hl === "bounce" && active) dy = -0.22 * L.px * Math.sin(Math.PI * wordProgress(word, t));
-          if (hl === "scale") s = 1 + 0.14 * clamp01((t - word.start) / 0.1) * clamp01((word.end + 0.12 - t) / 0.12);
+          if (hl === "scale") {
+            // Le mot grossit sans déborder sur ses voisins.
+            const grow = Math.min(0.14, (1.6 * (L.space || 0)) / Math.max(1, wd.w));
+            s = 1 + grow * clamp01((t - word.start) / 0.1) * clamp01((word.end + 0.12 - t) / 0.12);
+          }
         }
         if (s !== 1 || dy) {
           ctx.translate(x + wd.w / 2, y + dy);
@@ -712,6 +787,229 @@ export class Renderer {
       }
     });
     ctx.restore();
+  }
+
+  // ---------- Calques (superpositions) ----------
+  drawLayers(ctx, W, H, t, layers, assets, u, bass) {
+    for (const layer of layers) {
+      const box = this.drawLayer(ctx, W, H, t, layer, assets[layer.id], u, bass);
+      if (box) this.boxes.layers.push(box);
+    }
+  }
+
+  /** Taille d'un calque (avant animation) ; null si son image n'est pas encore chargée. */
+  layerSize(W, H, layer, asset) {
+    const h = (layer.size ?? 0.45) * Math.min(W, H);
+    if (layer.kind === "shape") {
+      const square = ["vinyl", "sun", "ring"].includes(layer.graphic);
+      return { w: square ? h : h * Math.max(0.05, layer.aspect ?? 1), h };
+    }
+    if (!asset?.source || !asset.width) return null;
+    return { w: layer.shape === "circle" ? h : (h * asset.width) / asset.height, h };
+  }
+
+  drawLayer(ctx, W, H, t, layer, asset, u, bass) {
+    const size = this.layerSize(W, H, layer, asset);
+    if (!size) return null;
+    const start = layer.start || 0;
+    const end = layer.end > start ? layer.end : Infinity;
+    if (t < start - 0.001 || t >= end) return null;
+    const fade = Math.min(1, (t - start) / 0.4 + (start <= 0 ? 1 : 0), end === Infinity ? 1 : (end - t) / 0.4);
+    const speed = layer.animSpeed ?? 1;
+    let cx = (layer.x ?? 0.5) * W;
+    let cy = (layer.y ?? 0.5) * H;
+    const baseRot = ((layer.rotate || 0) * Math.PI) / 180;
+    let rot = baseRot;
+    let scale = 1;
+    switch (layer.anim) {
+      case "float":
+        cy += Math.sin(t * 1.3 * speed) * 0.02 * H;
+        break;
+      case "sway":
+        rot += Math.sin(t * 1.1 * speed) * 0.08;
+        break;
+      case "zoom":
+        scale *= 1.04 + 0.04 * Math.sin((t * speed * 2 * Math.PI) / 12);
+        break;
+      case "spin":
+        rot += t * speed * 0.9;
+        break;
+      case "pulse":
+        scale *= 1 + 0.18 * bass * speed;
+        break;
+    }
+    const { w, h } = size;
+    const blends = {
+      normal: "source-over",
+      screen: "screen",
+      multiply: "multiply",
+      overlay: "overlay",
+      "soft-light": "soft-light",
+      lighter: "lighter",
+      difference: "difference",
+    };
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, Math.min(1, (layer.opacity ?? 1) * fade));
+    ctx.globalCompositeOperation = blends[layer.blend] || "source-over";
+    ctx.translate(cx, cy);
+    ctx.rotate(rot);
+    ctx.scale(scale * (layer.flip ? -1 : 1), scale);
+    if (layer.kind === "shape") this.drawGraphic(ctx, t, layer, w, h, u, asset);
+    else {
+      const path = () => {
+        ctx.beginPath();
+        if (layer.shape === "circle") ctx.arc(0, 0, Math.min(w, h) / 2, 0, Math.PI * 2);
+        else if (layer.shape === "rounded") roundRectPath(ctx, -w / 2, -h / 2, w, h, Math.min(w, h) * (layer.radius ?? 0.06));
+        else ctx.rect(-w / 2, -h / 2, w, h);
+      };
+      if ((layer.shadow ?? 0) > 0 && (layer.blend || "normal") === "normal") {
+        ctx.save();
+        ctx.shadowColor = `rgba(0,0,0,${Math.min(1, layer.shadow)})`;
+        ctx.shadowBlur = 30 * u;
+        ctx.shadowOffsetY = 8 * u;
+        ctx.fillStyle = "#000";
+        path();
+        ctx.fill();
+        ctx.restore();
+      }
+      ctx.save();
+      path();
+      ctx.clip();
+      const k = Math.max(w / asset.width, h / asset.height);
+      try {
+        ctx.drawImage(asset.source, (-asset.width * k) / 2, (-asset.height * k) / 2, asset.width * k, asset.height * k);
+      } catch {}
+      ctx.restore();
+      if (layer.border > 0) {
+        ctx.strokeStyle = layer.borderColor || "#fff";
+        ctx.lineWidth = layer.border * u;
+        path();
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
+    // Cadre pour l'attraper : sans la rotation de l'animation (il ne tourne pas avec un vinyle).
+    return { id: layer.id, x: cx - (w * scale) / 2, y: cy - (h * scale) / 2, w: w * scale, h: h * scale, px: cx, py: cy, rot: baseRot };
+  }
+
+  /** Éléments décoratifs dessinés par le studio, centrés sur (0, 0), dans une boîte w × h. */
+  drawGraphic(ctx, t, layer, w, h, u, asset) {
+    const c1 = layer.color || "#ffd23f";
+    const c2 = layer.color2 || "#ff4d8d";
+    const r = Math.min(w, h) / 2;
+    switch (layer.graphic) {
+      case "frame": {
+        const k = Math.max(2, Math.min(w, h) * 0.035);
+        ctx.strokeStyle = c1;
+        ctx.lineWidth = k;
+        roundRectPath(ctx, -w / 2 + k / 2, -h / 2 + k / 2, w - k, h - k, Math.min(w, h) * (layer.radius ?? 0.06));
+        ctx.stroke();
+        ctx.strokeStyle = c2;
+        ctx.lineWidth = Math.max(1, k / 3);
+        roundRectPath(ctx, -w / 2 + k * 2, -h / 2 + k * 2, w - k * 4, h - k * 4, Math.min(w, h) * (layer.radius ?? 0.06) * 0.7);
+        ctx.stroke();
+        break;
+      }
+      case "vinyl": {
+        ctx.fillStyle = "#0b0b0e";
+        ctx.beginPath();
+        ctx.arc(0, 0, r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = "rgba(255,255,255,0.07)";
+        ctx.lineWidth = Math.max(1, r * 0.006);
+        for (let k = 0.42; k < 0.97; k += 0.035) {
+          ctx.beginPath();
+          ctx.arc(0, 0, r * k, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        // Reflet qui donne l'impression que le disque tourne.
+        const g = ctx.createLinearGradient(-r, -r, r, r);
+        g.addColorStop(0.35, "rgba(255,255,255,0)");
+        g.addColorStop(0.5, "rgba(255,255,255,0.12)");
+        g.addColorStop(0.65, "rgba(255,255,255,0)");
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(0, 0, r, 0, Math.PI * 2);
+        ctx.fill();
+        // Étiquette du centre : la pochette si elle est choisie, sinon un dégradé.
+        ctx.beginPath();
+        ctx.arc(0, 0, r * 0.36, 0, Math.PI * 2);
+        if (asset?.source && asset.width) {
+          ctx.save();
+          ctx.clip();
+          const k = (r * 0.72) / Math.min(asset.width, asset.height);
+          try {
+            ctx.drawImage(asset.source, (-asset.width * k) / 2, (-asset.height * k) / 2, asset.width * k, asset.height * k);
+          } catch {}
+          ctx.restore();
+        } else {
+          const lg = ctx.createRadialGradient(0, 0, 0, 0, 0, r * 0.36);
+          lg.addColorStop(0, c1);
+          lg.addColorStop(1, c2);
+          ctx.fillStyle = lg;
+          ctx.fill();
+        }
+        ctx.fillStyle = "#0b0b0e";
+        ctx.beginPath();
+        ctx.arc(0, 0, r * 0.04, 0, Math.PI * 2);
+        ctx.fill();
+        break;
+      }
+      case "sun": {
+        const g = ctx.createRadialGradient(0, 0, 0, 0, 0, r);
+        g.addColorStop(0, c1);
+        g.addColorStop(0.35, c1);
+        g.addColorStop(0.36, hexToRgba(c2, 0.55));
+        g.addColorStop(1, hexToRgba(c2, 0));
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(0, 0, r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = hexToRgba(c1, 0.55);
+        for (let k = 0; k < 12; k++) {
+          const a = (k / 12) * Math.PI * 2 + t * 0.15;
+          ctx.beginPath();
+          ctx.moveTo(Math.cos(a - 0.08) * r * 0.42, Math.sin(a - 0.08) * r * 0.42);
+          ctx.lineTo(Math.cos(a) * r * 0.95, Math.sin(a) * r * 0.95);
+          ctx.lineTo(Math.cos(a + 0.08) * r * 0.42, Math.sin(a + 0.08) * r * 0.42);
+          ctx.fill();
+        }
+        break;
+      }
+      case "leak": {
+        ctx.save();
+        ctx.scale(w / h, 1);
+        const g = ctx.createRadialGradient(0, 0, 0, 0, 0, h / 2);
+        g.addColorStop(0, hexToRgba(c1, 0.95));
+        g.addColorStop(0.45, hexToRgba(c2, 0.5));
+        g.addColorStop(1, hexToRgba(c2, 0));
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(0, 0, h / 2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+        break;
+      }
+      case "ring": {
+        ctx.strokeStyle = c1;
+        ctx.lineWidth = Math.max(2, r * 0.06);
+        ctx.shadowColor = c2;
+        ctx.shadowBlur = r * 0.25;
+        ctx.beginPath();
+        ctx.arc(0, 0, r * 0.9, 0, Math.PI * 2);
+        ctx.stroke();
+        break;
+      }
+      default: {
+        // Bandeau de couleur (dégradé si deux couleurs différentes)
+        const g = ctx.createLinearGradient(-w / 2, 0, w / 2, 0);
+        g.addColorStop(0, c1);
+        g.addColorStop(1, c2 || c1);
+        ctx.fillStyle = g;
+        roundRectPath(ctx, -w / 2, -h / 2, w, h, Math.min(w, h) * (layer.radius ?? 0.06));
+        ctx.fill();
+      }
+    }
   }
 
   drawTitle(ctx, W, H, project, alpha, u, topBox) {
