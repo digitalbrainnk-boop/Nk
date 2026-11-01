@@ -1,0 +1,775 @@
+/* Mise en page : une seule colonne, comme une feuille de questionnaire imprimée,
+   encre indigo sur papier froid, ocre (latérite de Ouagadougou) pour la progression. */
+:root {
+  --papier: #f4f5f9;
+  --feuille: #ffffff;
+  --encre: #1b2033;
+  --encre-douce: #5a6077;
+  --indigo: #1e2a5e;
+  --indigo-clair: #ebeef9;
+  --sur-indigo: #ffffff;
+  --ocre: #c47f17;
+  --filet: #dadeea;
+  --alerte: #b0422b;
+  --alerte-fond: #fbefeb;
+  --vert: #157a43;
+  --sur-vert: #ffffff;
+
+  --police-titre: "Source Serif 4", "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+  --police-texte: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", "Helvetica Neue", Arial, sans-serif;
+  --police-code: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, Consolas, monospace;
+
+  --rayon: 10px;
+  --largeur: 44rem;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --papier: #0f1220;
+    --feuille: #171b2b;
+    --encre: #e7e9f2;
+    --encre-douce: #a2a8bf;
+    --indigo: #a9b8ff;
+    --indigo-clair: #222a49;
+    --sur-indigo: #0f1220;
+    --ocre: #e8b24a;
+    --filet: #2b3149;
+    --alerte: #f0896d;
+    --alerte-fond: #33201d;
+    --vert: #3fbf76;
+    --sur-vert: #0b1a12;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --papier: #0f1220;
+  --feuille: #171b2b;
+  --encre: #e7e9f2;
+  --encre-douce: #a2a8bf;
+  --indigo: #a9b8ff;
+  --indigo-clair: #222a49;
+  --sur-indigo: #0f1220;
+  --ocre: #e8b24a;
+  --filet: #2b3149;
+  --alerte: #f0896d;
+  --alerte-fond: #33201d;
+  --vert: #3fbf76;
+  --sur-vert: #0b1a12;
+  color-scheme: dark;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+body {
+  margin: 0;
+  background: var(--papier);
+  color: var(--encre);
+  font: 400 1.0625rem/1.55 var(--police-texte);
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+[hidden] {
+  display: none !important;
+}
+h1,
+h2,
+h3 {
+  font-family: var(--police-titre);
+  font-weight: 700;
+  line-height: 1.2;
+  text-wrap: balance;
+  margin: 0;
+}
+p {
+  margin: 0;
+}
+a {
+  color: var(--indigo);
+}
+:focus-visible {
+  outline: 3px solid var(--ocre);
+  outline-offset: 2px;
+}
+
+.page {
+  max-width: var(--largeur);
+  margin: 0 auto;
+  padding-block: 1.5rem 4rem;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid;
+  gap: 1.5rem;
+}
+
+/* Barre de progression en haut de l'écran */
+.barre-progression {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  height: 5px;
+  background: var(--filet);
+}
+.barre-progression span {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--ocre);
+  transition: width 0.3s ease;
+}
+
+/* Petits textes */
+.surtitre {
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--encre-douce);
+}
+.discret {
+  color: var(--encre-douce);
+  font-size: 0.92rem;
+}
+
+/* Accueil */
+.entete {
+  display: grid;
+  gap: 0.75rem;
+  padding-block: 0.5rem 0.25rem;
+}
+.entete h1 {
+  font-size: clamp(1.9rem, 6.5vw, 2.7rem);
+  color: var(--indigo);
+}
+.fiche {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.35rem 1rem;
+  margin: 0.5rem 0 0;
+  font-size: 0.95rem;
+}
+.fiche dt {
+  color: var(--encre-douce);
+}
+.fiche dd {
+  margin: 0;
+  font-weight: 600;
+  min-width: 0;
+}
+@media (max-width: 30rem) {
+  .fiche {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+  .fiche dd {
+    margin-bottom: 0.45rem;
+  }
+}
+
+.lettre {
+  background: var(--feuille);
+  border: 1px solid var(--filet);
+  border-radius: var(--rayon);
+  padding: 1.4rem 1.25rem;
+  display: grid;
+  gap: 0.8rem;
+  max-width: 65ch;
+}
+.lettre .signature {
+  font-family: var(--police-titre);
+  font-style: italic;
+  text-align: right;
+}
+.reperes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.25rem;
+  color: var(--encre-douce);
+  font-size: 0.92rem;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+.reperes li::before {
+  content: "☐ ";
+  color: var(--ocre);
+}
+
+/* Boutons */
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+.bouton {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 3rem;
+  padding: 0.7rem 1.3rem;
+  border-radius: 999px;
+  border: 2px solid var(--indigo);
+  background: var(--indigo);
+  color: var(--sur-indigo);
+  font: 600 1rem/1.2 var(--police-texte);
+  text-decoration: none;
+  cursor: pointer;
+  text-align: center;
+}
+.bouton:hover {
+  filter: brightness(1.08);
+}
+.bouton:disabled,
+.bouton[aria-disabled="true"] {
+  opacity: 0.5;
+  pointer-events: none;
+}
+.bouton.secondaire {
+  background: transparent;
+  color: var(--indigo);
+}
+.bouton.vert {
+  background: var(--vert);
+  border-color: var(--vert);
+  color: var(--sur-vert);
+}
+.bouton.petit {
+  min-height: 2.4rem;
+  padding: 0.4rem 0.95rem;
+  font-size: 0.92rem;
+}
+.bouton.danger {
+  background: transparent;
+  border-color: var(--alerte);
+  color: var(--alerte);
+}
+.lien-bouton {
+  appearance: none;
+  background: none;
+  border: 0;
+  padding: 0.4rem 0;
+  font: inherit;
+  font-size: 0.95rem;
+  color: var(--indigo);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.bouton svg,
+.bouton-partage svg {
+  width: 1.25em;
+  height: 1.25em;
+  flex: none;
+}
+
+/* Une partie du questionnaire */
+.titre-partie {
+  display: grid;
+  gap: 0.4rem;
+}
+.titre-partie h2 {
+  font-size: clamp(1.45rem, 5vw, 1.9rem);
+  color: var(--indigo);
+}
+.titre-partie .description {
+  color: var(--encre-douce);
+  max-width: 60ch;
+}
+.questions {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 1rem;
+}
+.question {
+  background: var(--feuille);
+  border: 1px solid var(--filet);
+  border-radius: var(--rayon);
+  padding: 1.1rem 1rem 1rem;
+  scroll-margin-top: 1.5rem;
+}
+.question.manque {
+  border-color: var(--alerte);
+  box-shadow: 0 0 0 1px var(--alerte);
+}
+.question fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+.question legend,
+.question .intitule {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.7rem;
+  padding: 0;
+  font-weight: 600;
+  font-size: 1.05rem;
+  line-height: 1.45;
+}
+.numero {
+  font-family: var(--police-titre);
+  font-weight: 700;
+  color: var(--ocre);
+  font-variant-numeric: tabular-nums;
+  min-width: 1.6rem;
+}
+.consigne {
+  margin: 0.35rem 0 0 2.3rem;
+  font-size: 0.85rem;
+  color: var(--encre-douce);
+}
+.question .etiquette-manque {
+  margin: 0.35rem 0 0 2.3rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--alerte);
+}
+.options {
+  display: grid;
+  gap: 0.45rem;
+  margin-top: 0.8rem;
+}
+.option {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: start;
+  gap: 0.75rem;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--filet);
+  border-radius: 8px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.option:hover {
+  border-color: var(--indigo);
+}
+.option.coche {
+  border-color: var(--indigo);
+  background: var(--indigo-clair);
+}
+.option input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+}
+.case {
+  width: 1.35rem;
+  height: 1.35rem;
+  margin-top: 0.1rem;
+  border: 2px solid var(--encre-douce);
+  border-radius: 4px;
+  background: var(--feuille);
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+.option input[type="radio"] + .case {
+  border-radius: 50%;
+}
+.option input:checked + .case {
+  border-color: var(--indigo);
+  background: var(--indigo);
+}
+.option input[type="checkbox"]:checked + .case::after {
+  content: "";
+  width: 0.38rem;
+  height: 0.72rem;
+  border: solid var(--sur-indigo);
+  border-width: 0 3px 3px 0;
+  transform: translateY(-1px) rotate(45deg);
+}
+.option input[type="radio"]:checked + .case::after {
+  content: "";
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: var(--sur-indigo);
+}
+.option input:focus-visible + .case {
+  outline: 3px solid var(--ocre);
+  outline-offset: 2px;
+}
+.option .texte {
+  min-width: 0;
+}
+.precision {
+  margin: 0.1rem 0 0 2.1rem;
+}
+input[type="text"],
+textarea {
+  width: 100%;
+  font: inherit;
+  color: var(--encre);
+  background: var(--feuille);
+  border: 1px solid var(--filet);
+  border-radius: 8px;
+  padding: 0.7rem 0.8rem;
+}
+input[type="text"]:focus,
+textarea:focus {
+  outline: 2px solid var(--indigo);
+  outline-offset: 0;
+  border-color: var(--indigo);
+}
+textarea {
+  min-height: 9rem;
+  resize: vertical;
+  line-height: 1.5;
+  margin-top: 0.8rem;
+}
+.compteur {
+  text-align: right;
+  font-size: 0.8rem;
+  color: var(--encre-douce);
+  margin-top: 0.2rem;
+}
+
+.avertissement {
+  border: 1px solid var(--alerte);
+  background: var(--alerte-fond);
+  color: var(--encre);
+  border-radius: var(--rayon);
+  padding: 0.9rem 1rem;
+  display: grid;
+  gap: 0.3rem;
+}
+.avertissement strong {
+  color: var(--alerte);
+}
+
+.navigation {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  padding-top: 0.5rem;
+}
+.navigation .bouton {
+  flex: 1 1 9rem;
+}
+.enregistre {
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--encre-douce);
+}
+
+/* Fin du questionnaire */
+.merci {
+  display: grid;
+  gap: 0.8rem;
+}
+.merci h1 {
+  font-size: clamp(1.8rem, 6vw, 2.4rem);
+  color: var(--indigo);
+}
+.ticket {
+  background: var(--feuille);
+  border: 1px solid var(--filet);
+  border-radius: var(--rayon);
+  padding: 1.25rem;
+  display: grid;
+  gap: 1rem;
+}
+.ticket-entete {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.5rem 1rem;
+  padding-bottom: 0.9rem;
+  border-bottom: 1px dashed var(--filet);
+}
+.code {
+  font-family: var(--police-code);
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--indigo);
+}
+.partages {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: 0.75rem;
+}
+.partages .bouton {
+  width: 100%;
+  border-radius: 12px;
+  justify-content: flex-start;
+}
+.partages-secondaires {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.25rem;
+}
+.champ-lien {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.5rem;
+}
+.champ-lien input {
+  font-family: var(--police-code);
+  font-size: 0.82rem;
+  min-width: 0;
+}
+.bloc {
+  background: var(--feuille);
+  border: 1px solid var(--filet);
+  border-radius: var(--rayon);
+  padding: 1.1rem 1rem;
+  display: grid;
+  gap: 0.75rem;
+}
+.bloc h2 {
+  font-size: 1.25rem;
+}
+
+/* Vue d'une réponse (lecture) */
+.recap {
+  display: grid;
+  gap: 1.75rem;
+}
+.recap-partie {
+  display: grid;
+  gap: 0.6rem;
+}
+.recap-partie h3 {
+  font-size: 1.15rem;
+  color: var(--indigo);
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid var(--filet);
+}
+.recap-question {
+  display: grid;
+  gap: 0.25rem;
+  padding-block: 0.4rem;
+}
+.recap-question .intitule {
+  font-weight: 600;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.6rem;
+}
+.recap-reponse {
+  margin-left: 2.2rem;
+  display: grid;
+  gap: 0.15rem;
+}
+.recap-reponse .choix {
+  color: var(--indigo);
+  font-weight: 600;
+}
+.recap-reponse .choix::before {
+  content: "☒ ";
+}
+.recap-reponse .vide {
+  color: var(--alerte);
+  font-style: italic;
+  font-size: 0.92rem;
+}
+.recap-reponse .libre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Espace chercheur */
+.compteurs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+.compteurs .surtitre {
+  letter-spacing: 0.03em;
+  font-size: 0.7rem;
+  overflow-wrap: anywhere;
+}
+.compteur-carte {
+  background: var(--feuille);
+  border: 1px solid var(--filet);
+  border-radius: var(--rayon);
+  padding: 0.8rem 0.75rem;
+  display: grid;
+  gap: 0.35rem;
+}
+.compteur-carte .valeur {
+  font-size: clamp(1.4rem, 5vw, 1.9rem);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+.compteur-carte .valeur small {
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--encre-douce);
+}
+.jauge {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--filet);
+  overflow: hidden;
+}
+.jauge span {
+  display: block;
+  height: 100%;
+  background: var(--indigo);
+  border-radius: 3px;
+}
+.defilement {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.92rem;
+}
+th,
+td {
+  text-align: left;
+  padding: 0.5rem 0.6rem;
+  border-bottom: 1px solid var(--filet);
+  vertical-align: top;
+}
+th {
+  font-weight: 600;
+  color: var(--encre-douce);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+td.nombre,
+th.nombre {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.mono {
+  font-family: var(--police-code);
+  letter-spacing: 0.05em;
+}
+.barre-stat {
+  display: grid;
+  grid-template-columns: 1fr 3.2rem;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 6rem;
+}
+.barre-stat .piste {
+  height: 8px;
+  background: var(--filet);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.barre-stat .piste span {
+  display: block;
+  height: 100%;
+  background: var(--indigo);
+  border-radius: 0 4px 4px 0;
+}
+.stat-question {
+  display: grid;
+  gap: 0.5rem;
+  padding-block: 0.75rem;
+  border-top: 1px solid var(--filet);
+}
+.stat-question h3 {
+  font-family: var(--police-texte);
+  font-size: 1rem;
+  font-weight: 600;
+}
+details > summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--indigo);
+  padding-block: 0.3rem;
+}
+.citation {
+  border-left: 3px solid var(--filet);
+  padding: 0.2rem 0 0.2rem 0.8rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.citation .discret {
+  display: block;
+  font-size: 0.8rem;
+}
+
+.pied {
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--encre-douce);
+  padding-top: 1rem;
+}
+.pied a {
+  color: var(--encre-douce);
+}
+
+.notification {
+  position: fixed;
+  left: 50%;
+  bottom: calc(1.25rem + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  max-width: min(90vw, 28rem);
+  background: var(--encre);
+  color: var(--papier);
+  padding: 0.75rem 1.1rem;
+  border-radius: 10px;
+  font-size: 0.95rem;
+  z-index: 20;
+  box-shadow: 0 6px 24px rgb(0 0 0 / 0.25);
+}
+
+.carte {
+  background: var(--feuille);
+  border: 1px solid var(--filet);
+  border-radius: var(--rayon);
+  padding: 1rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@media print {
+  body {
+    background: #fff;
+    color: #000;
+  }
+  .barre-progression,
+  .actions,
+  .navigation,
+  .partages,
+  .partages-secondaires,
+  .champ-lien,
+  .pied,
+  .notification,
+  .sans-impression {
+    display: none !important;
+  }
+  .page {
+    max-width: none;
+    padding: 0;
+  }
+  .ticket,
+  .bloc,
+  .question {
+    border-color: #999;
+    break-inside: avoid;
+  }
+}
