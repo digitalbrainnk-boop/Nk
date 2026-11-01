@@ -773,3 +773,281 @@ details > summary {
     break-inside: avoid;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Onglets du chercheur
+   --------------------------------------------------------------------------- */
+.onglets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1.25rem;
+  border-bottom: 1px solid var(--filet);
+  padding-bottom: 0.6rem;
+  font-size: 0.95rem;
+}
+.onglets a {
+  color: var(--encre-douce);
+  text-decoration: none;
+  padding-block: 0.2rem;
+}
+.onglets a[aria-current="page"] {
+  color: var(--indigo);
+  font-weight: 700;
+  box-shadow: 0 2px 0 var(--ocre);
+}
+
+/* ---------------------------------------------------------------------------
+   Mes documents
+   --------------------------------------------------------------------------- */
+.invisible {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+.etapes {
+  margin: 0;
+  padding-left: 1.4rem;
+  display: grid;
+  gap: 0.45rem;
+}
+.depot {
+  display: grid;
+  justify-items: center;
+  gap: 0.35rem;
+  text-align: center;
+  padding: 1.6rem 1rem;
+  border: 2px dashed var(--filet);
+  border-radius: var(--rayon);
+  cursor: pointer;
+  color: var(--indigo);
+}
+.depot svg {
+  width: 2rem;
+  height: 2rem;
+}
+.depot:hover,
+.depot.survol,
+.depot:focus-within {
+  border-color: var(--indigo);
+  background: var(--indigo-clair);
+}
+.fichiers-choisis,
+.liste-documents {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+.fichier-choisi {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.8rem;
+  border: 1px solid var(--filet);
+  border-radius: 8px;
+}
+.fichier-choisi.refuse {
+  border-color: var(--alerte);
+  background: var(--alerte-fond);
+}
+.fichier-ligne {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.75rem;
+}
+.fichier-nom {
+  font-weight: 600;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.etiquette-refus {
+  color: var(--alerte);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+.document-cree {
+  display: grid;
+  gap: 0.6rem;
+  padding-block: 0.5rem;
+}
+.document-cree + .document-cree {
+  border-top: 1px solid var(--filet);
+  padding-top: 1rem;
+}
+.document-titre {
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.publication {
+  font-size: 0.9rem;
+  color: var(--encre-douce);
+}
+.publication.ok {
+  color: var(--vert);
+  font-weight: 600;
+}
+.liste-documents li {
+  display: grid;
+  gap: 0.3rem;
+  padding-bottom: 0.9rem;
+  border-bottom: 1px solid var(--filet);
+}
+.document-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  margin-top: 0.3rem;
+}
+.danger-texte {
+  color: var(--alerte);
+}
+
+/* ---------------------------------------------------------------------------
+   Lecture d'un document
+   --------------------------------------------------------------------------- */
+.page.lecteur {
+  max-width: 62rem;
+  gap: 1rem;
+}
+.lecteur-entete h1 {
+  font-size: clamp(1.5rem, 5.5vw, 2.3rem);
+  overflow-wrap: anywhere;
+}
+.lecteur-corps {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+}
+.pdf-outils {
+  position: sticky;
+  top: env(safe-area-inset-top, 0px);
+  z-index: 4;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  background: var(--papier);
+  border-bottom: 1px solid var(--filet);
+}
+.pdf-outils .bouton {
+  min-width: 2.6rem;
+  font-size: 1.15rem;
+}
+.pdf-zoom {
+  min-width: 3.4rem;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.pdf-aller {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-variant-numeric: tabular-nums;
+}
+.pdf-aller input {
+  width: 4.2rem;
+  font: inherit;
+  padding: 0.35rem 0.4rem;
+  border: 1px solid var(--filet);
+  border-radius: 6px;
+  background: var(--feuille);
+  color: var(--encre);
+}
+.pdf-cadre {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.pdf-pages {
+  display: grid;
+  gap: 0.75rem;
+  width: 100%;
+}
+.pdf-page {
+  width: 100%;
+  background: #fff;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.18);
+}
+.pdf-page canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.texte-document {
+  background: var(--feuille);
+  border: 1px solid var(--filet);
+  border-radius: var(--rayon);
+  padding: 1.5rem 1.25rem;
+  max-width: 70ch;
+  width: 100%;
+  margin-inline: auto;
+  font-size: 1.08rem;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+.texte-document > * + * {
+  margin-top: 0.9em;
+}
+.texte-document h1,
+.texte-document h2,
+.texte-document h3 {
+  color: var(--indigo);
+  margin-top: 1.4em;
+}
+.texte-document img {
+  max-width: 100%;
+  height: auto;
+}
+.texte-document table {
+  display: block;
+  overflow-x: auto;
+}
+.epub-surface {
+  height: max(60vh, calc(100vh - 15rem));
+  background: #fff;
+  border: 1px solid var(--filet);
+  border-radius: var(--rayon);
+  overflow: hidden;
+}
+.epub-outils select {
+  width: 100%;
+  font: inherit;
+  padding: 0.55rem;
+  border: 1px solid var(--filet);
+  border-radius: 8px;
+  background: var(--feuille);
+  color: var(--encre);
+}
+.epub-navigation {
+  display: flex;
+  gap: 0.75rem;
+}
+.epub-navigation .bouton {
+  flex: 1;
+}
+.texte-brut {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: var(--feuille);
+  border: 1px solid var(--filet);
+  border-radius: var(--rayon);
+  padding: 1rem;
+  font: 0.95rem/1.6 var(--police-code);
+  margin: 0;
+}
+.media-img,
+.media-video {
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--rayon);
+  justify-self: center;
+}
+.media-audio {
+  width: 100%;
+}

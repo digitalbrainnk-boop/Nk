@@ -2,7 +2,8 @@
 
 Petite application pour l'enquête de terrain de la thèse de SAWADOGO Bouraïma (EMGJ, Ouagadougou).
 Les participants ouvrent un lien, répondent aux 37 questions sur leur téléphone, puis envoient
-leurs réponses au chercheur.
+leurs réponses au chercheur. Une deuxième partie, « Mes documents », transforme un livre, un PDF ou
+un fichier Word en lien de lecture.
 
 ## Ce que fait l'application
 
@@ -35,6 +36,39 @@ leurs réponses au chercheur.
 Le tableau de l'espace chercheur reste dans le navigateur où vous l'avez rempli. Gardez une sauvegarde
 (.txt ou .csv) et les messages reçus.
 
+## Mes documents : transformer un document en lien
+
+Deuxième partie de l'application : page `documents.html` (lien « Mes documents » en bas de l'accueil
+et dans l'espace chercheur).
+
+- Vous choisissez un ou plusieurs fichiers (livre PDF, Word, e-book EPUB, image, audio, vidéo…, jusqu'à
+  50 Mo chacun) et vous pouvez changer le titre affiché.
+- « Créer le lien » : le fichier est rangé dans votre dépôt GitHub (dossier `docs/d/`) et vous recevez un lien
+  du type `https://digitalbrainnk-boop.github.io/Nk/d/mon-livre-k7p2/`, avec boutons Copier et WhatsApp.
+- La personne qui ouvre le lien lit le document en entier dans son navigateur, sans rien installer :
+  - **PDF** : toutes les pages, avec zoom et « aller à la page » ;
+  - **Word (.docx)** : texte mis en page pour le téléphone (et lien vers la mise en page d'origine) ;
+  - **EPUB** : lecture page par page, avec la liste des chapitres ;
+  - images, textes, audio et vidéo s'affichent directement ;
+  - les autres fichiers (PowerPoint, Excel, ancien .doc…) s'ouvrent avec la visionneuse Microsoft ou se téléchargent.
+  Un bouton « Télécharger » est toujours là.
+- La liste « Documents en ligne » permet de recopier un lien ou de supprimer un document (le lien ne marche plus).
+- Le lien fonctionne 1 à 2 minutes après sa création, le temps que GitHub publie le fichier.
+
+**Première utilisation : la clé GitHub.** Pour déposer les fichiers dans votre dépôt, la page a besoin d'une clé
+d'accès GitHub. Les étapes sont affichées sur la page :
+1. ouvrez https://github.com/settings/personal-access-tokens/new ;
+2. *Token name* : « Mes documents », *Expiration* : une longue durée ;
+3. *Repository access* : *Only select repositories* → **Nk** ;
+4. *Permissions* → *Repository permissions* → **Contents : Read and write** ;
+5. *Generate token*, copiez la clé (`github_pat_…`) et collez-la dans la page.
+
+La clé reste dans le navigateur de l'appareil où vous l'avez collée. Ne la donnez à personne.
+« Se déconnecter » l'efface de l'appareil.
+
+Attention : le dépôt est public. Toute personne qui a le lien peut lire le document, et les fichiers sont visibles
+sur GitHub. Ne mettez pas en ligne de documents confidentiels. GitHub accepte environ 1 Go de fichiers au total.
+
 ## Mettre le questionnaire en ligne (gratuit, une seule fois)
 
 1. Sur GitHub, ouvrez le dépôt **Nk** → **Settings** (Paramètres) → **Pages**.
@@ -44,6 +78,7 @@ Le tableau de l'espace chercheur reste dans le navigateur où vous l'avez rempli
    **https://digitalbrainnk-boop.github.io/Nk/**
 
 C'est ce lien que vous envoyez aux participants (WhatsApp, groupes d'église, SMS…).
+« Mes documents » a besoin de ce réglage pour publier les fichiers.
 
 Autre possibilité : déposer le contenu de ce dossier `docs` sur n'importe quel hébergement (par exemple
 dans un sous-dossier de votre hébergement o2switch). Il n'y a ni base de données ni serveur à installer.
@@ -52,10 +87,12 @@ dans un sous-dossier de votre hébergement o2switch). Il n'y a ni base de donné
 
 Tout se règle en haut du fichier [`questionnaire.js`](questionnaire.js), dans `reglages` :
 
-- `whatsapp` : votre numéro WhatsApp au format international, sans « + » ni espaces
-  (exemple : `"22670123456"`). Les participants vous écrivent alors directement. Vide : ils choisissent le contact.
+- `whatsapp` : votre numéro WhatsApp au format international, sans « + » ni espaces. Il est réglé sur
+  `"22676634189"` : les participants vous écrivent directement. Vide : ils choisissent le contact.
 - `email` : votre adresse e-mail pour le bouton « Envoyer par e-mail ».
 - `lienDuSite` : l'adresse publique du questionnaire, si vous l'hébergez ailleurs que sur GitHub Pages.
+- `depot` : le dépôt, la branche et le dossier où « Mes documents » range les fichiers. Ils doivent correspondre
+  au réglage de GitHub Pages.
 
 Les questions, les choix de réponse et les textes d'introduction se modifient dans ce même fichier.
 Pour qu'une question n'accepte qu'**une seule réponse**, ajoutez-lui `multiple: false`. Ne changez pas les numéros
@@ -68,3 +105,9 @@ des questions une fois l'enquête commencée : les liens déjà reçus s'appuien
   les envoie lui-même. Le lien contient les réponses, compressées, après le signe `#`. Cette partie de l'adresse
   n'est jamais transmise à l'hébergeur.
 - Toute personne qui a un lien de réponses peut lire ces réponses. Ne publiez donc pas ces liens.
+
+## Bibliothèques incluses
+
+Le dossier `vendor/` contient les outils de lecture, servis avec le site pour fonctionner sans service extérieur :
+PDF.js 3.11.174 (Mozilla, licence Apache 2.0), mammoth 1.8.0 (licence BSD-2), epub.js 0.3.93 (licence BSD-2)
+et JSZip 3.10.1 (licence MIT). Leurs licences sont à côté de chaque fichier.

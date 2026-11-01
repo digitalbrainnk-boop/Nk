@@ -15,99 +15,7 @@
   const app = document.getElementById("app");
   const barre = document.getElementById("barre");
 
-  // ---------------------------------------------------------------------------
-  // Petits outils
-  // ---------------------------------------------------------------------------
-  function h(balise, attributs, ...enfants) {
-    const el = document.createElement(balise);
-    for (const [cle, valeur] of Object.entries(attributs || {})) {
-      if (valeur === null || valeur === undefined || valeur === false) continue;
-      if (cle === "class") el.className = valeur;
-      else if (cle === "text") el.textContent = valeur;
-      else if (cle.startsWith("on")) el.addEventListener(cle.slice(2), valeur);
-      else if (valeur === true) el.setAttribute(cle, "");
-      else el.setAttribute(cle, valeur);
-    }
-    for (const enfant of enfants.flat(Infinity)) {
-      if (enfant === null || enfant === undefined || enfant === false) continue;
-      el.append(enfant instanceof Node ? enfant : document.createTextNode(String(enfant)));
-    }
-    return el;
-  }
-
-  function icone(nom) {
-    const traces = {
-      message:
-        '<path d="M4 5h16v11H8l-4 4z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M8 9.5h8M8 12.5h5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
-      document:
-        '<path d="M6 3h8l4 4v14H6z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M14 3v4h4M9 12h6M9 16h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
-      lien: '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
-    };
-    const span = document.createElement("span");
-    span.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${traces[nom]}</svg>`;
-    return span.firstChild;
-  }
-
-  function lire(cle, defaut) {
-    try {
-      const v = localStorage.getItem(cle);
-      return v ? JSON.parse(v) : defaut;
-    } catch {
-      return defaut;
-    }
-  }
-  function ecrire(cle, valeur) {
-    try {
-      localStorage.setItem(cle, JSON.stringify(valeur));
-      return true;
-    } catch {
-      return false;
-    }
-  }
-  function oublier(cle) {
-    try {
-      localStorage.removeItem(cle);
-    } catch {
-      /* rien à faire */
-    }
-  }
-
-  let minuteur;
-  function notifier(message) {
-    const boite = document.getElementById("notification");
-    boite.textContent = message;
-    boite.hidden = false;
-    clearTimeout(minuteur);
-    minuteur = setTimeout(() => (boite.hidden = true), 4500);
-  }
-
-  function telecharger(blob, nom) {
-    const url = URL.createObjectURL(blob);
-    const a = h("a", { href: url, download: nom });
-    document.body.append(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 60000);
-  }
-
-  async function copier(texte, champ) {
-    try {
-      await navigator.clipboard.writeText(texte);
-      return true;
-    } catch {
-      const zone = champ || h("textarea", { style: "position:fixed;opacity:0" }, texte);
-      if (!champ) document.body.append(zone);
-      zone.select();
-      let ok = false;
-      try {
-        ok = document.execCommand("copy");
-      } catch {
-        ok = false;
-      }
-      if (!champ) zone.remove();
-      return ok;
-    }
-  }
+  const { h, icone, lire, ecrire, oublier, notifier, telecharger, copier, navChercheur } = window.Commun;
 
   function adresseBase() {
     let encadre = false;
@@ -185,7 +93,7 @@
   }
 
   function afficher(...contenu) {
-    app.replaceChildren(...contenu.flat());
+    app.replaceChildren(...contenu.flat().filter((x) => x !== null && x !== undefined && x !== false));
   }
 
   // ---------------------------------------------------------------------------
@@ -269,7 +177,7 @@
       "footer",
       { class: "pied" },
       h("p", { text: `Thèse de doctorat en théologie · ${E.institution}` }),
-      h("p", {}, h("a", { href: "#chercheur", text: "Espace chercheur" })),
+      h("p", {}, h("a", { href: "#chercheur", text: "Espace chercheur" }), " · ", h("a", { href: "documents.html", text: "Mes documents" })),
     );
   }
 
@@ -877,6 +785,7 @@
     );
 
     afficher(
+      navChercheur("reponses"),
       h(
         "header",
         { class: "entete" },

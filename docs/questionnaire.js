@@ -24,7 +24,7 @@ window.ENQUETE = {
     // Numéro WhatsApp qui reçoit les réponses, au format international,
     // sans « + », sans espaces. Exemple pour le Burkina Faso : "22670123456".
     // Laissez vide ("") : le participant choisit lui-même le contact.
-    whatsapp: "",
+    whatsapp: "22676634189",
 
     // Adresse e-mail qui reçoit les réponses (facultatif).
     email: "",
@@ -35,6 +35,15 @@ window.ENQUETE = {
 
     // Objectif d'échantillonnage affiché dans l'espace chercheur.
     objectifParConfession: 50,
+
+    // « Mes documents » : dépôt GitHub où sont rangés les documents mis en lien.
+    // La branche et le dossier doivent être ceux choisis dans GitHub Pages.
+    depot: {
+      proprietaire: "digitalbrainnk-boop",
+      nom: "Nk",
+      branche: "claude/theology-survey-app-sqz80q",
+      dossier: "docs",
+    },
   },
 
   // Version du questionnaire (inscrite dans chaque réponse).
