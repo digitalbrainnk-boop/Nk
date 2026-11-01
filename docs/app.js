@@ -15,7 +15,7 @@
   const app = document.getElementById("app");
   const barre = document.getElementById("barre");
 
-  const { h, icone, lire, ecrire, oublier, notifier, telecharger, copier, navChercheur } = window.Commun;
+  const { h, icone, lire, ecrire, oublier, notifier, telecharger, copier, navChercheur, carteInstallation } = window.Commun;
 
   function adresseBase() {
     let encadre = false;
@@ -86,6 +86,7 @@
     window.scrollTo(0, 0);
     if (ancre.startsWith("r=")) return vueReponse(ancre.slice(2));
     if (ancre === "chercheur") return espaceChercheur();
+    if (ancre === "appli") return ecranAppli();
     const m = ancre.match(/^partie-(\d+)$/);
     if (m && +m[1] >= 1 && +m[1] <= PARTIES.length) return ecranPartie(+m[1] - 1);
     if (ancre === "fin") return ecranFin();
@@ -177,7 +178,78 @@
       "footer",
       { class: "pied" },
       h("p", { text: `Thèse de doctorat en théologie · ${E.institution}` }),
-      h("p", {}, h("a", { href: "#chercheur", text: "Espace chercheur" }), " · ", h("a", { href: "documents.html", text: "Mes documents" })),
+      h("p", {}, h("a", { href: "#appli", text: "Espace chercheur" })),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Accueil du chercheur (écran d'ouverture de l'application installée)
+  // ---------------------------------------------------------------------------
+  function ecranAppli() {
+    document.title = `Mon application · ${E.titre}`;
+    const lien = adresseBase();
+    const invitation = `Bonjour, dans le cadre de ma thèse de doctorat en théologie, je mène une enquête sur « ${E.titre} ». Pouvez-vous répondre au questionnaire ? C'est anonyme et cela prend environ 15 minutes :\n${lien}`;
+    const champ = h("input", { type: "text", readonly: true, value: lien, id: "lien-questionnaire", "aria-label": "Lien du questionnaire" });
+    const nombre = lire(CLE_TABLEAU, []).length;
+    const tuile = (titre, detail, href) => h("a", { class: "tuile", href }, h("strong", { text: titre }), h("span", { class: "discret", text: detail }));
+    afficher(
+      navChercheur("accueil"),
+      h(
+        "header",
+        { class: "entete" },
+        h("p", { class: "surtitre", text: "Mon application" }),
+        h("h1", { text: E.titre }),
+        h("p", { class: "discret", text: `${E.chercheur} · ${E.institution}` }),
+      ),
+      carteInstallation(),
+      h(
+        "section",
+        { class: "bloc" },
+        h("h2", { text: "Partager le questionnaire" }),
+        h("p", { text: "Envoyez ce lien aux fidèles : ils l'ouvrent, répondent aux questions, puis vous renvoient leurs réponses." }),
+        h(
+          "div",
+          { class: "champ-lien" },
+          champ,
+          h("button", {
+            class: "bouton petit secondaire",
+            type: "button",
+            text: "Copier",
+            onclick: async () => notifier((await copier(lien, champ)) ? "Lien copié." : "Sélectionnez le lien et copiez-le."),
+          }),
+        ),
+        h(
+          "div",
+          { class: "partages" },
+          h("a", { class: "bouton vert", href: `https://wa.me/?text=${encodeURIComponent(invitation)}`, target: "_blank", rel: "noopener" }, icone("message"), "Envoyer par WhatsApp"),
+          typeof navigator.share === "function"
+            ? h(
+                "button",
+                {
+                  class: "bouton secondaire",
+                  type: "button",
+                  onclick: async () => {
+                    try {
+                      await navigator.share({ title: E.titre, text: invitation });
+                    } catch {
+                      /* partage annulé */
+                    }
+                  },
+                },
+                icone("partager"),
+                "Partager autrement",
+              )
+            : null,
+        ),
+        h("details", {}, h("summary", { text: "Voir le message envoyé" }), h("p", { class: "citation", text: invitation })),
+      ),
+      h(
+        "section",
+        { class: "raccourcis" },
+        tuile("Réponses reçues", nombre ? `${nombre} réponse${nombre > 1 ? "s" : ""} dans votre tableau` : "Rassembler et analyser les réponses", "#chercheur"),
+        tuile("Mes documents", "Transformer un livre ou un PDF en lien", "documents.html"),
+        tuile("Voir le questionnaire", "Tel que les participants le voient", "#accueil"),
+      ),
     );
   }
 

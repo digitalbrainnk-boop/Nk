@@ -22,7 +22,7 @@ un fichier Word en lien de lecture.
 
 **Pour le chercheur**
 - En ouvrant un lien reçu, il voit toutes les réponses du participant et peut télécharger le fichier Word.
-- **Espace chercheur** (lien en bas de la page d'accueil, ou adresse du site suivie de `#chercheur`) :
+- **Réponses reçues** (dans l'application, ou adresse du site suivie de `#chercheur`) :
   - collez les liens reçus, un ou plusieurs à la fois, ou importez une discussion WhatsApp exportée
     (« Exporter la discussion » → « Sans médias ») : tous les liens qu'elle contient sont ajoutés d'un coup ;
   - compteurs : participants sur 100, catholiques sur 50, protestants sur 50 ;
@@ -35,6 +35,24 @@ un fichier Word en lien de lecture.
 
 Le tableau de l'espace chercheur reste dans le navigateur où vous l'avez rempli. Gardez une sauvegarde
 (.txt ou .csv) et les messages reçus.
+
+## L'application sur le téléphone du chercheur
+
+Envoyez au chercheur ce lien : **https://digitalbrainnk-boop.github.io/Nk/#appli**
+
+Il ouvre son espace avec un bouton **« Installer l'application »** (sur iPhone, les 3 étapes s'affichent).
+L'application « Enquête grâce » s'ajoute alors sur l'écran d'accueil, s'ouvre en plein écran et marche
+même sans connexion pour les pages déjà ouvertes. À l'ouverture, il trouve :
+- **Partager le questionnaire** : le lien pour les participants, avec un message tout prêt pour WhatsApp ;
+- **Réponses reçues** : le tableau, les résultats et l'export Excel ;
+- **Mes documents** : transformer un livre ou un PDF en lien ;
+- **Voir le questionnaire** tel que les participants le voient.
+
+Les participants, eux, reçoivent seulement le lien du questionnaire (https://digitalbrainnk-boop.github.io/Nk/) :
+ils n'ont rien à installer.
+
+Sur iPhone, l'application installée garde ses propres données, séparées de Safari : utilisez toujours
+l'application pour le tableau des réponses.
 
 ## Mes documents : transformer un document en lien
 

@@ -5,6 +5,8 @@
 (function () {
   "use strict";
 
+  const ICI = document.currentScript ? document.currentScript.src : location.href;
+
   function h(balise, attributs, ...enfants) {
     const el = document.createElement(balise);
     for (const [cle, valeur] of Object.entries(attributs || {})) {
@@ -117,7 +119,7 @@
   // Barre de navigation des pages du chercheur.
   function navChercheur(actif, racine = "") {
     const liens = [
-      ["questionnaire", "Questionnaire", `${racine}index.html#accueil`],
+      ["accueil", "Accueil", `${racine}index.html#appli`],
       ["reponses", "Réponses reçues", `${racine}index.html#chercheur`],
       ["documents", "Mes documents", `${racine}documents.html`],
     ];
@@ -128,5 +130,107 @@
     );
   }
 
-  window.Commun = { h, icone, lire, ecrire, oublier, notifier, telecharger, copier, taille, navChercheur };
+  // ---------------------------------------------------------------------------
+  // Application installée sur le téléphone (écran d'accueil, hors connexion)
+  // ---------------------------------------------------------------------------
+  if ("serviceWorker" in navigator && /^https?:$/.test(location.protocol)) {
+    window.addEventListener("load", () => navigator.serviceWorker.register(new URL("sw.js", ICI)).catch(() => {}));
+  }
+
+  const installation = { invite: null, installee: false, abonnes: new Set() };
+  const prevenir = () => installation.abonnes.forEach((f) => f());
+  window.addEventListener("beforeinstallprompt", (e) => {
+    e.preventDefault();
+    installation.invite = e;
+    prevenir();
+  });
+  window.addEventListener("appinstalled", () => {
+    installation.invite = null;
+    installation.installee = true;
+    prevenir();
+  });
+
+  function estInstallee() {
+    return (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) || window.navigator.standalone === true;
+  }
+
+  function carteInstallation() {
+    const carte = h("section", { class: "bloc installation" });
+    const appareilApple = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    function dessiner() {
+      if (carte.dataset.affichee && !carte.isConnected) {
+        installation.abonnes.delete(dessiner);
+        return;
+      }
+      carte.dataset.affichee = "1";
+      if (estInstallee()) {
+        carte.hidden = true;
+        return;
+      }
+      if (installation.installee) {
+        carte.replaceChildren(
+          h("h2", { text: "Application installée" }),
+          h("p", { text: "Vous la retrouvez sur l'écran d'accueil du téléphone : « Enquête grâce »." }),
+        );
+        return;
+      }
+      const titre = h("h2", { text: "Installer l'application sur ce téléphone" });
+      const texte = h("p", {
+        class: "discret",
+        text: "Elle s'ajoute sur l'écran d'accueil, comme les autres applications, et s'ouvre même sans connexion internet.",
+      });
+      if (installation.invite) {
+        carte.replaceChildren(
+          titre,
+          texte,
+          h(
+            "button",
+            {
+              class: "bouton",
+              type: "button",
+              onclick: async () => {
+                const invite = installation.invite;
+                if (!invite) return;
+                invite.prompt();
+                const choix = await invite.userChoice.catch(() => ({}));
+                installation.invite = null;
+                if (choix.outcome === "accepted") installation.installee = true;
+                dessiner();
+              },
+            },
+            icone("telecharger"),
+            "Installer l'application",
+          ),
+        );
+      } else if (appareilApple) {
+        carte.replaceChildren(
+          titre,
+          texte,
+          h(
+            "ol",
+            { class: "etapes" },
+            h("li", { text: "Ouvrez cette page dans Safari." }),
+            h("li", { text: "Touchez le bouton Partager (le carré avec une flèche vers le haut)." }),
+            h("li", { text: "Choisissez « Sur l'écran d'accueil », puis « Ajouter »." }),
+          ),
+        );
+      } else {
+        carte.replaceChildren(
+          titre,
+          texte,
+          h(
+            "ol",
+            { class: "etapes" },
+            h("li", { text: "Si vous avez ouvert ce lien depuis WhatsApp ou Facebook : menu ⋮ → « Ouvrir dans Chrome »." }),
+            h("li", { text: "Dans Chrome : menu ⋮ → « Installer l'application » (ou « Ajouter à l'écran d'accueil »)." }),
+          ),
+        );
+      }
+    }
+    installation.abonnes.add(dessiner);
+    dessiner();
+    return carte;
+  }
+
+  window.Commun = { h, icone, lire, ecrire, oublier, notifier, telecharger, copier, taille, navChercheur, carteInstallation, estInstallee };
 })();
