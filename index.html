@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Enquête grâce et liberté</title>
+    <meta
+      name="description"
+      content="Questionnaire anonyme de la thèse de doctorat « La grâce divine et la liberté humaine » — Ouagadougou, EMGJ."
+    />
+    <meta property="og:title" content="La grâce divine et la liberté humaine — questionnaire" />
+    <meta
+      property="og:description"
+      content="Questionnaire anonyme pour une thèse de doctorat en théologie (EMGJ, Ouagadougou). Environ 15 minutes."
+    />
+    <meta name="theme-color" content="#1e2a5e" />
+    <link rel="apple-touch-icon" href="icones/apple-touch-icon.png" />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%231e2a5e'/%3E%3Crect x='14' y='14' width='36' height='36' rx='6' fill='none' stroke='%23e9b44c' stroke-width='5'/%3E%3Cpath d='M22 33l7 7 14-16' fill='none' stroke='%23ffffff' stroke-width='6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,600;8..60,700&display=swap"
+    />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="barre-progression" id="barre" hidden><span id="barre-remplissage"></span></div>
+    <main id="app" class="page" aria-live="polite">
+      <noscript>
+        <p class="carte">Ce questionnaire a besoin de JavaScript. Ouvrez-le avec Chrome, Safari ou Firefox.</p>
+      </noscript>
+    </main>
+    <div class="notification" id="notification" role="status" hidden></div>
+    <script src="commun.js"></script>
+    <script src="questionnaire.js"></script>
+    <script src="outils.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
