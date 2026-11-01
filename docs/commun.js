@@ -6,6 +6,8 @@
   "use strict";
 
   const ICI = document.currentScript ? document.currentScript.src : location.href;
+  // Publiée sur claude.ai, la page tourne dans un cadre qui fournit window.claude.
+  const ARTEFACT = !!(window.claude && typeof window.claude.use === "function");
 
   function h(balise, attributs, ...enfants) {
     const el = document.createElement(balise);
@@ -90,6 +92,69 @@
     setTimeout(() => URL.revokeObjectURL(url), 60000);
   }
 
+  // Enregistrer un fichier : lien de téléchargement sur un site normal,
+  // capacité « downloads » sur claude.ai (absente : le bouton reste caché).
+  const capaciteTelechargement = ARTEFACT
+    ? window.claude.use("downloads").catch(() => null)
+    : Promise.resolve("navigateur");
+
+  async function telechargementPossible() {
+    return !!(await capaciteTelechargement);
+  }
+
+  function siTelechargement(el) {
+    el.hidden = true;
+    telechargementPossible().then((ok) => (el.hidden = !ok));
+    return el;
+  }
+
+  async function enregistrerFichier(blob, nom) {
+    const capacite = await capaciteTelechargement;
+    if (capacite === "navigateur") {
+      telecharger(blob, nom);
+      return true;
+    }
+    if (!capacite) {
+      notifier("Le téléchargement n'est pas possible ici.");
+      return false;
+    }
+    try {
+      await capacite.save({ filename: nom, data: blob });
+      return true;
+    } catch (e) {
+      if (!e || e.code !== "declined") notifier("Le fichier n'a pas pu être enregistré.");
+      return false;
+    }
+  }
+
+  // Fenêtre de confirmation (remplace confirm(), qui ne s'affiche pas partout).
+  function confirmer(message, { oui = "Confirmer", non = "Annuler", danger = false } = {}) {
+    return new Promise((resoudre) => {
+      const precedent = document.activeElement;
+      const fond = h("div", { class: "fenetre-fond" });
+      const fermer = (valeur) => {
+        document.removeEventListener("keydown", touche);
+        fond.remove();
+        if (precedent && precedent.focus) precedent.focus();
+        resoudre(valeur);
+      };
+      const touche = (e) => e.key === "Escape" && fermer(false);
+      const boutonOui = h("button", { class: `bouton petit${danger ? " danger" : ""}`, type: "button", text: oui, onclick: () => fermer(true) });
+      fond.append(
+        h(
+          "div",
+          { class: "fenetre", role: "alertdialog", "aria-modal": "true", "aria-labelledby": "fenetre-message" },
+          h("p", { id: "fenetre-message", text: message }),
+          h("div", { class: "actions" }, h("button", { class: "bouton petit secondaire", type: "button", text: non, onclick: () => fermer(false) }), boutonOui),
+        ),
+      );
+      fond.addEventListener("click", (e) => e.target === fond && fermer(false));
+      document.addEventListener("keydown", touche);
+      document.body.append(fond);
+      boutonOui.focus();
+    });
+  }
+
   async function copier(texte, champ) {
     try {
       await navigator.clipboard.writeText(texte);
@@ -122,7 +187,7 @@
       ["accueil", "Accueil", `${racine}index.html#appli`],
       ["reponses", "Réponses reçues", `${racine}index.html#chercheur`],
       ["documents", "Mes documents", `${racine}documents.html`],
-    ];
+    ].filter(([cle]) => !(ARTEFACT && cle === "documents"));
     return h(
       "nav",
       { class: "onglets", "aria-label": "Espace chercheur" },
@@ -133,7 +198,7 @@
   // ---------------------------------------------------------------------------
   // Application installée sur le téléphone (écran d'accueil, hors connexion)
   // ---------------------------------------------------------------------------
-  if ("serviceWorker" in navigator && /^https?:$/.test(location.protocol)) {
+  if (!ARTEFACT && "serviceWorker" in navigator && /^https?:$/.test(location.protocol)) {
     window.addEventListener("load", () => navigator.serviceWorker.register(new URL("sw.js", ICI)).catch(() => {}));
   }
 
@@ -163,6 +228,19 @@
         return;
       }
       carte.dataset.affichee = "1";
+      if (ARTEFACT) {
+        carte.replaceChildren(
+          h("h2", { text: "Garder l'application sur ce téléphone" }),
+          h(
+            "ol",
+            { class: "etapes" },
+            h("li", { text: "Ouvrez ce lien dans Chrome (sur iPhone : Safari)." }),
+            h("li", { text: "Menu ⋮ → « Ajouter à l'écran d'accueil » (sur iPhone : bouton Partager → « Sur l'écran d'accueil »)." }),
+            h("li", { text: "L'icône s'ajoute sur l'écran d'accueil : un geste suffit pour revenir ici." }),
+          ),
+        );
+        return;
+      }
       if (estInstallee()) {
         carte.hidden = true;
         return;
@@ -232,5 +310,22 @@
     return carte;
   }
 
-  window.Commun = { h, icone, lire, ecrire, oublier, notifier, telecharger, copier, taille, navChercheur, carteInstallation, estInstallee };
+  window.Commun = {
+    ARTEFACT,
+    h,
+    icone,
+    lire,
+    ecrire,
+    oublier,
+    notifier,
+    telecharger,
+    enregistrerFichier,
+    siTelechargement,
+    confirmer,
+    copier,
+    taille,
+    navChercheur,
+    carteInstallation,
+    estInstallee,
+  };
 })();

@@ -15,9 +15,11 @@
   const app = document.getElementById("app");
   const barre = document.getElementById("barre");
 
-  const { h, icone, lire, ecrire, oublier, notifier, telecharger, copier, navChercheur, carteInstallation } = window.Commun;
+  const { ARTEFACT, h, icone, lire, ecrire, oublier, notifier, enregistrerFichier, siTelechargement, confirmer, copier, navChercheur, carteInstallation } =
+    window.Commun;
 
   function adresseBase() {
+    if (ARTEFACT) return R.lienArtefact || R.lienDuSite;
     let encadre = false;
     try {
       encadre = window.top !== window.self;
@@ -151,8 +153,8 @@
               class: "lien-bouton",
               type: "button",
               text: "Recommencer à zéro",
-              onclick: () => {
-                if (!confirm("Effacer toutes vos réponses et recommencer ?")) return;
+              onclick: async () => {
+                if (!(await confirmer("Effacer toutes vos réponses et recommencer ?", { oui: "Effacer", danger: true }))) return;
                 etat = null;
                 oublier(CLE_BROUILLON);
                 avertis.clear();
@@ -222,7 +224,7 @@
           "div",
           { class: "partages" },
           h("a", { class: "bouton vert", href: `https://wa.me/?text=${encodeURIComponent(invitation)}`, target: "_blank", rel: "noopener" }, icone("message"), "Envoyer par WhatsApp"),
-          typeof navigator.share === "function"
+          !ARTEFACT && typeof navigator.share === "function"
             ? h(
                 "button",
                 {
@@ -247,7 +249,7 @@
         "section",
         { class: "raccourcis" },
         tuile("Réponses reçues", nombre ? `${nombre} réponse${nombre > 1 ? "s" : ""} dans votre tableau` : "Rassembler et analyser les réponses", "#chercheur"),
-        tuile("Mes documents", "Transformer un livre ou un PDF en lien", "documents.html"),
+        ARTEFACT ? null : tuile("Mes documents", "Transformer un livre ou un PDF en lien", "documents.html"),
         tuile("Voir le questionnaire", "Tel que les participants le voient", "#accueil"),
       ),
     );
@@ -448,6 +450,17 @@
     const manquantes = QUESTIONS.filter((q) => !O.estRepondue(q, etat.a));
     const message = (lien) =>
       `Bonjour, voici mes réponses au questionnaire « ${E.titre} » (code ${etat.id}) :\n${lien}`;
+    // Sur claude.ai, le lien ne peut pas transporter les réponses : le message les contient en clair.
+    const messageComplet = (code) =>
+      [
+        `Réponses au questionnaire « ${E.titre} »`,
+        `Code : ${etat.id} · ${O.formaterDate(etat.maj)}`,
+        "",
+        ...QUESTIONS.map((q) => `${q.n}. ${O.texteReponse(q, etat.a) || "(pas de réponse)"}`),
+        "",
+        "Données pour le tableau du chercheur :",
+        `#r=${code}`,
+      ].join("\n");
 
     const boutonWhatsapp = h(
       "a",
@@ -455,24 +468,33 @@
       icone("message"),
       "Envoyer par WhatsApp",
     );
-    const boutonWord = h(
-      "button",
-      {
-        class: "bouton",
-        type: "button",
-        onclick: () => {
-          telecharger(O.docxReponse(E, QUESTIONS, O.nettoyer(donneesEnvoi(), QUESTIONS)), nomDuFichier(etat.id));
-          notifier("Fichier Word enregistré dans vos téléchargements. Vous pouvez l'envoyer comme document dans WhatsApp.");
+    const boutonWord = siTelechargement(
+      h(
+        "button",
+        {
+          class: "bouton",
+          type: "button",
+          onclick: async () => {
+            const ok = await enregistrerFichier(O.docxReponse(E, QUESTIONS, O.nettoyer(donneesEnvoi(), QUESTIONS)), nomDuFichier(etat.id));
+            if (ok) notifier("Fichier Word enregistré. Vous pouvez l'envoyer comme document dans WhatsApp.");
+          },
         },
-      },
-      icone("document"),
-      "Télécharger en Word",
+        icone("document"),
+        "Télécharger en Word",
+      ),
     );
-    const boutonCopier = h("button", { class: "bouton secondaire", type: "button", disabled: true }, icone("lien"), "Copier le lien de mes réponses");
-    const champLien = h("input", { type: "text", readonly: true, id: "lien-reponses", "aria-label": "Lien de vos réponses" });
-    const boutonEmail = h("a", { class: "lien-bouton", href: "#", "aria-disabled": "true", text: "Envoyer par e-mail" });
+    const boutonCopier = h(
+      "button",
+      { class: "bouton secondaire", type: "button", disabled: true },
+      icone(ARTEFACT ? "document" : "lien"),
+      ARTEFACT ? "Copier mes réponses" : "Copier le lien de mes réponses",
+    );
+    const champLien = ARTEFACT
+      ? h("textarea", { readonly: true, rows: 8, id: "texte-reponses", class: "texte-message", "aria-label": "Message de vos réponses" })
+      : h("input", { type: "text", readonly: true, id: "lien-reponses", "aria-label": "Lien de vos réponses" });
+    const boutonEmail = ARTEFACT ? null : h("a", { class: "lien-bouton", href: "#", "aria-disabled": "true", text: "Envoyer par e-mail" });
     const boutonPartager =
-      typeof navigator.share === "function"
+      !ARTEFACT && typeof navigator.share === "function"
         ? h("button", { class: "lien-bouton", type: "button", text: "Partager avec une autre application" })
         : null;
     const recap = h("div", { class: "recap", hidden: true }, recapitulatif(etat.a));
@@ -518,27 +540,36 @@
           : null,
         h("p", { text: "Dernière étape : envoyez vos réponses au chercheur, de la façon la plus simple pour vous." }),
         h("div", { class: "partages" }, boutonWhatsapp, boutonWord, boutonCopier),
-        h(
-          "div",
-          { class: "partages-secondaires" },
-          boutonPartager,
-          boutonEmail,
-          h("button", {
-            class: "lien-bouton",
-            type: "button",
-            text: "Imprimer ou enregistrer en PDF",
-            onclick: () => {
-              recap.hidden = false;
-              window.print();
-            },
-          }),
-        ),
+        ARTEFACT
+          ? null
+          : h(
+              "div",
+              { class: "partages-secondaires" },
+              boutonPartager,
+              boutonEmail,
+              h("button", {
+                class: "lien-bouton",
+                type: "button",
+                text: "Imprimer ou enregistrer en PDF",
+                onclick: () => {
+                  recap.hidden = false;
+                  window.print();
+                },
+              }),
+            ),
         h(
           "details",
           {},
-          h("summary", { text: "Voir le lien de mes réponses" }),
-          h("p", { class: "discret", text: "Ce lien contient toutes vos réponses. En l'ouvrant, le chercheur les voit s'afficher." }),
-          h("div", { class: "champ-lien" }, champLien, h("button", { class: "bouton petit secondaire", type: "button", text: "Copier", onclick: () => copierLien() })),
+          h("summary", { text: ARTEFACT ? "Voir le message envoyé" : "Voir le lien de mes réponses" }),
+          h("p", {
+            class: "discret",
+            text: ARTEFACT
+              ? "Ce message contient toutes vos réponses. Vous pouvez aussi le copier et l'envoyer par SMS ou Messenger."
+              : "Ce lien contient toutes vos réponses. En l'ouvrant, le chercheur les voit s'afficher.",
+          }),
+          ARTEFACT
+            ? champLien
+            : h("div", { class: "champ-lien" }, champLien, h("button", { class: "bouton petit secondaire", type: "button", text: "Copier", onclick: () => copierLien() })),
         ),
       ),
       h(
@@ -589,8 +620,8 @@
             class: "lien-bouton",
             type: "button",
             text: "Effacer mes réponses de cet appareil",
-            onclick: () => {
-              if (!confirm("Avez-vous bien envoyé vos réponses ? Elles seront effacées de cet appareil.")) return;
+            onclick: async () => {
+              if (!(await confirmer("Avez-vous bien envoyé vos réponses ? Elles seront effacées de cet appareil.", { oui: "Effacer", danger: true }))) return;
               etat = null;
               oublier(CLE_BROUILLON);
               avertis.clear();
@@ -606,20 +637,23 @@
     async function copierLien() {
       if (!lien) return;
       const ok = await copier(lien, champLien);
-      notifier(ok ? "Lien copié. Collez-le dans un message au chercheur." : "Sélectionnez le lien et copiez-le.");
+      if (ARTEFACT) notifier(ok ? "Réponses copiées. Collez-les dans un message au chercheur." : "Sélectionnez le texte et copiez-le.");
+      else notifier(ok ? "Lien copié. Collez-le dans un message au chercheur." : "Sélectionnez le lien et copiez-le.");
     }
     boutonCopier.addEventListener("click", copierLien);
 
     O.encoder(donneesEnvoi()).then((code) => {
-      lien = lienDe(code);
+      lien = ARTEFACT ? messageComplet(code) : lienDe(code);
       champLien.value = lien;
       const numero = String(R.whatsapp || "").replace(/\D/g, "");
-      boutonWhatsapp.href = `https://wa.me/${numero}?text=${encodeURIComponent(message(lien))}`;
+      boutonWhatsapp.href = `https://wa.me/${numero}?text=${encodeURIComponent(ARTEFACT ? lien : message(lien))}`;
       boutonWhatsapp.removeAttribute("aria-disabled");
       boutonCopier.disabled = false;
       const sujet = `Réponses au questionnaire — code ${etat.id}`;
-      boutonEmail.href = `mailto:${R.email || ""}?subject=${encodeURIComponent(sujet)}&body=${encodeURIComponent(message(lien))}`;
-      boutonEmail.removeAttribute("aria-disabled");
+      if (boutonEmail) {
+        boutonEmail.href = `mailto:${R.email || ""}?subject=${encodeURIComponent(sujet)}&body=${encodeURIComponent(message(lien))}`;
+        boutonEmail.removeAttribute("aria-disabled");
+      }
       if (boutonPartager) {
         boutonPartager.addEventListener("click", async () => {
           const texte = message(lien);
@@ -672,12 +706,13 @@
   // ---------------------------------------------------------------------------
   // Ouverture d'un lien de réponses (côté chercheur)
   // ---------------------------------------------------------------------------
-  async function vueReponse(code) {
+  async function vueReponse(source) {
     document.title = `Réponses · ${E.titre}`;
     afficher(h("p", { class: "discret", text: "Ouverture des réponses…" }));
+    window.scrollTo(0, 0);
     let reponse;
     try {
-      reponse = O.nettoyer(await O.decoder(code), QUESTIONS);
+      reponse = typeof source === "string" ? O.nettoyer(await O.decoder(source), QUESTIONS) : source;
     } catch {
       afficher(
         h(
@@ -726,21 +761,22 @@
       h(
         "div",
         { class: "actions" },
-        h(
-          "button",
-          { class: "bouton", type: "button", onclick: () => telecharger(O.docxReponse(E, QUESTIONS, reponse), nomDuFichier(reponse.id)) },
-          icone("document"),
-          "Télécharger en Word",
+        siTelechargement(
+          h(
+            "button",
+            { class: "bouton", type: "button", onclick: () => enregistrerFichier(O.docxReponse(E, QUESTIONS, reponse), nomDuFichier(reponse.id)) },
+            icone("document"),
+            "Télécharger en Word",
+          ),
         ),
         boutonTableau,
-        h("button", { class: "lien-bouton", type: "button", text: "Imprimer", onclick: () => window.print() }),
+        ARTEFACT ? null : h("button", { class: "lien-bouton", type: "button", text: "Imprimer", onclick: () => window.print() }),
       ),
       h("div", { class: "bloc recap" }, recapitulatif(reponse.a)),
       h(
         "footer",
         { class: "pied" },
-        h("p", {}, h("a", { href: "#chercheur", text: "Espace chercheur : toutes les réponses" })),
-        h("p", {}, h("a", { href: "#accueil", text: "Remplir le questionnaire" })),
+        h("p", {}, h("button", { class: "lien-bouton", type: "button", text: "← Toutes les réponses reçues", onclick: () => aller("#chercheur") })),
       ),
     );
   }
@@ -791,14 +827,16 @@
     const zone = h("textarea", {
       id: "liens-a-ajouter",
       rows: 4,
-      placeholder: "Collez ici un ou plusieurs liens de réponses (ou toute une discussion WhatsApp)…",
+      placeholder: ARTEFACT
+        ? "Collez ici un ou plusieurs messages de réponses (ou toute une discussion WhatsApp)…"
+        : "Collez ici un ou plusieurs liens de réponses (ou toute une discussion WhatsApp)…",
     });
     const fichier = h("input", { type: "file", accept: ".txt,text/plain", hidden: true, id: "fichier-discussion" });
 
     async function importer(texte) {
       const codes = O.extraireCodes(texte);
       if (!codes.length) {
-        notifier("Aucun lien de réponses trouvé dans ce texte.");
+        notifier("Aucune réponse trouvée dans ce texte.");
         return;
       }
       const reponses = [];
@@ -837,14 +875,14 @@
         h(
           "td",
           {},
-          h("button", { class: "lien-bouton", type: "button", text: "Voir", onclick: async () => aller(`#r=${await O.encoder(r)}`) }),
+          h("button", { class: "lien-bouton", type: "button", text: "Voir", onclick: () => vueReponse(r) }),
           " · ",
           h("button", {
             class: "lien-bouton",
             type: "button",
             text: "Retirer",
-            onclick: () => {
-              if (!confirm(`Retirer les réponses ${r.id} du tableau ?`)) return;
+            onclick: async () => {
+              if (!(await confirmer(`Retirer les réponses ${r.id} du tableau ?`, { oui: "Retirer", danger: true }))) return;
               ecrire(
                 CLE_TABLEAU,
                 lire(CLE_TABLEAU, []).filter((x) => x.id !== r.id),
@@ -865,7 +903,9 @@
         h("h1", { text: "Réponses reçues" }),
         h("p", {
           class: "discret",
-          text: "Les participants vous envoient un lien. Ouvrez-le puis « Ajouter à mon tableau », ou collez ici tous les liens reçus. Le tableau reste sur cet appareil et ce navigateur.",
+          text: ARTEFACT
+            ? "Les participants vous envoient leurs réponses par WhatsApp. Copiez leurs messages et collez-les ici, un ou plusieurs à la fois. Le tableau reste sur cet appareil ; les messages WhatsApp restent votre sauvegarde."
+            : "Les participants vous envoient un lien. Ouvrez-le puis « Ajouter à mon tableau », ou collez ici tous les liens reçus. Le tableau reste sur cet appareil et ce navigateur.",
         }),
       ),
       h(
@@ -915,7 +955,7 @@
                 h("tbody", {}, lignes),
               ),
             )
-          : h("p", { class: "discret", text: "Aucune réponse pour l'instant. Collez un lien reçu dans la case ci-dessus." }),
+          : h("p", { class: "discret", text: "Aucune réponse pour l'instant. Collez un message ou un lien reçu dans la case ci-dessus." }),
         tableau.length
           ? h(
               "div",
@@ -924,25 +964,31 @@
                 class: "bouton petit",
                 type: "button",
                 text: "Exporter vers Excel (.csv)",
-                onclick: () => telecharger(new Blob([O.csv(QUESTIONS, tableau)], { type: "text/csv;charset=utf-8" }), `reponses-enquete-${dateFichier()}.csv`),
+                onclick: () => enregistrerFichier(new Blob([O.csv(QUESTIONS, tableau)], { type: "text/csv;charset=utf-8" }), `reponses-enquete-${dateFichier()}.csv`),
               }),
               h("button", {
                 class: "bouton petit secondaire",
                 type: "button",
-                text: "Sauvegarder les liens (.txt)",
+                text: ARTEFACT ? "Sauvegarder (.txt)" : "Sauvegarder les liens (.txt)",
                 onclick: async () => {
                   const lignesTexte = [`Sauvegarde — ${E.titre} — ${tableau.length} réponses — ${O.formaterDate(maintenant())}`, ""];
-                  for (const r of tableau) lignesTexte.push(`${r.id} : ${lienDe(await O.encoder(r))}`);
-                  telecharger(new Blob([lignesTexte.join("\r\n")], { type: "text/plain;charset=utf-8" }), `sauvegarde-enquete-${dateFichier()}.txt`);
-                  notifier("Sauvegarde téléchargée. Pour la restaurer : « Importer un fichier .txt ».");
+                  for (const r of tableau) {
+                    const code = await O.encoder(r);
+                    lignesTexte.push(`${r.id} : ${ARTEFACT ? `#r=${code}` : lienDe(code)}`);
+                  }
+                  const ok = await enregistrerFichier(
+                    new Blob([lignesTexte.join("\r\n")], { type: "text/plain;charset=utf-8" }),
+                    `sauvegarde-enquete-${dateFichier()}.txt`,
+                  );
+                  if (ok) notifier("Sauvegarde enregistrée. Pour la restaurer : « Importer un fichier .txt ».");
                 },
               }),
               h("button", {
                 class: "bouton petit danger",
                 type: "button",
                 text: "Tout effacer",
-                onclick: () => {
-                  if (!confirm(`Effacer les ${tableau.length} réponses de cet appareil ? Faites d'abord une sauvegarde.`)) return;
+                onclick: async () => {
+                  if (!(await confirmer(`Effacer les ${tableau.length} réponses de cet appareil ? Faites d'abord une sauvegarde.`, { oui: "Tout effacer", danger: true }))) return;
                   oublier(CLE_TABLEAU);
                   espaceChercheur();
                 },

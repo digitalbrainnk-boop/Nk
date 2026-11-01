@@ -1,0 +1,3430 @@
+<title>Enquête grâce et liberté</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,600;8..60,700&display=swap">
+<style>
+/* Mise en page : une seule colonne, comme une feuille de questionnaire imprimée,
+   encre indigo sur papier froid, ocre (latérite de Ouagadougou) pour la progression. */
+:root {
+  --papier: #f4f5f9;
+  --feuille: #ffffff;
+  --encre: #1b2033;
+  --encre-douce: #5a6077;
+  --indigo: #1e2a5e;
+  --indigo-clair: #ebeef9;
+  --sur-indigo: #ffffff;
+  --ocre: #c47f17;
+  --filet: #dadeea;
+  --alerte: #b0422b;
+  --alerte-fond: #fbefeb;
+  --vert: #157a43;
+  --sur-vert: #ffffff;
+
+  --police-titre: "Source Serif 4", "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+  --police-texte: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", "Helvetica Neue", Arial, sans-serif;
+  --police-code: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, Consolas, monospace;
+
+  --rayon: 10px;
+  --largeur: 44rem;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --papier: #0f1220;
+    --feuille: #171b2b;
+    --encre: #e7e9f2;
+    --encre-douce: #a2a8bf;
+    --indigo: #a9b8ff;
+    --indigo-clair: #222a49;
+    --sur-indigo: #0f1220;
+    --ocre: #e8b24a;
+    --filet: #2b3149;
+    --alerte: #f0896d;
+    --alerte-fond: #33201d;
+    --vert: #3fbf76;
+    --sur-vert: #0b1a12;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --papier: #0f1220;
+  --feuille: #171b2b;
+  --encre: #e7e9f2;
+  --encre-douce: #a2a8bf;
+  --indigo: #a9b8ff;
+  --indigo-clair: #222a49;
+  --sur-indigo: #0f1220;
+  --ocre: #e8b24a;
+  --filet: #2b3149;
+  --alerte: #f0896d;
+  --alerte-fond: #33201d;
+  --vert: #3fbf76;
+  --sur-vert: #0b1a12;
+  color-scheme: dark;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+body {
+  margin: 0;
+  background: var(--papier);
+  color: var(--encre);
+  font: 400 1.0625rem/1.55 var(--police-texte);
+}
+[hidden] {
+  display: none !important;
+}
+h1,
+h2,
+h3 {
+  font-family: var(--police-titre);
+  font-weight: 700;
+  line-height: 1.2;
+  text-wrap: balance;
+  margin: 0;
+}
+p {
+  margin: 0;
+}
+a {
+  color: var(--indigo);
+}
+:focus-visible {
+  outline: 3px solid var(--ocre);
+  outline-offset: 2px;
+}
+
+.page {
+  max-width: var(--largeur);
+  margin: 0 auto;
+  padding-block: 1.5rem 4rem;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid;
+  gap: 1.5rem;
+}
+
+/* Barre de progression en haut de l'écran */
+.barre-progression {
+  position: sticky;
+  top: env(safe-area-inset-top, 0px);
+  z-index: 5;
+  height: 5px;
+  background: var(--filet);
+}
+.barre-progression span {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--ocre);
+  transition: width 0.3s ease;
+}
+
+/* Petits textes */
+.surtitre {
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--encre-douce);
+}
+.discret {
+  color: var(--encre-douce);
+  font-size: 0.92rem;
+}
+
+/* Accueil */
+.entete {
+  display: grid;
+  gap: 0.75rem;
+  padding-block: 0.5rem 0.25rem;
+}
+.entete h1 {
+  font-size: clamp(1.9rem, 6.5vw, 2.7rem);
+  color: var(--indigo);
+}
+.fiche {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.35rem 1rem;
+  margin: 0.5rem 0 0;
+  font-size: 0.95rem;
+}
+.fiche dt {
+  color: var(--encre-douce);
+}
+.fiche dd {
+  margin: 0;
+  font-weight: 600;
+  min-width: 0;
+}
+@media (max-width: 30rem) {
+  .fiche {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+  .fiche dd {
+    margin-bottom: 0.45rem;
+  }
+}
+
+.lettre {
+  background: var(--feuille);
+  border: 1px solid var(--filet);
+  border-radius: var(--rayon);
+  padding: 1.4rem 1.25rem;
+  display: grid;
+  gap: 0.8rem;
+  max-width: 65ch;
+}
+.lettre .signature {
+  font-family: var(--police-titre);
+  font-style: italic;
+  text-align: right;
+}
+.reperes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.25rem;
+  color: var(--encre-douce);
+  font-size: 0.92rem;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+.reperes li::before {
+  content: "☐ ";
+  color: var(--ocre);
+}
+
+/* Boutons */
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+.bouton {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 3rem;
+  padding: 0.7rem 1.3rem;
+  border-radius: 999px;
+  border: 2px solid var(--indigo);
+  background: var(--indigo);
+  color: var(--sur-indigo);
+  font: 600 1rem/1.2 var(--police-texte);
+  text-decoration: none;
+  cursor: pointer;
+  text-align: center;
+}
+.bouton:hover {
+  filter: brightness(1.08);
+}
+.bouton:disabled,
+.bouton[aria-disabled="true"] {
+  opacity: 0.5;
+  pointer-events: none;
+}
+.bouton.secondaire {
+  background: transparent;
+  color: var(--indigo);
+}
+.bouton.vert {
+  background: var(--vert);
+  border-color: var(--vert);
+  color: var(--sur-vert);
+}
+.bouton.petit {
+  min-height: 2.4rem;
+  padding: 0.4rem 0.95rem;
+  font-size: 0.92rem;
+}
+.bouton.danger {
+  background: transparent;
+  border-color: var(--alerte);
+  color: var(--alerte);
+}
+.lien-bouton {
+  appearance: none;
+  background: none;
+  border: 0;
+  padding: 0.4rem 0;
+  font: inherit;
+  font-size: 0.95rem;
+  color: var(--indigo);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.bouton svg,
+.bouton-partage svg {
+  width: 1.25em;
+  height: 1.25em;
+  flex: none;
+}
+
+/* Une partie du questionnaire */
+.titre-partie {
+  display: grid;
+  gap: 0.4rem;
+}
+.titre-partie h2 {
+  font-size: clamp(1.45rem, 5vw, 1.9rem);
+  color: var(--indigo);
+}
+.titre-partie .description {
+  color: var(--encre-douce);
+  max-width: 60ch;
+}
+.questions {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 1rem;
+}
+.question {
+  background: var(--feuille);
+  border: 1px solid var(--filet);
+  border-radius: var(--rayon);
+  padding: 1.1rem 1rem 1rem;
+  scroll-margin-top: 1.5rem;
+}
+.question.manque {
+  border-color: var(--alerte);
+  box-shadow: 0 0 0 1px var(--alerte);
+}
+.question fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+.question legend,
+.question .intitule {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.7rem;
+  padding: 0;
+  font-weight: 600;
+  font-size: 1.05rem;
+  line-height: 1.45;
+}
+.numero {
+  font-family: var(--police-titre);
+  font-weight: 700;
+  color: var(--ocre);
+  font-variant-numeric: tabular-nums;
+  min-width: 1.6rem;
+}
+.consigne {
+  margin: 0.35rem 0 0 2.3rem;
+  font-size: 0.85rem;
+  color: var(--encre-douce);
+}
+.question .etiquette-manque {
+  margin: 0.35rem 0 0 2.3rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--alerte);
+}
+.options {
+  display: grid;
+  gap: 0.45rem;
+  margin-top: 0.8rem;
+}
+.option {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: start;
+  gap: 0.75rem;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--filet);
+  border-radius: 8px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.option:hover {
+  border-color: var(--indigo);
+}
+.option.coche {
+  border-color: var(--indigo);
+  background: var(--indigo-clair);
+}
+.option input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+}
+.case {
+  width: 1.35rem;
+  height: 1.35rem;
+  margin-top: 0.1rem;
+  border: 2px solid var(--encre-douce);
+  border-radius: 4px;
+  background: var(--feuille);
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+.option input[type="radio"] + .case {
+  border-radius: 50%;
+}
+.option input:checked + .case {
+  border-color: var(--indigo);
+  background: var(--indigo);
+}
+.option input[type="checkbox"]:checked + .case::after {
+  content: "";
+  width: 0.38rem;
+  height: 0.72rem;
+  border: solid var(--sur-indigo);
+  border-width: 0 3px 3px 0;
+  transform: translateY(-1px) rotate(45deg);
+}
+.option input[type="radio"]:checked + .case::after {
+  content: "";
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: var(--sur-indigo);
+}
+.option input:focus-visible + .case {
+  outline: 3px solid var(--ocre);
+  outline-offset: 2px;
+}
+.option .texte {
+  min-width: 0;
+}
+.precision {
+  margin: 0.1rem 0 0 2.1rem;
+}
+input[type="text"],
+textarea {
+  width: 100%;
+  font: inherit;
+  color: var(--encre);
+  background: var(--feuille);
+  border: 1px solid var(--filet);
+  border-radius: 8px;
+  padding: 0.7rem 0.8rem;
+}
+input[type="text"]:focus,
+textarea:focus {
+  outline: 2px solid var(--indigo);
+  outline-offset: 0;
+  border-color: var(--indigo);
+}
+textarea {
+  min-height: 9rem;
+  resize: vertical;
+  line-height: 1.5;
+  margin-top: 0.8rem;
+}
+.compteur {
+  text-align: right;
+  font-size: 0.8rem;
+  color: var(--encre-douce);
+  margin-top: 0.2rem;
+}
+
+.avertissement {
+  border: 1px solid var(--alerte);
+  background: var(--alerte-fond);
+  color: var(--encre);
+  border-radius: var(--rayon);
+  padding: 0.9rem 1rem;
+  display: grid;
+  gap: 0.3rem;
+}
+.avertissement strong {
+  color: var(--alerte);
+}
+
+.navigation {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  padding-top: 0.5rem;
+}
+.navigation .bouton {
+  flex: 1 1 9rem;
+}
+.enregistre {
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--encre-douce);
+}
+
+/* Fin du questionnaire */
+.merci {
+  display: grid;
+  gap: 0.8rem;
+}
+.merci h1 {
+  font-size: clamp(1.8rem, 6vw, 2.4rem);
+  color: var(--indigo);
+}
+.ticket {
+  background: var(--feuille);
+  border: 1px solid var(--filet);
+  border-radius: var(--rayon);
+  padding: 1.25rem;
+  display: grid;
+  gap: 1rem;
+}
+.ticket-entete {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.5rem 1rem;
+  padding-bottom: 0.9rem;
+  border-bottom: 1px dashed var(--filet);
+}
+.code {
+  font-family: var(--police-code);
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--indigo);
+}
+.partages {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: 0.75rem;
+}
+.partages .bouton {
+  width: 100%;
+  border-radius: 12px;
+  justify-content: flex-start;
+}
+.partages-secondaires {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.25rem;
+}
+.champ-lien {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.5rem;
+}
+.champ-lien input {
+  font-family: var(--police-code);
+  font-size: 0.82rem;
+  min-width: 0;
+}
+.bloc {
+  background: var(--feuille);
+  border: 1px solid var(--filet);
+  border-radius: var(--rayon);
+  padding: 1.1rem 1rem;
+  display: grid;
+  gap: 0.75rem;
+}
+.bloc h2 {
+  font-size: 1.25rem;
+}
+
+/* Vue d'une réponse (lecture) */
+.recap {
+  display: grid;
+  gap: 1.75rem;
+}
+.recap-partie {
+  display: grid;
+  gap: 0.6rem;
+}
+.recap-partie h3 {
+  font-size: 1.15rem;
+  color: var(--indigo);
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid var(--filet);
+}
+.recap-question {
+  display: grid;
+  gap: 0.25rem;
+  padding-block: 0.4rem;
+}
+.recap-question .intitule {
+  font-weight: 600;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.6rem;
+}
+.recap-reponse {
+  margin-left: 2.2rem;
+  display: grid;
+  gap: 0.15rem;
+}
+.recap-reponse .choix {
+  color: var(--indigo);
+  font-weight: 600;
+}
+.recap-reponse .choix::before {
+  content: "☒ ";
+}
+.recap-reponse .vide {
+  color: var(--alerte);
+  font-style: italic;
+  font-size: 0.92rem;
+}
+.recap-reponse .libre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Espace chercheur */
+.compteurs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+.compteurs .surtitre {
+  letter-spacing: 0.03em;
+  font-size: 0.7rem;
+  overflow-wrap: anywhere;
+}
+.compteur-carte {
+  background: var(--feuille);
+  border: 1px solid var(--filet);
+  border-radius: var(--rayon);
+  padding: 0.8rem 0.75rem;
+  display: grid;
+  gap: 0.35rem;
+}
+.compteur-carte .valeur {
+  font-size: clamp(1.4rem, 5vw, 1.9rem);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+.compteur-carte .valeur small {
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--encre-douce);
+}
+.jauge {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--filet);
+  overflow: hidden;
+}
+.jauge span {
+  display: block;
+  height: 100%;
+  background: var(--indigo);
+  border-radius: 3px;
+}
+.defilement {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.92rem;
+}
+th,
+td {
+  text-align: left;
+  padding: 0.5rem 0.6rem;
+  border-bottom: 1px solid var(--filet);
+  vertical-align: top;
+}
+th {
+  font-weight: 600;
+  color: var(--encre-douce);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+td.nombre,
+th.nombre {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.mono {
+  font-family: var(--police-code);
+  letter-spacing: 0.05em;
+}
+.barre-stat {
+  display: grid;
+  grid-template-columns: 1fr 3.2rem;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 6rem;
+}
+.barre-stat .piste {
+  height: 8px;
+  background: var(--filet);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.barre-stat .piste span {
+  display: block;
+  height: 100%;
+  background: var(--indigo);
+  border-radius: 0 4px 4px 0;
+}
+.stat-question {
+  display: grid;
+  gap: 0.5rem;
+  padding-block: 0.75rem;
+  border-top: 1px solid var(--filet);
+}
+.stat-question h3 {
+  font-family: var(--police-texte);
+  font-size: 1rem;
+  font-weight: 600;
+}
+details > summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--indigo);
+  padding-block: 0.3rem;
+}
+.citation {
+  border-left: 3px solid var(--filet);
+  padding: 0.2rem 0 0.2rem 0.8rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.citation .discret {
+  display: block;
+  font-size: 0.8rem;
+}
+
+.pied {
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--encre-douce);
+  padding-top: 1rem;
+}
+.pied a {
+  color: var(--encre-douce);
+}
+
+.notification {
+  position: fixed;
+  left: 50%;
+  bottom: calc(1.25rem + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  max-width: min(90vw, 28rem);
+  background: var(--encre);
+  color: var(--papier);
+  padding: 0.75rem 1.1rem;
+  border-radius: 10px;
+  font-size: 0.95rem;
+  z-index: 20;
+  box-shadow: 0 6px 24px rgb(0 0 0 / 0.25);
+}
+
+.carte {
+  background: var(--feuille);
+  border: 1px solid var(--filet);
+  border-radius: var(--rayon);
+  padding: 1rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@media print {
+  body {
+    background: #fff;
+    color: #000;
+  }
+  .barre-progression,
+  .actions,
+  .navigation,
+  .partages,
+  .partages-secondaires,
+  .champ-lien,
+  .pied,
+  .notification,
+  .sans-impression {
+    display: none !important;
+  }
+  .page {
+    max-width: none;
+    padding: 0;
+  }
+  .ticket,
+  .bloc,
+  .question {
+    border-color: #999;
+    break-inside: avoid;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Onglets du chercheur
+   --------------------------------------------------------------------------- */
+.onglets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1.25rem;
+  border-bottom: 1px solid var(--filet);
+  padding-bottom: 0.6rem;
+  font-size: 0.95rem;
+}
+.onglets a {
+  color: var(--encre-douce);
+  text-decoration: none;
+  padding-block: 0.2rem;
+}
+.onglets a[aria-current="page"] {
+  color: var(--indigo);
+  font-weight: 700;
+  box-shadow: 0 2px 0 var(--ocre);
+}
+
+/* ---------------------------------------------------------------------------
+   Mes documents
+   --------------------------------------------------------------------------- */
+.invisible {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+.etapes {
+  margin: 0;
+  padding-left: 1.4rem;
+  display: grid;
+  gap: 0.45rem;
+}
+.depot {
+  display: grid;
+  justify-items: center;
+  gap: 0.35rem;
+  text-align: center;
+  padding: 1.6rem 1rem;
+  border: 2px dashed var(--filet);
+  border-radius: var(--rayon);
+  cursor: pointer;
+  color: var(--indigo);
+}
+.depot svg {
+  width: 2rem;
+  height: 2rem;
+}
+.depot:hover,
+.depot.survol,
+.depot:focus-within {
+  border-color: var(--indigo);
+  background: var(--indigo-clair);
+}
+.fichiers-choisis,
+.liste-documents {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+.fichier-choisi {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.8rem;
+  border: 1px solid var(--filet);
+  border-radius: 8px;
+}
+.fichier-choisi.refuse {
+  border-color: var(--alerte);
+  background: var(--alerte-fond);
+}
+.fichier-ligne {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.75rem;
+}
+.fichier-nom {
+  font-weight: 600;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.etiquette-refus {
+  color: var(--alerte);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+.document-cree {
+  display: grid;
+  gap: 0.6rem;
+  padding-block: 0.5rem;
+}
+.document-cree + .document-cree {
+  border-top: 1px solid var(--filet);
+  padding-top: 1rem;
+}
+.document-titre {
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.publication {
+  font-size: 0.9rem;
+  color: var(--encre-douce);
+}
+.publication.ok {
+  color: var(--vert);
+  font-weight: 600;
+}
+.liste-documents li {
+  display: grid;
+  gap: 0.3rem;
+  padding-bottom: 0.9rem;
+  border-bottom: 1px solid var(--filet);
+}
+.document-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  margin-top: 0.3rem;
+}
+.danger-texte {
+  color: var(--alerte);
+}
+
+/* ---------------------------------------------------------------------------
+   Lecture d'un document
+   --------------------------------------------------------------------------- */
+.page.lecteur {
+  max-width: 62rem;
+  gap: 1rem;
+}
+.lecteur-entete h1 {
+  font-size: clamp(1.5rem, 5.5vw, 2.3rem);
+  overflow-wrap: anywhere;
+}
+.lecteur-corps {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+}
+.pdf-outils {
+  position: sticky;
+  top: env(safe-area-inset-top, 0px);
+  z-index: 4;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  background: var(--papier);
+  border-bottom: 1px solid var(--filet);
+}
+.pdf-outils .bouton {
+  min-width: 2.6rem;
+  font-size: 1.15rem;
+}
+.pdf-zoom {
+  min-width: 3.4rem;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.pdf-aller {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-variant-numeric: tabular-nums;
+}
+.pdf-aller input {
+  width: 4.2rem;
+  font: inherit;
+  padding: 0.35rem 0.4rem;
+  border: 1px solid var(--filet);
+  border-radius: 6px;
+  background: var(--feuille);
+  color: var(--encre);
+}
+.pdf-cadre {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.pdf-pages {
+  display: grid;
+  gap: 0.75rem;
+  width: 100%;
+}
+.pdf-page {
+  width: 100%;
+  background: #fff;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.18);
+}
+.pdf-page canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.texte-document {
+  background: var(--feuille);
+  border: 1px solid var(--filet);
+  border-radius: var(--rayon);
+  padding: 1.5rem 1.25rem;
+  max-width: 70ch;
+  width: 100%;
+  margin-inline: auto;
+  font-size: 1.08rem;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+.texte-document > * + * {
+  margin-top: 0.9em;
+}
+.texte-document h1,
+.texte-document h2,
+.texte-document h3 {
+  color: var(--indigo);
+  margin-top: 1.4em;
+}
+.texte-document img {
+  max-width: 100%;
+  height: auto;
+}
+.texte-document table {
+  display: block;
+  overflow-x: auto;
+}
+.epub-surface {
+  height: max(60vh, calc(100vh - 15rem));
+  background: #fff;
+  border: 1px solid var(--filet);
+  border-radius: var(--rayon);
+  overflow: hidden;
+}
+.epub-outils select {
+  width: 100%;
+  font: inherit;
+  padding: 0.55rem;
+  border: 1px solid var(--filet);
+  border-radius: 8px;
+  background: var(--feuille);
+  color: var(--encre);
+}
+.epub-navigation {
+  display: flex;
+  gap: 0.75rem;
+}
+.epub-navigation .bouton {
+  flex: 1;
+}
+.texte-brut {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: var(--feuille);
+  border: 1px solid var(--filet);
+  border-radius: var(--rayon);
+  padding: 1rem;
+  font: 0.95rem/1.6 var(--police-code);
+  margin: 0;
+}
+.media-img,
+.media-video {
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--rayon);
+  justify-self: center;
+}
+.media-audio {
+  width: 100%;
+}
+
+/* ---------------------------------------------------------------------------
+   Accueil du chercheur
+   --------------------------------------------------------------------------- */
+.installation {
+  border-color: var(--ocre);
+}
+.raccourcis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: 0.75rem;
+}
+.tuile {
+  display: grid;
+  gap: 0.2rem;
+  padding: 1rem;
+  background: var(--feuille);
+  border: 1px solid var(--filet);
+  border-radius: var(--rayon);
+  color: var(--encre);
+  text-decoration: none;
+}
+.tuile strong {
+  color: var(--indigo);
+  font-size: 1.05rem;
+}
+.tuile:hover {
+  border-color: var(--indigo);
+}
+
+/* Fenêtre de confirmation */
+.fenetre-fond {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  background: rgb(10 12 24 / 0.5);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.fenetre {
+  background: var(--feuille);
+  color: var(--encre);
+  border-radius: var(--rayon);
+  padding: 1.25rem;
+  max-width: 26rem;
+  width: 100%;
+  display: grid;
+  gap: 1rem;
+  box-shadow: 0 12px 40px rgb(0 0 0 / 0.3);
+}
+.fenetre .actions {
+  justify-content: flex-end;
+}
+.texte-message {
+  font-family: var(--police-code);
+  font-size: 0.82rem;
+  min-height: 8rem;
+  margin-top: 0;
+}
+</style>
+<div class="barre-progression" id="barre" hidden><span id="barre-remplissage"></span></div>
+<main id="app" class="page" aria-live="polite"></main>
+<div class="notification" id="notification" role="status" hidden></div>
+<script>
+/*
+ * Petits outils d'interface partagés par le questionnaire, la page
+ * « Mes documents » et la page de lecture d'un document.
+ */
+(function () {
+  "use strict";
+
+  const ICI = document.currentScript ? document.currentScript.src : location.href;
+  // Publiée sur claude.ai, la page tourne dans un cadre qui fournit window.claude.
+  const ARTEFACT = !!(window.claude && typeof window.claude.use === "function");
+
+  function h(balise, attributs, ...enfants) {
+    const el = document.createElement(balise);
+    for (const [cle, valeur] of Object.entries(attributs || {})) {
+      if (valeur === null || valeur === undefined || valeur === false) continue;
+      if (cle === "class") el.className = valeur;
+      else if (cle === "text") el.textContent = valeur;
+      else if (cle.startsWith("on")) el.addEventListener(cle.slice(2), valeur);
+      else if (valeur === true) el.setAttribute(cle, "");
+      else el.setAttribute(cle, valeur);
+    }
+    for (const enfant of enfants.flat(Infinity)) {
+      if (enfant === null || enfant === undefined || enfant === false) continue;
+      el.append(enfant instanceof Node ? enfant : document.createTextNode(String(enfant)));
+    }
+    return el;
+  }
+
+  const TRACES = {
+    message:
+      '<path d="M4 5h16v11H8l-4 4z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M8 9.5h8M8 12.5h5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
+    document:
+      '<path d="M6 3h8l4 4v14H6z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M14 3v4h4M9 12h6M9 16h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
+    lien: '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
+    telecharger:
+      '<path d="M12 4v11M7 10l5 5 5-5M5 20h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>',
+    partager:
+      '<circle cx="18" cy="5" r="2.5" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="6" cy="12" r="2.5" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="18" cy="19" r="2.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8.2 10.8l7.6-4.4M8.2 13.2l7.6 4.4" stroke="currentColor" stroke-width="2"/>',
+    ajouter:
+      '<path d="M12 16V4M7 9l5-5 5 5M5 20h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>',
+  };
+
+  function icone(nom) {
+    const span = document.createElement("span");
+    span.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${TRACES[nom] || ""}</svg>`;
+    return span.firstChild;
+  }
+
+  function lire(cle, defaut) {
+    try {
+      const v = localStorage.getItem(cle);
+      return v ? JSON.parse(v) : defaut;
+    } catch {
+      return defaut;
+    }
+  }
+  function ecrire(cle, valeur) {
+    try {
+      localStorage.setItem(cle, JSON.stringify(valeur));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  function oublier(cle) {
+    try {
+      localStorage.removeItem(cle);
+    } catch {
+      /* rien à faire */
+    }
+  }
+
+  let minuteur;
+  function notifier(message, duree = 4500) {
+    let boite = document.getElementById("notification");
+    if (!boite) {
+      boite = h("div", { class: "notification", id: "notification", role: "status", hidden: true });
+      document.body.append(boite);
+    }
+    boite.textContent = message;
+    boite.hidden = false;
+    clearTimeout(minuteur);
+    minuteur = setTimeout(() => (boite.hidden = true), duree);
+  }
+
+  function telecharger(blob, nom) {
+    const url = URL.createObjectURL(blob);
+    const a = h("a", { href: url, download: nom });
+    document.body.append(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  }
+
+  // Enregistrer un fichier : lien de téléchargement sur un site normal,
+  // capacité « downloads » sur claude.ai (absente : le bouton reste caché).
+  const capaciteTelechargement = ARTEFACT
+    ? window.claude.use("downloads").catch(() => null)
+    : Promise.resolve("navigateur");
+
+  async function telechargementPossible() {
+    return !!(await capaciteTelechargement);
+  }
+
+  function siTelechargement(el) {
+    el.hidden = true;
+    telechargementPossible().then((ok) => (el.hidden = !ok));
+    return el;
+  }
+
+  async function enregistrerFichier(blob, nom) {
+    const capacite = await capaciteTelechargement;
+    if (capacite === "navigateur") {
+      telecharger(blob, nom);
+      return true;
+    }
+    if (!capacite) {
+      notifier("Le téléchargement n'est pas possible ici.");
+      return false;
+    }
+    try {
+      await capacite.save({ filename: nom, data: blob });
+      return true;
+    } catch (e) {
+      if (!e || e.code !== "declined") notifier("Le fichier n'a pas pu être enregistré.");
+      return false;
+    }
+  }
+
+  // Fenêtre de confirmation (remplace confirm(), qui ne s'affiche pas partout).
+  function confirmer(message, { oui = "Confirmer", non = "Annuler", danger = false } = {}) {
+    return new Promise((resoudre) => {
+      const precedent = document.activeElement;
+      const fond = h("div", { class: "fenetre-fond" });
+      const fermer = (valeur) => {
+        document.removeEventListener("keydown", touche);
+        fond.remove();
+        if (precedent && precedent.focus) precedent.focus();
+        resoudre(valeur);
+      };
+      const touche = (e) => e.key === "Escape" && fermer(false);
+      const boutonOui = h("button", { class: `bouton petit${danger ? " danger" : ""}`, type: "button", text: oui, onclick: () => fermer(true) });
+      fond.append(
+        h(
+          "div",
+          { class: "fenetre", role: "alertdialog", "aria-modal": "true", "aria-labelledby": "fenetre-message" },
+          h("p", { id: "fenetre-message", text: message }),
+          h("div", { class: "actions" }, h("button", { class: "bouton petit secondaire", type: "button", text: non, onclick: () => fermer(false) }), boutonOui),
+        ),
+      );
+      fond.addEventListener("click", (e) => e.target === fond && fermer(false));
+      document.addEventListener("keydown", touche);
+      document.body.append(fond);
+      boutonOui.focus();
+    });
+  }
+
+  async function copier(texte, champ) {
+    try {
+      await navigator.clipboard.writeText(texte);
+      return true;
+    } catch {
+      const zone = champ || h("textarea", { style: "position:fixed;opacity:0" }, texte);
+      if (!champ) document.body.append(zone);
+      zone.select();
+      let ok = false;
+      try {
+        ok = document.execCommand("copy");
+      } catch {
+        ok = false;
+      }
+      if (!champ) zone.remove();
+      return ok;
+    }
+  }
+
+  function taille(octets) {
+    if (!Number.isFinite(octets)) return "";
+    if (octets < 1024) return `${octets} o`;
+    if (octets < 1024 * 1024) return `${Math.round(octets / 1024)} Ko`;
+    return `${(octets / 1024 / 1024).toLocaleString("fr-FR", { maximumFractionDigits: 1 })} Mo`;
+  }
+
+  // Barre de navigation des pages du chercheur.
+  function navChercheur(actif, racine = "") {
+    const liens = [
+      ["accueil", "Accueil", `${racine}index.html#appli`],
+      ["reponses", "Réponses reçues", `${racine}index.html#chercheur`],
+      ["documents", "Mes documents", `${racine}documents.html`],
+    ].filter(([cle]) => !(ARTEFACT && cle === "documents"));
+    return h(
+      "nav",
+      { class: "onglets", "aria-label": "Espace chercheur" },
+      liens.map(([cle, texte, href]) => h("a", { href, text: texte, "aria-current": cle === actif ? "page" : null })),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Application installée sur le téléphone (écran d'accueil, hors connexion)
+  // ---------------------------------------------------------------------------
+  if (!ARTEFACT && "serviceWorker" in navigator && /^https?:$/.test(location.protocol)) {
+    window.addEventListener("load", () => navigator.serviceWorker.register(new URL("sw.js", ICI)).catch(() => {}));
+  }
+
+  const installation = { invite: null, installee: false, abonnes: new Set() };
+  const prevenir = () => installation.abonnes.forEach((f) => f());
+  window.addEventListener("beforeinstallprompt", (e) => {
+    e.preventDefault();
+    installation.invite = e;
+    prevenir();
+  });
+  window.addEventListener("appinstalled", () => {
+    installation.invite = null;
+    installation.installee = true;
+    prevenir();
+  });
+
+  function estInstallee() {
+    return (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) || window.navigator.standalone === true;
+  }
+
+  function carteInstallation() {
+    const carte = h("section", { class: "bloc installation" });
+    const appareilApple = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    function dessiner() {
+      if (carte.dataset.affichee && !carte.isConnected) {
+        installation.abonnes.delete(dessiner);
+        return;
+      }
+      carte.dataset.affichee = "1";
+      if (ARTEFACT) {
+        carte.replaceChildren(
+          h("h2", { text: "Garder l'application sur ce téléphone" }),
+          h(
+            "ol",
+            { class: "etapes" },
+            h("li", { text: "Ouvrez ce lien dans Chrome (sur iPhone : Safari)." }),
+            h("li", { text: "Menu ⋮ → « Ajouter à l'écran d'accueil » (sur iPhone : bouton Partager → « Sur l'écran d'accueil »)." }),
+            h("li", { text: "L'icône s'ajoute sur l'écran d'accueil : un geste suffit pour revenir ici." }),
+          ),
+        );
+        return;
+      }
+      if (estInstallee()) {
+        carte.hidden = true;
+        return;
+      }
+      if (installation.installee) {
+        carte.replaceChildren(
+          h("h2", { text: "Application installée" }),
+          h("p", { text: "Vous la retrouvez sur l'écran d'accueil du téléphone : « Enquête grâce »." }),
+        );
+        return;
+      }
+      const titre = h("h2", { text: "Installer l'application sur ce téléphone" });
+      const texte = h("p", {
+        class: "discret",
+        text: "Elle s'ajoute sur l'écran d'accueil, comme les autres applications, et s'ouvre même sans connexion internet.",
+      });
+      if (installation.invite) {
+        carte.replaceChildren(
+          titre,
+          texte,
+          h(
+            "button",
+            {
+              class: "bouton",
+              type: "button",
+              onclick: async () => {
+                const invite = installation.invite;
+                if (!invite) return;
+                invite.prompt();
+                const choix = await invite.userChoice.catch(() => ({}));
+                installation.invite = null;
+                if (choix.outcome === "accepted") installation.installee = true;
+                dessiner();
+              },
+            },
+            icone("telecharger"),
+            "Installer l'application",
+          ),
+        );
+      } else if (appareilApple) {
+        carte.replaceChildren(
+          titre,
+          texte,
+          h(
+            "ol",
+            { class: "etapes" },
+            h("li", { text: "Ouvrez cette page dans Safari." }),
+            h("li", { text: "Touchez le bouton Partager (le carré avec une flèche vers le haut)." }),
+            h("li", { text: "Choisissez « Sur l'écran d'accueil », puis « Ajouter »." }),
+          ),
+        );
+      } else {
+        carte.replaceChildren(
+          titre,
+          texte,
+          h(
+            "ol",
+            { class: "etapes" },
+            h("li", { text: "Si vous avez ouvert ce lien depuis WhatsApp ou Facebook : menu ⋮ → « Ouvrir dans Chrome »." }),
+            h("li", { text: "Dans Chrome : menu ⋮ → « Installer l'application » (ou « Ajouter à l'écran d'accueil »)." }),
+          ),
+        );
+      }
+    }
+    installation.abonnes.add(dessiner);
+    dessiner();
+    return carte;
+  }
+
+  window.Commun = {
+    ARTEFACT,
+    h,
+    icone,
+    lire,
+    ecrire,
+    oublier,
+    notifier,
+    telecharger,
+    enregistrerFichier,
+    siTelechargement,
+    confirmer,
+    copier,
+    taille,
+    navChercheur,
+    carteInstallation,
+    estInstallee,
+  };
+})();
+</script>
+<script>
+/*
+ * Contenu du questionnaire.
+ *
+ * Pour modifier une question, un choix de réponse ou un texte, il suffit de
+ * changer le texte entre guillemets ci-dessous. Ne changez pas les numéros (n)
+ * une fois que des participants ont commencé à répondre : les liens de réponses
+ * déjà envoyés s'appuient sur eux.
+ *
+ * Réglages d'une question :
+ *   multiple: true   -> le participant peut cocher plusieurs réponses
+ *   multiple: false  -> une seule réponse
+ *   (si rien n'est indiqué, c'est le réglage de la partie qui s'applique)
+ *
+ * Choix particuliers :
+ *   { texte: "Autre", autre: true }      -> ajoute une case « Précisez »
+ *   les choix « Je ne sais pas », « Sans opinion » et « Je ne comprends pas… »
+ *   s'excluent automatiquement des autres réponses.
+ */
+window.ENQUETE = {
+  // ---------------------------------------------------------------------------
+  // RÉGLAGES DU CHERCHEUR
+  // ---------------------------------------------------------------------------
+  reglages: {
+    // Numéro WhatsApp qui reçoit les réponses, au format international,
+    // sans « + », sans espaces. Exemple pour le Burkina Faso : "22670123456".
+    // Laissez vide ("") : le participant choisit lui-même le contact.
+    whatsapp: "22676634189",
+
+    // Adresse e-mail qui reçoit les réponses (facultatif).
+    email: "",
+
+    // Adresse publique du questionnaire. Elle sert à fabriquer les liens de
+    // réponses quand la page est ouverte depuis un fichier sur le téléphone.
+    lienDuSite: "https://digitalbrainnk-boop.github.io/Nk/",
+
+    // Adresse de l'application publiée sur claude.ai (lien à envoyer aux participants).
+    lienArtefact: "https://claude.ai/artifact/2TRJFjgvArJcnyXXMiTjYQ",
+
+    // Objectif d'échantillonnage affiché dans l'espace chercheur.
+    objectifParConfession: 50,
+
+    // « Mes documents » : dépôt GitHub où sont rangés les documents mis en lien.
+    // La branche et le dossier doivent être ceux choisis dans GitHub Pages.
+    depot: {
+      proprietaire: "digitalbrainnk-boop",
+      nom: "Nk",
+      branche: "claude/theology-survey-app-sqz80q",
+      dossier: "docs",
+    },
+  },
+
+  // Version du questionnaire (inscrite dans chaque réponse).
+  version: 1,
+
+  titre: "La grâce divine et la liberté humaine",
+  surtitre: "Questionnaire d'enquête de terrain",
+  cadre: "Ville de Ouagadougou, Burkina Faso",
+  chercheur: "SAWADOGO Bouraïma",
+  institution: "École Missionnaire Génération Joël (EMGJ)",
+  directeur: "Dr Jéhu Blaise Koffi Amoussou",
+  echantillon:
+    "100 personnes dont 50 participants de la communauté catholique et 50 participants de la communauté protestante.",
+
+  introduction: [
+    "Madame, Monsieur,",
+    "Dans le cadre de la réalisation de ma thèse de doctorat en théologie portant sur le thème « La grâce divine et la liberté humaine », je mène une enquête auprès des fidèles des communautés chrétiennes de la ville de Ouagadougou.",
+    "Cette recherche vise à comprendre comment les chrétiens perçoivent la grâce de Dieu, la liberté humaine, le libre arbitre et la responsabilité de l'homme dans son cheminement spirituel.",
+    "Votre participation est importante pour la réussite de cette étude.",
+    "Les informations recueillies seront utilisées exclusivement à des fins scientifiques et académiques. Le questionnaire est anonyme et votre participation est entièrement volontaire.",
+    "Il n'existe pas de bonnes ou de mauvaises réponses. Nous souhaitons simplement recueillir votre opinion personnelle et votre compréhension de ces questions.",
+    "Nous vous remercions sincèrement pour votre disponibilité et votre contribution.",
+  ],
+  signatureIntroduction: "Le chercheur",
+
+  remerciements: [
+    "Nous vous remercions sincèrement pour votre participation à cette enquête.",
+    "Votre contribution permettra d'enrichir la réflexion théologique sur la grâce divine et la liberté humaine et d'examiner les implications de cette relation dans la vie des communautés chrétiennes.",
+  ],
+  signature: [
+    "SAWADOGO Bouraïma",
+    "Doctorant en théologie",
+    "École Missionnaire Génération Joël (EMGJ)",
+  ],
+
+  // ---------------------------------------------------------------------------
+  // LES SEPT PARTIES
+  // ---------------------------------------------------------------------------
+  parties: [
+    {
+      titre: "Identification du participant",
+      rang: "Première partie",
+      description: "Cette partie permettra de caractériser les personnes interrogées.",
+      multiple: false,
+      questions: [
+        { n: 1, texte: "Sexe :", options: ["Masculin", "Féminin"] },
+        {
+          n: 2,
+          texte: "Dans quelle tranche d'âge vous situez-vous ?",
+          options: ["Moins de 20 ans", "20 à 30 ans", "31 à 40 ans", "41 à 50 ans", "51 à 60 ans", "Plus de 60 ans"],
+        },
+        { n: 3, texte: "Quelle est votre confession chrétienne ?", options: ["Catholique", "Protestant"] },
+        {
+          n: 4,
+          texte: "Depuis combien de temps êtes-vous chrétien(ne) pratiquant(e) ?",
+          options: ["Moins de 5 ans", "5 à 10 ans", "11 à 20 ans", "Plus de 20 ans"],
+        },
+        {
+          n: 5,
+          texte: "Quel est votre niveau d'instruction ?",
+          options: ["Aucun", "Primaire", "Secondaire", "Supérieur"],
+        },
+        {
+          n: 6,
+          texte: "Participez-vous régulièrement aux activités de votre communauté chrétienne ?",
+          options: ["Très régulièrement", "Régulièrement", "Occasionnellement", "Rarement"],
+        },
+      ],
+    },
+    {
+      titre: "Compréhension de la grâce divine",
+      rang: "Deuxième partie",
+      description: "Cette partie cherche à comprendre comment les fidèles définissent et perçoivent la grâce de Dieu.",
+      multiple: true,
+      questions: [
+        {
+          n: 7,
+          texte: "Selon vous, qu'est-ce que la grâce divine ?",
+          options: [
+            "Un don gratuit de Dieu accordé à l'homme.",
+            "Une faveur imméritée accordée par Dieu.",
+            "Une force divine qui aide l'homme à vivre selon la volonté de Dieu.",
+            "Une récompense accordée aux personnes qui pratiquent le bien.",
+            { texte: "Autre", autre: true },
+          ],
+        },
+        {
+          n: 8,
+          texte: "Pensez-vous que l'homme peut obtenir le salut par ses propres efforts, sans la grâce de Dieu ?",
+          options: ["Oui", "Non", "Je ne sais pas"],
+        },
+        {
+          n: 9,
+          texte: "Selon vous, la grâce de Dieu est-elle indispensable au salut de l'homme ?",
+          options: ["Tout à fait d'accord", "D'accord", "Pas d'accord", "Pas du tout d'accord", "Sans opinion"],
+        },
+        {
+          n: 10,
+          texte: "La grâce divine est-elle accordée uniquement à certaines personnes ou est-elle proposée à tous les hommes ?",
+          options: [
+            "Elle est destinée à certaines personnes seulement.",
+            "Elle est proposée à tous les hommes.",
+            "Elle est proposée à tous, mais chacun peut y répondre différemment.",
+            "Je ne sais pas.",
+          ],
+        },
+        {
+          n: 11,
+          texte: "Pensez-vous que Dieu continue d'agir dans la vie d'une personne même lorsque celle-ci commet des péchés ?",
+          options: ["Oui", "Non", "Je ne sais pas"],
+        },
+      ],
+    },
+    {
+      titre: "Liberté humaine et libre arbitre",
+      rang: "Troisième partie",
+      description:
+        "Cette partie porte sur la capacité de l'homme à faire des choix et à assumer ses décisions devant Dieu.",
+      multiple: true,
+      questions: [
+        {
+          n: 12,
+          texte: "Selon vous, l'être humain possède-t-il une véritable liberté de choisir entre le bien et le mal ?",
+          options: ["Oui", "Non", "Partiellement", "Je ne sais pas"],
+        },
+        {
+          n: 13,
+          texte: "Après la chute d'Adam et Ève, l'homme a-t-il conservé sa liberté de décision ?",
+          options: [
+            "Oui, entièrement.",
+            "Oui, mais sa liberté est affectée par le péché.",
+            "Non, il a totalement perdu sa liberté spirituelle.",
+            "Je ne sais pas.",
+          ],
+        },
+        {
+          n: 14,
+          texte: "Pensez-vous qu'un homme peut refuser volontairement l'appel de Dieu ?",
+          options: ["Oui", "Non", "Cela dépend des circonstances.", "Je ne sais pas."],
+        },
+        {
+          n: 15,
+          texte: "Lorsqu'une personne décide de suivre Jésus-Christ, cette décision résulte-t-elle :",
+          options: [
+            "Uniquement de la volonté de Dieu.",
+            "Uniquement de la volonté humaine.",
+            "De l'action de Dieu et de la réponse humaine.",
+            "Je ne sais pas.",
+          ],
+        },
+        {
+          n: 16,
+          texte: "Selon vous, l'homme est-il responsable de ses choix devant Dieu ?",
+          options: [
+            "Oui, totalement.",
+            "Oui, mais avec l'aide de la grâce divine.",
+            "Non, car tout dépend de la volonté de Dieu.",
+            "Je ne sais pas.",
+          ],
+        },
+      ],
+    },
+    {
+      titre: "Relation entre la grâce divine et la liberté humaine",
+      rang: "Quatrième partie",
+      description: "Cette partie constitue le cœur de notre enquête.",
+      multiple: true,
+      questions: [
+        {
+          n: 17,
+          texte: "Pensez-vous que la grâce divine et la liberté humaine peuvent fonctionner ensemble sans se contredire ?",
+          options: ["Oui", "Non", "Je ne sais pas"],
+        },
+        {
+          n: 18,
+          texte: "Lorsqu'une personne reçoit la grâce de Dieu, conserve-t-elle la possibilité de lui désobéir ?",
+          options: ["Oui", "Non", "Cela dépend de la situation spirituelle de la personne.", "Je ne sais pas."],
+        },
+        {
+          n: 19,
+          texte: "Selon vous, Dieu peut-il sauver une personne qui refuse librement de croire en lui ?",
+          options: ["Oui", "Non", "Je ne sais pas."],
+        },
+        {
+          n: 20,
+          texte:
+            "Comment comprenez-vous le passage de Philippiens 2:12-13, qui demande aux croyants d'opérer leur salut tout en affirmant que Dieu produit en eux le vouloir et le faire ?",
+          options: [
+            "Dieu accomplit tout et l'homme n'a aucune responsabilité.",
+            "L'homme accomplit son salut par ses propres efforts.",
+            "Dieu agit dans l'homme et celui-ci est appelé à répondre activement.",
+            "Je ne comprends pas suffisamment ce passage.",
+          ],
+        },
+        {
+          n: 21,
+          texte: "Selon vous, la grâce de Dieu rend-elle l'homme plus libre et plus responsable ?",
+          options: ["Oui", "Non", "Partiellement", "Je ne sais pas."],
+        },
+        {
+          n: 22,
+          texte:
+            "Un chrétien peut-il perdre la grâce de Dieu par ses mauvais choix et son refus persistant de lui obéir ?",
+          options: ["Oui", "Non", "Cela dépend de la compréhension théologique de la grâce.", "Je ne sais pas."],
+        },
+      ],
+    },
+    {
+      titre: "Grâce, sanctification et responsabilité chrétienne",
+      rang: "Cinquième partie",
+      description: "",
+      multiple: true,
+      questions: [
+        {
+          n: 23,
+          texte: "La sanctification du chrétien dépend-elle uniquement de Dieu ?",
+          options: ["Oui", "Non", "Elle dépend de Dieu et de l'engagement du croyant."],
+        },
+        {
+          n: 24,
+          texte: "Quelle place accordez-vous à la prière dans votre croissance spirituelle ?",
+          options: [
+            "Une place indispensable.",
+            "Une place importante.",
+            "Une place secondaire.",
+            "Aucune place particulière.",
+          ],
+        },
+        {
+          n: 25,
+          texte:
+            "Selon vous, un chrétien qui ne prie pas, ne lit pas la Bible et ne pratique pas les enseignements du Christ peut-il espérer grandir spirituellement ?",
+          options: ["Oui", "Non", "Cela dépend de la grâce de Dieu."],
+        },
+        {
+          n: 26,
+          texte:
+            "La grâce divine dispense-t-elle le chrétien de ses responsabilités familiales, professionnelles et sociales ?",
+          options: ["Oui", "Non", "Je ne sais pas."],
+        },
+        {
+          n: 27,
+          texte: "Le chrétien doit-il fournir des efforts personnels pour progresser dans sa vie spirituelle ?",
+          options: ["Oui", "Non", "Oui, mais toujours avec l'assistance de Dieu."],
+        },
+      ],
+    },
+    {
+      titre: "Grâce, destinée et fatalisme dans le contexte africain",
+      rang: "Sixième partie",
+      description:
+        "Cette partie permettra d'examiner les implications pastorales de la recherche dans le contexte burkinabè.",
+      multiple: true,
+      questions: [
+        {
+          n: 28,
+          texte: "Pensez-vous que tout ce qui arrive à l'homme est nécessairement voulu et décidé par Dieu ?",
+          options: ["Oui", "Non", "Certaines choses seulement.", "Je ne sais pas."],
+        },
+        {
+          n: 29,
+          texte:
+            "Lorsqu'une personne connaît des échecs répétés dans sa vie, peut-on considérer que cela relève uniquement de la volonté de Dieu ?",
+          options: ["Oui", "Non", "Pas nécessairement.", "Je ne sais pas."],
+        },
+        {
+          n: 30,
+          texte:
+            "Pensez-vous que certaines personnes utilisent l'expression « C'est la volonté de Dieu » pour éviter leurs responsabilités ?",
+          options: ["Oui", "Non", "Parfois", "Je ne sais pas."],
+        },
+        {
+          n: 31,
+          texte:
+            "Selon vous, la foi chrétienne doit-elle encourager les fidèles à prendre des initiatives pour améliorer leurs conditions de vie ?",
+          options: ["Oui", "Non", "Je ne sais pas."],
+        },
+        {
+          n: 32,
+          texte:
+            "Pensez-vous que la prédication chrétienne actuelle accorde suffisamment de place à la responsabilité personnelle des fidèles ?",
+          options: ["Oui", "Non", "Partiellement", "Je ne sais pas."],
+        },
+      ],
+    },
+    {
+      titre: "Questions ouvertes",
+      rang: "Septième partie",
+      description:
+        "Ces questions permettront de recueillir des opinions personnelles et des réflexions plus approfondies.",
+      questions: [
+        {
+          n: 33,
+          ouverte: true,
+          texte: "Avec vos propres mots, comment expliquez-vous la relation entre la grâce de Dieu et la liberté humaine ?",
+        },
+        {
+          n: 34,
+          ouverte: true,
+          texte:
+            "Selon vous, pourquoi certaines personnes qui connaissent la Parole de Dieu continuent-elles à vivre dans le péché ?",
+        },
+        {
+          n: 35,
+          ouverte: true,
+          texte:
+            "Comment peut-on aider les chrétiens à comprendre qu'ils dépendent de la grâce de Dieu tout en étant responsables de leurs actes ?",
+        },
+        {
+          n: 36,
+          ouverte: true,
+          texte:
+            "Que pensez-vous de cette affirmation : « La grâce de Dieu ne supprime pas la responsabilité humaine, mais elle rend l'homme capable de répondre à Dieu et d'assumer ses responsabilités » ?",
+        },
+        {
+          n: 37,
+          ouverte: true,
+          texte:
+            "Quelles recommandations pourriez-vous faire aux responsables religieux pour mieux enseigner la relation entre la grâce divine et la liberté humaine dans les Églises du Burkina Faso ?",
+        },
+      ],
+    },
+  ],
+};
+</script>
+<script>
+/*
+ * Outils sans interface : préparation du questionnaire, lien de réponses,
+ * fichier Word (.docx), export Excel (.csv) et statistiques.
+ */
+(function (racine) {
+  "use strict";
+
+  // ---------------------------------------------------------------------------
+  // Questionnaire
+  // ---------------------------------------------------------------------------
+  const NEUTRE = /^(je ne sais pas|sans opinion|je ne comprends pas)/i;
+
+  function preparer(enquete) {
+    const questions = [];
+    enquete.parties.forEach((partie, indexPartie) => {
+      partie.questions.forEach((q) => {
+        const options = (q.options || []).map((o) => {
+          const option = typeof o === "string" ? { texte: o } : { ...o };
+          if (option.exclusif === undefined) option.exclusif = NEUTRE.test(option.texte);
+          return option;
+        });
+        questions.push({
+          n: q.n,
+          texte: q.texte,
+          ouverte: !!q.ouverte,
+          multiple: !q.ouverte && (q.multiple ?? partie.multiple ?? false),
+          options,
+          partie: indexPartie,
+        });
+      });
+    });
+    return questions;
+  }
+
+  function estRepondue(q, rep) {
+    const v = rep[q.n];
+    if (q.ouverte) return typeof v === "string" && v.trim() !== "";
+    return Array.isArray(v) && v.length > 0;
+  }
+
+  function choixTextes(q, rep) {
+    const v = rep[q.n];
+    if (!Array.isArray(v)) return [];
+    return v
+      .filter((i) => q.options[i])
+      .map((i) => {
+        const o = q.options[i];
+        const precision = o.autre ? (rep[q.n + "t"] || "").trim() : "";
+        return precision ? `${o.texte} : ${precision}` : o.texte;
+      });
+  }
+
+  function texteReponse(q, rep) {
+    if (q.ouverte) return (rep[q.n] || "").trim();
+    return choixTextes(q, rep).join(" | ");
+  }
+
+  // Les réponses arrivent d'un lien : on ne garde que ce qui a du sens.
+  const LONGUEUR_MAX = 8000;
+  function nettoyer(donnees, questions) {
+    if (!donnees || typeof donnees !== "object") throw new Error("contenu vide");
+    const a = donnees.a && typeof donnees.a === "object" ? donnees.a : {};
+    const rep = {};
+    for (const q of questions) {
+      const v = a[q.n];
+      if (q.ouverte) {
+        if (typeof v === "string" && v.trim()) rep[q.n] = v.slice(0, LONGUEUR_MAX);
+        continue;
+      }
+      if (!Array.isArray(v)) continue;
+      const choix = [...new Set(v.filter((i) => Number.isInteger(i) && i >= 0 && i < q.options.length))].sort(
+        (x, y) => x - y,
+      );
+      if (!choix.length) continue;
+      rep[q.n] = choix;
+      const precision = a[q.n + "t"];
+      if (typeof precision === "string" && precision.trim()) rep[q.n + "t"] = precision.slice(0, LONGUEUR_MAX);
+    }
+    const id = typeof donnees.id === "string" ? donnees.id.replace(/[^A-Z0-9]/gi, "").slice(0, 12).toUpperCase() : "";
+    const t = Number.isFinite(donnees.t) ? donnees.t : 0;
+    return { id: id || "SANS-CODE", t, v: Number.isFinite(donnees.v) ? donnees.v : 1, a: rep };
+  }
+
+  const ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  function nouveauCode(longueur = 6) {
+    const octets = new Uint8Array(longueur);
+    (racine.crypto || globalThis.crypto).getRandomValues(octets);
+    return Array.from(octets, (o) => ALPHABET[o % ALPHABET.length]).join("");
+  }
+
+  function formaterDate(secondes) {
+    if (!secondes) return "date inconnue";
+    try {
+      return new Date(secondes * 1000).toLocaleString("fr-FR", { dateStyle: "long", timeStyle: "short" });
+    } catch {
+      return new Date(secondes * 1000).toISOString().slice(0, 16).replace("T", " ");
+    }
+  }
+
+  function formaterDateCourte(secondes) {
+    if (!secondes) return "—";
+    const d = new Date(secondes * 1000);
+    const deux = (x) => String(x).padStart(2, "0");
+    return `${deux(d.getDate())}/${deux(d.getMonth() + 1)}/${d.getFullYear()} ${deux(d.getHours())}:${deux(d.getMinutes())}`;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Lien de réponses : JSON compressé puis écrit en base64 « URL ».
+  // Format : #r=<z|j><données>0   (z = compressé, j = brut ; le « 0 » final
+  // protège la fin du lien, que certaines messageries coupent sur « - » ou « _ »).
+  // ---------------------------------------------------------------------------
+  function versBase64Url(octets) {
+    let binaire = "";
+    for (let i = 0; i < octets.length; i += 0x8000) {
+      binaire += String.fromCharCode.apply(null, octets.subarray(i, i + 0x8000));
+    }
+    return btoa(binaire).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  }
+
+  function depuisBase64Url(texte) {
+    let b64 = texte.replace(/[^A-Za-z0-9_-]/g, "").replace(/-/g, "+").replace(/_/g, "/");
+    while (b64.length % 4) b64 += "=";
+    const binaire = atob(b64);
+    const octets = new Uint8Array(binaire.length);
+    for (let i = 0; i < binaire.length; i++) octets[i] = binaire.charCodeAt(i);
+    return octets;
+  }
+
+  async function transformer(octets, flux) {
+    const sortie = new Blob([octets]).stream().pipeThrough(flux);
+    return new Uint8Array(await new Response(sortie).arrayBuffer());
+  }
+
+  async function encoder(donnees) {
+    const octets = new TextEncoder().encode(JSON.stringify(donnees));
+    if (typeof CompressionStream === "function") {
+      try {
+        return "z" + versBase64Url(await transformer(octets, new CompressionStream("deflate"))) + "0";
+      } catch {
+        /* navigateur ancien : on garde la version brute */
+      }
+    }
+    return "j" + versBase64Url(octets) + "0";
+  }
+
+  async function decoder(code) {
+    const propre = String(code).trim().replace(/[^A-Za-z0-9_-]/g, "");
+    const sorte = propre[0];
+    const corps = propre.slice(1, -1);
+    if (!corps || (sorte !== "z" && sorte !== "j")) throw new Error("lien incomplet");
+    let octets = depuisBase64Url(corps);
+    if (sorte === "z") {
+      if (typeof DecompressionStream !== "function") throw new Error("navigateur trop ancien");
+      octets = await transformer(octets, new DecompressionStream("deflate"));
+    }
+    return JSON.parse(new TextDecoder().decode(octets));
+  }
+
+  // Trouve tous les liens de réponses dans un texte (messages, discussion exportée…).
+  function extraireCodes(texte) {
+    const codes = [];
+    const motif = /#r=([zj][A-Za-z0-9_-]{8,})/g;
+    let m;
+    while ((m = motif.exec(String(texte)))) codes.push(m[1]);
+    return [...new Set(codes)];
+  }
+
+  // ---------------------------------------------------------------------------
+  // Fichier ZIP (méthode « stockée », sans compression) — base du .docx
+  // ---------------------------------------------------------------------------
+  const TABLE_CRC = (() => {
+    const t = new Uint32Array(256);
+    for (let n = 0; n < 256; n++) {
+      let c = n;
+      for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+      t[n] = c >>> 0;
+    }
+    return t;
+  })();
+
+  function crc32(octets) {
+    let c = 0xffffffff;
+    for (let i = 0; i < octets.length; i++) c = TABLE_CRC[(c ^ octets[i]) & 0xff] ^ (c >>> 8);
+    return (c ^ 0xffffffff) >>> 0;
+  }
+
+  function zip(fichiers, type) {
+    const enc = new TextEncoder();
+    const maintenant = new Date();
+    const heure = (maintenant.getHours() << 11) | (maintenant.getMinutes() << 5) | (maintenant.getSeconds() >> 1);
+    const jour =
+      ((maintenant.getFullYear() - 1980) << 9) | ((maintenant.getMonth() + 1) << 5) | maintenant.getDate();
+    const morceaux = [];
+    const repertoire = [];
+    let position = 0;
+    for (const f of fichiers) {
+      const nom = enc.encode(f.nom);
+      const donnees = typeof f.contenu === "string" ? enc.encode(f.contenu) : f.contenu;
+      const crc = crc32(donnees);
+      const local = new DataView(new ArrayBuffer(30));
+      local.setUint32(0, 0x04034b50, true);
+      local.setUint16(4, 20, true);
+      local.setUint16(6, 0x0800, true);
+      local.setUint16(8, 0, true);
+      local.setUint16(10, heure, true);
+      local.setUint16(12, jour, true);
+      local.setUint32(14, crc, true);
+      local.setUint32(18, donnees.length, true);
+      local.setUint32(22, donnees.length, true);
+      local.setUint16(26, nom.length, true);
+      local.setUint16(28, 0, true);
+      morceaux.push(new Uint8Array(local.buffer), nom, donnees);
+
+      const central = new DataView(new ArrayBuffer(46));
+      central.setUint32(0, 0x02014b50, true);
+      central.setUint16(4, 20, true);
+      central.setUint16(6, 20, true);
+      central.setUint16(8, 0x0800, true);
+      central.setUint16(10, 0, true);
+      central.setUint16(12, heure, true);
+      central.setUint16(14, jour, true);
+      central.setUint32(16, crc, true);
+      central.setUint32(20, donnees.length, true);
+      central.setUint32(24, donnees.length, true);
+      central.setUint16(28, nom.length, true);
+      central.setUint32(42, position, true);
+      repertoire.push(new Uint8Array(central.buffer), nom);
+      position += 30 + nom.length + donnees.length;
+    }
+    const tailleRepertoire = repertoire.reduce((s, m) => s + m.length, 0);
+    const fin = new DataView(new ArrayBuffer(22));
+    fin.setUint32(0, 0x06054b50, true);
+    fin.setUint16(8, fichiers.length, true);
+    fin.setUint16(10, fichiers.length, true);
+    fin.setUint32(12, tailleRepertoire, true);
+    fin.setUint32(16, position, true);
+    return new Blob([...morceaux, ...repertoire, new Uint8Array(fin.buffer)], { type });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Document Word (.docx)
+  // ---------------------------------------------------------------------------
+  const ENCRE = "1E2A5E";
+  const GRIS = "6B7280";
+
+  function xml(texte) {
+    return String(texte)
+      .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F￾￿]/g, "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function run(texte, style = {}) {
+    const props = [];
+    if (style.police) props.push(`<w:rFonts w:ascii="${style.police}" w:hAnsi="${style.police}" w:cs="${style.police}"/>`);
+    if (style.gras) props.push("<w:b/>");
+    if (style.italique) props.push("<w:i/>");
+    if (style.couleur) props.push(`<w:color w:val="${style.couleur}"/>`);
+    if (style.taille) props.push(`<w:sz w:val="${style.taille * 2}"/><w:szCs w:val="${style.taille * 2}"/>`);
+    const lignes = String(texte).split(/\r?\n/);
+    const contenu = lignes.map((l) => `<w:t xml:space="preserve">${xml(l)}</w:t>`).join("<w:br/>");
+    return `<w:r>${props.length ? `<w:rPr>${props.join("")}</w:rPr>` : ""}${contenu}</w:r>`;
+  }
+
+  function paragraphe(runs, mise = {}) {
+    const props = [];
+    if (mise.gardeAvecSuivant) props.push("<w:keepNext/>");
+    if (mise.avant !== undefined || mise.apres !== undefined) {
+      props.push(`<w:spacing w:before="${mise.avant || 0}" w:after="${mise.apres ?? 60}"/>`);
+    }
+    if (mise.retrait) props.push(`<w:ind w:left="${mise.retrait}" w:hanging="${mise.suspendu || 0}"/>`);
+    if (mise.centre) props.push('<w:jc w:val="center"/>');
+    if (mise.filet) {
+      props.push(`<w:pBdr><w:bottom w:val="single" w:sz="6" w:space="4" w:color="${ENCRE}"/></w:pBdr>`);
+    }
+    const contenu = Array.isArray(runs) ? runs.join("") : runs;
+    return `<w:p>${props.length ? `<w:pPr>${props.join("")}</w:pPr>` : ""}${contenu}</w:p>`;
+  }
+
+  function docxReponse(enquete, questions, reponse) {
+    const rep = reponse.a;
+    const corps = [];
+    const ajouter = (p) => corps.push(p);
+
+    ajouter(paragraphe(run(enquete.surtitre.toUpperCase(), { gras: true, couleur: GRIS, taille: 10 }), { centre: true, apres: 40 }));
+    ajouter(paragraphe(run(enquete.titre, { gras: true, couleur: ENCRE, taille: 18 }), { centre: true, apres: 160 }));
+    const infos = [
+      ["Cadre de l'étude", enquete.cadre],
+      ["Chercheur", enquete.chercheur],
+      ["Institution", enquete.institution],
+      ["Directeur de thèse", enquete.directeur],
+    ];
+    for (const [libelle, valeur] of infos) {
+      ajouter(paragraphe([run(`${libelle} : `, { gras: true }), run(valeur)], { apres: 20 }));
+    }
+    ajouter(
+      paragraphe(
+        [
+          run("Code du participant : ", { gras: true }),
+          run(reponse.id, { gras: true, couleur: ENCRE }),
+          run(`      Réponses envoyées le ${formaterDate(reponse.t)}`, { couleur: GRIS }),
+        ],
+        { avant: 120, apres: 120, filet: true },
+      ),
+    );
+
+    enquete.parties.forEach((partie, ip) => {
+      ajouter(
+        paragraphe(run(`${partie.rang.toUpperCase()} : ${partie.titre.toUpperCase()}`, { gras: true, couleur: ENCRE, taille: 12 }), {
+          avant: 280,
+          apres: 60,
+          gardeAvecSuivant: true,
+        }),
+      );
+      if (partie.description) {
+        ajouter(paragraphe(run(partie.description, { italique: true, couleur: GRIS }), { apres: 120, gardeAvecSuivant: true }));
+      }
+      for (const q of questions.filter((x) => x.partie === ip)) {
+        const consigne = q.ouverte ? "" : q.multiple ? "  (plusieurs réponses possibles)" : "";
+        ajouter(
+          paragraphe([run(`${q.n}. ${q.texte}`, { gras: true }), consigne ? run(consigne, { italique: true, couleur: GRIS, taille: 9 }) : ""], {
+            avant: 160,
+            apres: 60,
+            gardeAvecSuivant: true,
+          }),
+        );
+        if (q.ouverte) {
+          const texte = (rep[q.n] || "").trim();
+          ajouter(
+            paragraphe(texte ? run(texte) : run("(pas de réponse)", { italique: true, couleur: GRIS }), {
+              retrait: 360,
+              apres: 80,
+            }),
+          );
+          continue;
+        }
+        const choisis = Array.isArray(rep[q.n]) ? rep[q.n] : [];
+        q.options.forEach((o, i) => {
+          const coche = choisis.includes(i);
+          const precision = o.autre ? (rep[q.n + "t"] || "").trim() : "";
+          const libelle = o.autre ? `${o.texte} : ${precision || "…………………"}` : o.texte;
+          ajouter(
+            paragraphe(
+              [
+                run(coche ? "☒  " : "☐  ", { police: "Segoe UI Symbol", couleur: coche ? ENCRE : GRIS }),
+                run(libelle, coche ? { gras: true, couleur: ENCRE } : { couleur: GRIS }),
+              ],
+              { retrait: 720, suspendu: 360, apres: 20, gardeAvecSuivant: i < q.options.length - 1 },
+            ),
+          );
+        });
+        if (!choisis.length) {
+          ajouter(paragraphe(run("(pas de réponse)", { italique: true, couleur: GRIS, taille: 9 }), { retrait: 720, apres: 20 }));
+        }
+      }
+    });
+
+    ajouter(paragraphe(run(enquete.remerciements.join(" "), { italique: true }), { avant: 360, apres: 120 }));
+    enquete.signature.forEach((ligne, i) =>
+      ajouter(paragraphe(run(ligne, i === 0 ? { gras: true } : { couleur: GRIS }), { apres: 0 })),
+    );
+
+    const ns = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+    const entete = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
+    const document =
+      `${entete}<w:document ${ns}><w:body>${corps.join("")}` +
+      '<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1134" w:right="1134" w:bottom="1134" w:left="1134" w:header="567" w:footer="567" w:gutter="0"/></w:sectPr>' +
+      "</w:body></w:document>";
+    const styles =
+      `${entete}<w:styles ${ns}><w:docDefaults><w:rPrDefault><w:rPr>` +
+      '<w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:eastAsia="Calibri" w:cs="Calibri"/><w:sz w:val="22"/><w:szCs w:val="22"/><w:lang w:val="fr-FR"/>' +
+      '</w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after="60" w:line="264" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults>' +
+      '<w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/></w:style></w:styles>';
+    const types =
+      `${entete}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">` +
+      '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+      '<Default Extension="xml" ContentType="application/xml"/>' +
+      '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>' +
+      '<Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>' +
+      '<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>' +
+      "</Types>";
+    const relations =
+      `${entete}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
+      '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>' +
+      '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>' +
+      "</Relationships>";
+    const relationsDocument =
+      `${entete}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
+      '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>' +
+      "</Relationships>";
+    const proprietes =
+      `${entete}<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/">` +
+      `<dc:title>${xml(`${enquete.titre} — réponses ${reponse.id}`)}</dc:title><dc:creator>${xml(`Participant ${reponse.id}`)}</dc:creator><dc:language>fr-FR</dc:language>` +
+      "</cp:coreProperties>";
+
+    return zip(
+      [
+        { nom: "[Content_Types].xml", contenu: types },
+        { nom: "_rels/.rels", contenu: relations },
+        { nom: "word/document.xml", contenu: document },
+        { nom: "word/_rels/document.xml.rels", contenu: relationsDocument },
+        { nom: "word/styles.xml", contenu: styles },
+        { nom: "docProps/core.xml", contenu: proprietes },
+      ],
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Export pour Excel (.csv, séparateur « ; » comme dans Excel en français)
+  // ---------------------------------------------------------------------------
+  function champ(valeur) {
+    const v = String(valeur ?? "");
+    return /[";\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+  }
+
+  function csv(questions, reponses) {
+    const entetes = ["Code", "Date"];
+    for (const q of questions) {
+      entetes.push(`Q${q.n}. ${q.texte}`);
+      if (q.options.some((o) => o.autre)) entetes.push(`Q${q.n}. Autre (précision)`);
+    }
+    const lignes = [entetes.map(champ).join(";")];
+    for (const r of reponses) {
+      const valeurs = [r.id, formaterDate(r.t)];
+      for (const q of questions) {
+        if (q.ouverte) valeurs.push((r.a[q.n] || "").trim());
+        else valeurs.push(choixTextes({ ...q, options: q.options.map((o) => ({ texte: o.texte })) }, r.a).join(" | "));
+        if (q.options.some((o) => o.autre)) valeurs.push((r.a[q.n + "t"] || "").trim());
+      }
+      lignes.push(valeurs.map(champ).join(";"));
+    }
+    return "﻿" + lignes.join("\r\n") + "\r\n";
+  }
+
+  // ---------------------------------------------------------------------------
+  // Statistiques : pour chaque question à choix, combien de participants ont
+  // coché chaque réponse (ensemble, catholiques, protestants).
+  // ---------------------------------------------------------------------------
+  function statistiques(questions, reponses, questionGroupe = 3) {
+    const groupe = (r) => (Array.isArray(r.a[questionGroupe]) ? r.a[questionGroupe][0] : -1);
+    const resultat = [];
+    for (const q of questions) {
+      if (q.ouverte) continue;
+      const vide = () => ({ repondants: 0, comptes: q.options.map(() => 0) });
+      const s = { q, ensemble: vide(), groupes: [vide(), vide()] };
+      for (const r of reponses) {
+        const v = r.a[q.n];
+        if (!Array.isArray(v) || !v.length) continue;
+        const cibles = [s.ensemble];
+        const g = groupe(r);
+        if (s.groupes[g]) cibles.push(s.groupes[g]);
+        for (const c of cibles) {
+          c.repondants++;
+          for (const i of v) if (i < c.comptes.length) c.comptes[i]++;
+        }
+      }
+      resultat.push(s);
+    }
+    return resultat;
+  }
+
+  racine.EnqueteOutils = {
+    preparer,
+    estRepondue,
+    choixTextes,
+    texteReponse,
+    nettoyer,
+    nouveauCode,
+    formaterDate,
+    formaterDateCourte,
+    encoder,
+    decoder,
+    extraireCodes,
+    docxReponse,
+    csv,
+    statistiques,
+    crc32,
+    zip,
+  };
+})(typeof window !== "undefined" ? window : globalThis);
+</script>
+<script>
+/*
+ * Interface du questionnaire : accueil, parties, fin et envoi des réponses,
+ * lecture d'un lien de réponses et espace chercheur.
+ */
+(function () {
+  "use strict";
+
+  const E = window.ENQUETE;
+  const O = window.EnqueteOutils;
+  const R = E.reglages || {};
+  const QUESTIONS = O.preparer(E);
+  const PARTIES = E.parties;
+  const CLE_BROUILLON = "enquete-grace-liberte:brouillon";
+  const CLE_TABLEAU = "enquete-grace-liberte:tableau";
+  const app = document.getElementById("app");
+  const barre = document.getElementById("barre");
+
+  const { ARTEFACT, h, icone, lire, ecrire, oublier, notifier, enregistrerFichier, siTelechargement, confirmer, copier, navChercheur, carteInstallation } =
+    window.Commun;
+
+  function adresseBase() {
+    if (ARTEFACT) return R.lienArtefact || R.lienDuSite;
+    let encadre = false;
+    try {
+      encadre = window.top !== window.self;
+    } catch {
+      encadre = true;
+    }
+    if (/^https?:$/.test(location.protocol) && !encadre) return location.origin + location.pathname;
+    return R.lienDuSite || location.href.split("#")[0];
+  }
+  const lienDe = (code) => `${adresseBase()}#r=${code}`;
+
+  const maintenant = () => Math.floor(Date.now() / 1000);
+  const nomDuFichier = (id) => `Reponses-questionnaire-${id}.docx`;
+  const pluriel = (n, mot) => `${n} ${mot}${n > 1 ? "s" : ""}`;
+
+  function aller(ancre) {
+    if (location.hash === ancre) route();
+    else location.hash = ancre;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Brouillon du participant (gardé sur son téléphone jusqu'à l'envoi)
+  // ---------------------------------------------------------------------------
+  let etat = lire(CLE_BROUILLON, null);
+  if (!etat || typeof etat.a !== "object" || !etat.id) etat = null;
+
+  function assurerEtat() {
+    if (!etat) {
+      etat = { id: O.nouveauCode(), debut: maintenant(), maj: maintenant(), a: {} };
+      ecrire(CLE_BROUILLON, etat);
+    }
+    return etat;
+  }
+  function sauver() {
+    etat.maj = maintenant();
+    if (!ecrire(CLE_BROUILLON, etat) && !sauver.prevenu) {
+      sauver.prevenu = true;
+      notifier("Ce navigateur ne garde pas les réponses : terminez le questionnaire sans fermer la page.");
+    }
+  }
+  function nombreRepondues(a) {
+    return QUESTIONS.filter((q) => O.estRepondue(q, a)).length;
+  }
+  function majProgression() {
+    if (!etat) return;
+    const part = nombreRepondues(etat.a) / QUESTIONS.length;
+    document.getElementById("barre-remplissage").style.width = `${Math.round(part * 100)}%`;
+  }
+  function donneesEnvoi() {
+    return { v: E.version, id: etat.id, t: etat.maj, a: etat.a };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Navigation
+  // ---------------------------------------------------------------------------
+  let questionAVoir = null;
+
+  function route() {
+    let ancre = location.hash.slice(1);
+    try {
+      ancre = decodeURIComponent(ancre);
+    } catch {
+      /* ancre déjà lisible */
+    }
+    barre.hidden = true;
+    window.scrollTo(0, 0);
+    if (ancre.startsWith("r=")) return vueReponse(ancre.slice(2));
+    if (ancre === "chercheur") return espaceChercheur();
+    if (ancre === "appli") return ecranAppli();
+    const m = ancre.match(/^partie-(\d+)$/);
+    if (m && +m[1] >= 1 && +m[1] <= PARTIES.length) return ecranPartie(+m[1] - 1);
+    if (ancre === "fin") return ecranFin();
+    return accueil();
+  }
+
+  function afficher(...contenu) {
+    app.replaceChildren(...contenu.flat().filter((x) => x !== null && x !== undefined && x !== false));
+  }
+
+  // ---------------------------------------------------------------------------
+  // Accueil
+  // ---------------------------------------------------------------------------
+  function accueil() {
+    document.title = "Enquête grâce et liberté";
+    const repondues = etat ? nombreRepondues(etat.a) : 0;
+    const fiche = [
+      ["Cadre de l'étude", E.cadre],
+      ["Chercheur", E.chercheur],
+      ["Institution", E.institution],
+      ["Directeur de thèse", E.directeur],
+      ["Échantillonnage", E.echantillon],
+    ];
+    afficher(
+      h(
+        "header",
+        { class: "entete" },
+        h("p", { class: "surtitre", text: E.surtitre }),
+        h("h1", { text: E.titre }),
+        h("dl", { class: "fiche" }, fiche.map(([dt, dd]) => [h("dt", { text: dt }), h("dd", { text: dd })])),
+      ),
+      h(
+        "article",
+        { class: "lettre" },
+        E.introduction.map((p) => h("p", { text: p })),
+        h("p", { class: "signature", text: E.signatureIntroduction }),
+      ),
+      h(
+        "ul",
+        { class: "reperes" },
+        h("li", { text: `${QUESTIONS.length} questions en ${PARTIES.length} parties` }),
+        h("li", { text: "Environ 15 à 20 minutes" }),
+        h("li", { text: "Anonyme" }),
+        h("li", { text: "Enregistrement automatique" }),
+      ),
+      repondues > 0
+        ? h(
+            "div",
+            { class: "actions" },
+            h("button", {
+              class: "bouton",
+              type: "button",
+              text: `Reprendre le questionnaire (${repondues}/${QUESTIONS.length})`,
+              onclick: () => {
+                const vide = premiereQuestionVide();
+                if (!vide) return aller("#fin");
+                questionAVoir = vide.n;
+                aller(`#partie-${vide.partie + 1}`);
+              },
+            }),
+            h("button", {
+              class: "lien-bouton",
+              type: "button",
+              text: "Recommencer à zéro",
+              onclick: async () => {
+                if (!(await confirmer("Effacer toutes vos réponses et recommencer ?", { oui: "Effacer", danger: true }))) return;
+                etat = null;
+                oublier(CLE_BROUILLON);
+                avertis.clear();
+                accueil();
+              },
+            }),
+          )
+        : h(
+            "div",
+            { class: "actions" },
+            h("button", { class: "bouton", type: "button", text: "Commencer le questionnaire", onclick: () => aller("#partie-1") }),
+          ),
+      piedDePage(),
+    );
+  }
+
+  function premiereQuestionVide() {
+    return etat ? QUESTIONS.find((q) => !O.estRepondue(q, etat.a)) : QUESTIONS[0];
+  }
+
+  function piedDePage() {
+    return h(
+      "footer",
+      { class: "pied" },
+      h("p", { text: `Thèse de doctorat en théologie · ${E.institution}` }),
+      h("p", {}, h("a", { href: "#appli", text: "Espace chercheur" })),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Accueil du chercheur (écran d'ouverture de l'application installée)
+  // ---------------------------------------------------------------------------
+  function ecranAppli() {
+    document.title = `Mon application · ${E.titre}`;
+    const lien = adresseBase();
+    const invitation = `Bonjour, dans le cadre de ma thèse de doctorat en théologie, je mène une enquête sur « ${E.titre} ». Pouvez-vous répondre au questionnaire ? C'est anonyme et cela prend environ 15 minutes :\n${lien}`;
+    const champ = h("input", { type: "text", readonly: true, value: lien, id: "lien-questionnaire", "aria-label": "Lien du questionnaire" });
+    const nombre = lire(CLE_TABLEAU, []).length;
+    const tuile = (titre, detail, href) => h("a", { class: "tuile", href }, h("strong", { text: titre }), h("span", { class: "discret", text: detail }));
+    afficher(
+      navChercheur("accueil"),
+      h(
+        "header",
+        { class: "entete" },
+        h("p", { class: "surtitre", text: "Mon application" }),
+        h("h1", { text: E.titre }),
+        h("p", { class: "discret", text: `${E.chercheur} · ${E.institution}` }),
+      ),
+      carteInstallation(),
+      h(
+        "section",
+        { class: "bloc" },
+        h("h2", { text: "Partager le questionnaire" }),
+        h("p", { text: "Envoyez ce lien aux fidèles : ils l'ouvrent, répondent aux questions, puis vous renvoient leurs réponses." }),
+        h(
+          "div",
+          { class: "champ-lien" },
+          champ,
+          h("button", {
+            class: "bouton petit secondaire",
+            type: "button",
+            text: "Copier",
+            onclick: async () => notifier((await copier(lien, champ)) ? "Lien copié." : "Sélectionnez le lien et copiez-le."),
+          }),
+        ),
+        h(
+          "div",
+          { class: "partages" },
+          h("a", { class: "bouton vert", href: `https://wa.me/?text=${encodeURIComponent(invitation)}`, target: "_blank", rel: "noopener" }, icone("message"), "Envoyer par WhatsApp"),
+          !ARTEFACT && typeof navigator.share === "function"
+            ? h(
+                "button",
+                {
+                  class: "bouton secondaire",
+                  type: "button",
+                  onclick: async () => {
+                    try {
+                      await navigator.share({ title: E.titre, text: invitation });
+                    } catch {
+                      /* partage annulé */
+                    }
+                  },
+                },
+                icone("partager"),
+                "Partager autrement",
+              )
+            : null,
+        ),
+        h("details", {}, h("summary", { text: "Voir le message envoyé" }), h("p", { class: "citation", text: invitation })),
+      ),
+      h(
+        "section",
+        { class: "raccourcis" },
+        tuile("Réponses reçues", nombre ? `${nombre} réponse${nombre > 1 ? "s" : ""} dans votre tableau` : "Rassembler et analyser les réponses", "#chercheur"),
+        ARTEFACT ? null : tuile("Mes documents", "Transformer un livre ou un PDF en lien", "documents.html"),
+        tuile("Voir le questionnaire", "Tel que les participants le voient", "#accueil"),
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Une partie du questionnaire
+  // ---------------------------------------------------------------------------
+  const avertis = new Set();
+
+  function ecranPartie(index) {
+    assurerEtat();
+    const partie = PARTIES[index];
+    const questions = QUESTIONS.filter((q) => q.partie === index);
+    document.title = `${partie.rang} · ${E.titre}`;
+    barre.hidden = false;
+    majProgression();
+
+    const avertissement = h("div", { class: "avertissement", role: "alert", hidden: true });
+    const cartes = questions.map((q) => carteQuestion(q));
+
+    function suivant() {
+      const manquantes = questions.filter((q) => !O.estRepondue(q, etat.a));
+      if (manquantes.length && !avertis.has(index)) {
+        avertis.add(index);
+        for (const q of manquantes) marquerManque(q.n, true);
+        avertissement.replaceChildren(
+          h("strong", {
+            text:
+              manquantes.length === 1
+                ? `La question ${manquantes[0].n} n'a pas de réponse.`
+                : `Les questions ${manquantes.map((q) => q.n).join(", ")} n'ont pas de réponse.`,
+          }),
+          h("span", { text: "Vous pouvez y répondre maintenant, ou appuyer encore sur « Suivant » pour continuer." }),
+        );
+        avertissement.hidden = false;
+        document.getElementById(`q${manquantes[0].n}`).scrollIntoView({ behavior: "smooth", block: "start" });
+        return;
+      }
+      aller(index + 1 < PARTIES.length ? `#partie-${index + 2}` : "#fin");
+    }
+
+    afficher(
+      h(
+        "header",
+        { class: "titre-partie" },
+        h("p", { class: "surtitre", text: `${partie.rang} · ${index + 1} sur ${PARTIES.length}` }),
+        h("h2", { text: partie.titre }),
+        partie.description ? h("p", { class: "description", text: partie.description }) : null,
+      ),
+      h("ol", { class: "questions" }, cartes),
+      avertissement,
+      h(
+        "nav",
+        { class: "navigation", "aria-label": "Navigation entre les parties" },
+        h("button", {
+          class: "bouton secondaire",
+          type: "button",
+          text: index === 0 ? "← Accueil" : "← Précédent",
+          onclick: () => aller(index === 0 ? "#accueil" : `#partie-${index}`),
+        }),
+        h("button", {
+          class: "bouton",
+          type: "button",
+          text: index + 1 < PARTIES.length ? "Suivant →" : "Terminer →",
+          onclick: suivant,
+        }),
+      ),
+      h("p", { class: "enregistre", text: "Vos réponses sont enregistrées automatiquement sur cet appareil." }),
+    );
+
+    if (questionAVoir) {
+      const cible = document.getElementById(`q${questionAVoir}`);
+      questionAVoir = null;
+      if (cible) setTimeout(() => cible.scrollIntoView({ block: "start" }), 50);
+    }
+  }
+
+  function marquerManque(n, oui) {
+    const carte = document.getElementById(`q${n}`);
+    if (!carte) return;
+    carte.classList.toggle("manque", oui);
+    const etiquette = carte.querySelector(".etiquette-manque");
+    if (etiquette) etiquette.hidden = !oui;
+  }
+
+  function carteQuestion(q) {
+    const etiquette = h("p", { class: "etiquette-manque", hidden: true, text: "Sans réponse" });
+    const entete = [h("span", { class: "numero", text: q.n }), h("span", { text: q.texte })];
+
+    if (q.ouverte) {
+      const zone = h("textarea", {
+        id: `reponse-${q.n}`,
+        name: `q${q.n}`,
+        rows: 6,
+        maxlength: 4000,
+        placeholder: "Écrivez votre réponse ici…",
+      });
+      zone.value = etat.a[q.n] || "";
+      zone.addEventListener("input", () => {
+        if (zone.value.trim()) etat.a[q.n] = zone.value;
+        else delete etat.a[q.n];
+        sauver();
+        majProgression();
+        if (zone.value.trim()) marquerManque(q.n, false);
+      });
+      return h(
+        "li",
+        { class: "question", id: `q${q.n}` },
+        h("label", { class: "intitule", for: `reponse-${q.n}` }, entete),
+        etiquette,
+        zone,
+      );
+    }
+
+    const type = q.multiple ? "checkbox" : "radio";
+    const entrees = [];
+    const libelles = [];
+    let precision = null;
+
+    function synchroniser() {
+      const choix = etat.a[q.n] || [];
+      entrees.forEach((e, i) => {
+        e.checked = choix.includes(i);
+        libelles[i].classList.toggle("coche", e.checked);
+      });
+    }
+
+    function choisir(i, coche) {
+      let choix = new Set(etat.a[q.n] || []);
+      if (!q.multiple) choix = coche ? new Set([i]) : choix;
+      else if (coche) {
+        choix.add(i);
+        if (q.options[i].exclusif) choix = new Set([i]);
+        else q.options.forEach((o, j) => o.exclusif && choix.delete(j));
+      } else choix.delete(i);
+      const liste = [...choix].sort((x, y) => x - y);
+      if (liste.length) etat.a[q.n] = liste;
+      else delete etat.a[q.n];
+      synchroniser();
+      sauver();
+      majProgression();
+      if (liste.length) marquerManque(q.n, false);
+    }
+
+    const options = q.options.map((o, i) => {
+      const entree = h("input", { type, name: `q${q.n}`, value: i, id: `q${q.n}-${i}` });
+      entree.addEventListener("change", () => choisir(i, entree.checked));
+      entrees.push(entree);
+      const libelle = h("label", { class: "option", for: `q${q.n}-${i}` }, entree, h("span", { class: "case" }), h("span", { class: "texte", text: o.autre ? `${o.texte} :` : o.texte }));
+      libelles.push(libelle);
+      if (!o.autre) return libelle;
+      precision = h("input", {
+        type: "text",
+        id: `q${q.n}-precision`,
+        maxlength: 300,
+        placeholder: "Précisez votre réponse",
+        "aria-label": `Question ${q.n} : précisez votre réponse`,
+      });
+      precision.value = etat.a[q.n + "t"] || "";
+      precision.addEventListener("input", () => {
+        if (precision.value.trim()) etat.a[q.n + "t"] = precision.value;
+        else delete etat.a[q.n + "t"];
+        if (precision.value.trim() && !(etat.a[q.n] || []).includes(i)) choisir(i, true);
+        else sauver();
+      });
+      return [libelle, h("div", { class: "precision" }, precision)];
+    });
+
+    synchroniser();
+    return h(
+      "li",
+      { class: "question", id: `q${q.n}` },
+      h(
+        "fieldset",
+        {},
+        h("legend", {}, entete),
+        h("p", { class: "consigne", text: q.multiple ? "Vous pouvez cocher plusieurs réponses." : "Une seule réponse." }),
+        etiquette,
+        h("div", { class: "options" }, options),
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Fin : remerciements et envoi des réponses
+  // ---------------------------------------------------------------------------
+  function ecranFin() {
+    document.title = `Merci · ${E.titre}`;
+    if (!etat || nombreRepondues(etat.a) === 0) {
+      afficher(
+        h("div", { class: "carte" }, h("p", { text: "Vous n'avez encore répondu à aucune question." })),
+        h("div", { class: "actions" }, h("button", { class: "bouton", type: "button", text: "Commencer le questionnaire", onclick: () => aller("#partie-1") })),
+      );
+      return;
+    }
+    const repondues = nombreRepondues(etat.a);
+    const manquantes = QUESTIONS.filter((q) => !O.estRepondue(q, etat.a));
+    const message = (lien) =>
+      `Bonjour, voici mes réponses au questionnaire « ${E.titre} » (code ${etat.id}) :\n${lien}`;
+    // Sur claude.ai, le lien ne peut pas transporter les réponses : le message les contient en clair.
+    const messageComplet = (code) =>
+      [
+        `Réponses au questionnaire « ${E.titre} »`,
+        `Code : ${etat.id} · ${O.formaterDate(etat.maj)}`,
+        "",
+        ...QUESTIONS.map((q) => `${q.n}. ${O.texteReponse(q, etat.a) || "(pas de réponse)"}`),
+        "",
+        "Données pour le tableau du chercheur :",
+        `#r=${code}`,
+      ].join("\n");
+
+    const boutonWhatsapp = h(
+      "a",
+      { class: "bouton vert", href: "#", target: "_blank", rel: "noopener", "aria-disabled": "true" },
+      icone("message"),
+      "Envoyer par WhatsApp",
+    );
+    const boutonWord = siTelechargement(
+      h(
+        "button",
+        {
+          class: "bouton",
+          type: "button",
+          onclick: async () => {
+            const ok = await enregistrerFichier(O.docxReponse(E, QUESTIONS, O.nettoyer(donneesEnvoi(), QUESTIONS)), nomDuFichier(etat.id));
+            if (ok) notifier("Fichier Word enregistré. Vous pouvez l'envoyer comme document dans WhatsApp.");
+          },
+        },
+        icone("document"),
+        "Télécharger en Word",
+      ),
+    );
+    const boutonCopier = h(
+      "button",
+      { class: "bouton secondaire", type: "button", disabled: true },
+      icone(ARTEFACT ? "document" : "lien"),
+      ARTEFACT ? "Copier mes réponses" : "Copier le lien de mes réponses",
+    );
+    const champLien = ARTEFACT
+      ? h("textarea", { readonly: true, rows: 8, id: "texte-reponses", class: "texte-message", "aria-label": "Message de vos réponses" })
+      : h("input", { type: "text", readonly: true, id: "lien-reponses", "aria-label": "Lien de vos réponses" });
+    const boutonEmail = ARTEFACT ? null : h("a", { class: "lien-bouton", href: "#", "aria-disabled": "true", text: "Envoyer par e-mail" });
+    const boutonPartager =
+      !ARTEFACT && typeof navigator.share === "function"
+        ? h("button", { class: "lien-bouton", type: "button", text: "Partager avec une autre application" })
+        : null;
+    const recap = h("div", { class: "recap", hidden: true }, recapitulatif(etat.a));
+
+    afficher(
+      h(
+        "section",
+        { class: "merci" },
+        h("p", { class: "surtitre", text: "Remerciements" }),
+        h("h1", { text: "Merci pour votre participation" }),
+        E.remerciements.map((p) => h("p", { text: p })),
+        h("p", { class: "discret" }, E.signature.join(" · ")),
+      ),
+      h(
+        "div",
+        { class: "ticket" },
+        h(
+          "div",
+          { class: "ticket-entete" },
+          h("div", {}, h("p", { class: "surtitre", text: "Code de vos réponses" }), h("p", { class: "code", text: etat.id })),
+          h("p", { class: "discret", text: `${repondues} réponses sur ${QUESTIONS.length}` }),
+        ),
+        manquantes.length
+          ? h(
+              "div",
+              { class: "avertissement" },
+              h("span", {
+                text:
+                  manquantes.length === 1
+                    ? `Vous n'avez pas répondu à la question ${manquantes[0].n}.`
+                    : `Vous n'avez pas répondu aux questions ${manquantes.map((q) => q.n).join(", ")}.`,
+              }),
+              h("button", {
+                class: "lien-bouton",
+                type: "button",
+                text: "Compléter mes réponses",
+                onclick: () => {
+                  questionAVoir = manquantes[0].n;
+                  aller(`#partie-${manquantes[0].partie + 1}`);
+                },
+              }),
+            )
+          : null,
+        h("p", { text: "Dernière étape : envoyez vos réponses au chercheur, de la façon la plus simple pour vous." }),
+        h("div", { class: "partages" }, boutonWhatsapp, boutonWord, boutonCopier),
+        ARTEFACT
+          ? null
+          : h(
+              "div",
+              { class: "partages-secondaires" },
+              boutonPartager,
+              boutonEmail,
+              h("button", {
+                class: "lien-bouton",
+                type: "button",
+                text: "Imprimer ou enregistrer en PDF",
+                onclick: () => {
+                  recap.hidden = false;
+                  window.print();
+                },
+              }),
+            ),
+        h(
+          "details",
+          {},
+          h("summary", { text: ARTEFACT ? "Voir le message envoyé" : "Voir le lien de mes réponses" }),
+          h("p", {
+            class: "discret",
+            text: ARTEFACT
+              ? "Ce message contient toutes vos réponses. Vous pouvez aussi le copier et l'envoyer par SMS ou Messenger."
+              : "Ce lien contient toutes vos réponses. En l'ouvrant, le chercheur les voit s'afficher.",
+          }),
+          ARTEFACT
+            ? champLien
+            : h("div", { class: "champ-lien" }, champLien, h("button", { class: "bouton petit secondaire", type: "button", text: "Copier", onclick: () => copierLien() })),
+        ),
+      ),
+      h(
+        "div",
+        { class: "bloc" },
+        h("h2", { text: "Vos réponses" }),
+        h(
+          "div",
+          { class: "actions" },
+          h("button", {
+            class: "bouton petit secondaire",
+            type: "button",
+            text: "Afficher le récapitulatif",
+            onclick: (e) => {
+              recap.hidden = !recap.hidden;
+              e.currentTarget.textContent = recap.hidden ? "Afficher le récapitulatif" : "Masquer le récapitulatif";
+            },
+          }),
+          h("button", { class: "bouton petit secondaire", type: "button", text: "Modifier mes réponses", onclick: () => aller("#partie-1") }),
+        ),
+        recap,
+      ),
+      h(
+        "div",
+        { class: "bloc sans-impression" },
+        h("h2", { text: "Plusieurs personnes sur ce téléphone ?" }),
+        h("p", {
+          class: "discret",
+          text: "Si le chercheur fait remplir le questionnaire à plusieurs personnes avec le même appareil : enregistrez ces réponses dans l'espace chercheur, puis passez à la personne suivante.",
+        }),
+        h(
+          "div",
+          { class: "actions" },
+          h("button", {
+            class: "bouton petit secondaire",
+            type: "button",
+            text: "Enregistrer et passer au participant suivant",
+            onclick: () => {
+              ajouterAuTableau([O.nettoyer(donneesEnvoi(), QUESTIONS)]);
+              etat = null;
+              oublier(CLE_BROUILLON);
+              avertis.clear();
+              notifier("Réponses enregistrées dans l'espace chercheur. Nouveau questionnaire prêt.");
+              aller("#accueil");
+            },
+          }),
+          h("button", {
+            class: "lien-bouton",
+            type: "button",
+            text: "Effacer mes réponses de cet appareil",
+            onclick: async () => {
+              if (!(await confirmer("Avez-vous bien envoyé vos réponses ? Elles seront effacées de cet appareil.", { oui: "Effacer", danger: true }))) return;
+              etat = null;
+              oublier(CLE_BROUILLON);
+              avertis.clear();
+              aller("#accueil");
+            },
+          }),
+        ),
+      ),
+      piedDePage(),
+    );
+
+    let lien = "";
+    async function copierLien() {
+      if (!lien) return;
+      const ok = await copier(lien, champLien);
+      if (ARTEFACT) notifier(ok ? "Réponses copiées. Collez-les dans un message au chercheur." : "Sélectionnez le texte et copiez-le.");
+      else notifier(ok ? "Lien copié. Collez-le dans un message au chercheur." : "Sélectionnez le lien et copiez-le.");
+    }
+    boutonCopier.addEventListener("click", copierLien);
+
+    O.encoder(donneesEnvoi()).then((code) => {
+      lien = ARTEFACT ? messageComplet(code) : lienDe(code);
+      champLien.value = lien;
+      const numero = String(R.whatsapp || "").replace(/\D/g, "");
+      boutonWhatsapp.href = `https://wa.me/${numero}?text=${encodeURIComponent(ARTEFACT ? lien : message(lien))}`;
+      boutonWhatsapp.removeAttribute("aria-disabled");
+      boutonCopier.disabled = false;
+      const sujet = `Réponses au questionnaire — code ${etat.id}`;
+      if (boutonEmail) {
+        boutonEmail.href = `mailto:${R.email || ""}?subject=${encodeURIComponent(sujet)}&body=${encodeURIComponent(message(lien))}`;
+        boutonEmail.removeAttribute("aria-disabled");
+      }
+      if (boutonPartager) {
+        boutonPartager.addEventListener("click", async () => {
+          const texte = message(lien);
+          const fichier = new File([O.docxReponse(E, QUESTIONS, O.nettoyer(donneesEnvoi(), QUESTIONS))], nomDuFichier(etat.id), {
+            type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          });
+          try {
+            if (navigator.canShare && navigator.canShare({ files: [fichier] })) {
+              await navigator.share({ title: E.titre, text: texte, files: [fichier] });
+            } else {
+              await navigator.share({ title: E.titre, text: texte });
+            }
+          } catch (erreur) {
+            if (erreur && erreur.name !== "AbortError") notifier("Le partage n'a pas fonctionné. Utilisez « Copier le lien ».");
+          }
+        });
+      }
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Récapitulatif des réponses (lecture seule)
+  // ---------------------------------------------------------------------------
+  function recapitulatif(rep) {
+    return PARTIES.map((partie, ip) =>
+      h(
+        "section",
+        { class: "recap-partie" },
+        h("h3", { text: `${partie.rang} : ${partie.titre}` }),
+        QUESTIONS.filter((q) => q.partie === ip).map((q) => {
+          let reponse;
+          if (q.ouverte) {
+            const texte = (rep[q.n] || "").trim();
+            reponse = texte ? h("p", { class: "libre", text: texte }) : h("p", { class: "vide", text: "Pas de réponse" });
+          } else {
+            const choix = O.choixTextes(q, rep);
+            reponse = choix.length ? choix.map((c) => h("p", { class: "choix", text: c })) : h("p", { class: "vide", text: "Pas de réponse" });
+          }
+          return h(
+            "div",
+            { class: "recap-question" },
+            h("p", { class: "intitule" }, h("span", { class: "numero", text: q.n }), h("span", { text: q.texte })),
+            h("div", { class: "recap-reponse" }, reponse),
+          );
+        }),
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Ouverture d'un lien de réponses (côté chercheur)
+  // ---------------------------------------------------------------------------
+  async function vueReponse(source) {
+    document.title = `Réponses · ${E.titre}`;
+    afficher(h("p", { class: "discret", text: "Ouverture des réponses…" }));
+    window.scrollTo(0, 0);
+    let reponse;
+    try {
+      reponse = typeof source === "string" ? O.nettoyer(await O.decoder(source), QUESTIONS) : source;
+    } catch {
+      afficher(
+        h(
+          "div",
+          { class: "avertissement" },
+          h("strong", { text: "Ce lien de réponses est incomplet ou abîmé." }),
+          h("span", {
+            text: "Il a peut-être été coupé en le copiant. Demandez au participant de renvoyer le lien en entier, ou son fichier Word. Si le lien est complet, ouvrez-le avec un navigateur récent (Chrome, Safari, Firefox).",
+          }),
+        ),
+        piedDePage(),
+      );
+      return;
+    }
+    const repondues = nombreRepondues(reponse.a);
+    const dejaLa = lire(CLE_TABLEAU, []).find((r) => r.id === reponse.id);
+    const boutonTableau = h("button", {
+      class: "bouton secondaire",
+      type: "button",
+      text: dejaLa ? (dejaLa.t >= reponse.t ? "Déjà dans mon tableau ✓" : "Mettre à jour dans mon tableau") : "Ajouter à mon tableau",
+      disabled: dejaLa && dejaLa.t >= reponse.t,
+      onclick: (e) => {
+        const bilan = ajouterAuTableau([reponse]);
+        e.currentTarget.textContent = "Dans mon tableau ✓";
+        e.currentTarget.disabled = true;
+        notifier(bilan.ajoutees ? "Réponses ajoutées à votre tableau (Espace chercheur)." : "Réponses mises à jour dans votre tableau.");
+      },
+    });
+    afficher(
+      h(
+        "header",
+        { class: "entete" },
+        h("p", { class: "surtitre", text: "Réponses d'un participant" }),
+        h("h1", { text: E.titre }),
+        h(
+          "dl",
+          { class: "fiche" },
+          h("dt", { text: "Code" }),
+          h("dd", { class: "mono", text: reponse.id }),
+          h("dt", { text: "Envoyées le" }),
+          h("dd", { text: O.formaterDate(reponse.t) }),
+          h("dt", { text: "Complété" }),
+          h("dd", { text: `${repondues} questions sur ${QUESTIONS.length}` }),
+        ),
+      ),
+      h(
+        "div",
+        { class: "actions" },
+        siTelechargement(
+          h(
+            "button",
+            { class: "bouton", type: "button", onclick: () => enregistrerFichier(O.docxReponse(E, QUESTIONS, reponse), nomDuFichier(reponse.id)) },
+            icone("document"),
+            "Télécharger en Word",
+          ),
+        ),
+        boutonTableau,
+        ARTEFACT ? null : h("button", { class: "lien-bouton", type: "button", text: "Imprimer", onclick: () => window.print() }),
+      ),
+      h("div", { class: "bloc recap" }, recapitulatif(reponse.a)),
+      h(
+        "footer",
+        { class: "pied" },
+        h("p", {}, h("button", { class: "lien-bouton", type: "button", text: "← Toutes les réponses reçues", onclick: () => aller("#chercheur") })),
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Espace chercheur : rassembler les réponses, résultats, export Excel
+  // ---------------------------------------------------------------------------
+  function ajouterAuTableau(reponses) {
+    const tableau = lire(CLE_TABLEAU, []);
+    let ajoutees = 0;
+    let majs = 0;
+    for (const r of reponses) {
+      const i = tableau.findIndex((x) => x.id === r.id);
+      if (i === -1) {
+        tableau.push(r);
+        ajoutees++;
+      } else if ((r.t || 0) > (tableau[i].t || 0)) {
+        tableau[i] = r;
+        majs++;
+      }
+    }
+    tableau.sort((x, y) => (x.t || 0) - (y.t || 0));
+    if (!ecrire(CLE_TABLEAU, tableau)) notifier("Impossible d'enregistrer sur cet appareil (mémoire du navigateur bloquée).");
+    return { ajoutees, majs };
+  }
+
+  function espaceChercheur() {
+    document.title = `Espace chercheur · ${E.titre}`;
+    const tableau = lire(CLE_TABLEAU, []);
+    const objectif = R.objectifParConfession || 50;
+    const confession = (r) => (Array.isArray(r.a[3]) ? r.a[3][0] : -1);
+    const libelle = (n, r) => {
+      const q = QUESTIONS.find((x) => x.n === n);
+      return O.choixTextes(q, r.a).join(", ") || "—";
+    };
+    const nbCath = tableau.filter((r) => confession(r) === 0).length;
+    const nbProt = tableau.filter((r) => confession(r) === 1).length;
+
+    const carteCompteur = (titre, valeur, total) =>
+      h(
+        "div",
+        { class: "compteur-carte" },
+        h("p", { class: "surtitre", text: titre }),
+        h("p", { class: "valeur" }, String(valeur), h("small", { text: ` / ${total}` })),
+        h("div", { class: "jauge", role: "img", "aria-label": `${valeur} sur ${total}` }, h("span", { style: `width:${Math.min(100, (valeur / total) * 100)}%` })),
+      );
+
+    const zone = h("textarea", {
+      id: "liens-a-ajouter",
+      rows: 4,
+      placeholder: ARTEFACT
+        ? "Collez ici un ou plusieurs messages de réponses (ou toute une discussion WhatsApp)…"
+        : "Collez ici un ou plusieurs liens de réponses (ou toute une discussion WhatsApp)…",
+    });
+    const fichier = h("input", { type: "file", accept: ".txt,text/plain", hidden: true, id: "fichier-discussion" });
+
+    async function importer(texte) {
+      const codes = O.extraireCodes(texte);
+      if (!codes.length) {
+        notifier("Aucune réponse trouvée dans ce texte.");
+        return;
+      }
+      const reponses = [];
+      let abimes = 0;
+      for (const code of codes) {
+        try {
+          reponses.push(O.nettoyer(await O.decoder(code), QUESTIONS));
+        } catch {
+          abimes++;
+        }
+      }
+      const bilan = ajouterAuTableau(reponses);
+      const morceaux = [`${pluriel(bilan.ajoutees, "réponse ajoutée")}`];
+      if (bilan.majs) morceaux.push(`${pluriel(bilan.majs, "mise")} à jour`);
+      const deja = reponses.length - bilan.ajoutees - bilan.majs;
+      if (deja) morceaux.push(`${deja} déjà présente${deja > 1 ? "s" : ""}`);
+      if (abimes) morceaux.push(`${pluriel(abimes, "lien")} abîmé${abimes > 1 ? "s" : ""}`);
+      espaceChercheur();
+      notifier(morceaux.join(" · "));
+    }
+    fichier.addEventListener("change", async () => {
+      const f = fichier.files && fichier.files[0];
+      if (f) importer(await f.text());
+    });
+
+    const lignes = tableau.map((r) =>
+      h(
+        "tr",
+        {},
+        h("td", { class: "mono", text: r.id }),
+        h("td", { class: "nombre", text: O.formaterDateCourte(r.t) }),
+        h("td", { text: libelle(3, r) }),
+        h("td", { text: libelle(1, r) }),
+        h("td", { text: libelle(2, r) }),
+        h("td", { class: "nombre", text: `${nombreRepondues(r.a)}/${QUESTIONS.length}` }),
+        h(
+          "td",
+          {},
+          h("button", { class: "lien-bouton", type: "button", text: "Voir", onclick: () => vueReponse(r) }),
+          " · ",
+          h("button", {
+            class: "lien-bouton",
+            type: "button",
+            text: "Retirer",
+            onclick: async () => {
+              if (!(await confirmer(`Retirer les réponses ${r.id} du tableau ?`, { oui: "Retirer", danger: true }))) return;
+              ecrire(
+                CLE_TABLEAU,
+                lire(CLE_TABLEAU, []).filter((x) => x.id !== r.id),
+              );
+              espaceChercheur();
+            },
+          }),
+        ),
+      ),
+    );
+
+    afficher(
+      navChercheur("reponses"),
+      h(
+        "header",
+        { class: "entete" },
+        h("p", { class: "surtitre", text: "Espace chercheur" }),
+        h("h1", { text: "Réponses reçues" }),
+        h("p", {
+          class: "discret",
+          text: ARTEFACT
+            ? "Les participants vous envoient leurs réponses par WhatsApp. Copiez leurs messages et collez-les ici, un ou plusieurs à la fois. Le tableau reste sur cet appareil ; les messages WhatsApp restent votre sauvegarde."
+            : "Les participants vous envoient un lien. Ouvrez-le puis « Ajouter à mon tableau », ou collez ici tous les liens reçus. Le tableau reste sur cet appareil et ce navigateur.",
+        }),
+      ),
+      h(
+        "div",
+        { class: "compteurs" },
+        carteCompteur("Participants", tableau.length, objectif * 2),
+        carteCompteur("Catholiques", nbCath, objectif),
+        carteCompteur("Protestants", nbProt, objectif),
+      ),
+      h(
+        "div",
+        { class: "bloc" },
+        h("h2", { text: "Ajouter des réponses" }),
+        zone,
+        h(
+          "div",
+          { class: "actions" },
+          h("button", { class: "bouton petit", type: "button", text: "Ajouter", onclick: () => importer(zone.value) }),
+          h("button", { class: "bouton petit secondaire", type: "button", text: "Importer un fichier .txt", onclick: () => fichier.click() }),
+          fichier,
+        ),
+        h("p", {
+          class: "discret",
+          text: "Astuce : dans WhatsApp, ouvrez la discussion, puis ⋮ → Plus → Exporter la discussion → Sans médias. Importez ce fichier .txt ici : tous les liens qu'il contient sont ajoutés d'un coup.",
+        }),
+      ),
+      h(
+        "div",
+        { class: "bloc" },
+        h("h2", { text: "Participants" }),
+        tableau.length
+          ? h(
+              "div",
+              { class: "defilement" },
+              h(
+                "table",
+                {},
+                h(
+                  "thead",
+                  {},
+                  h(
+                    "tr",
+                    {},
+                    ["Code", "Date", "Confession", "Sexe", "Âge", "Rempli", ""].map((t) => h("th", { text: t, class: t === "Rempli" ? "nombre" : null })),
+                  ),
+                ),
+                h("tbody", {}, lignes),
+              ),
+            )
+          : h("p", { class: "discret", text: "Aucune réponse pour l'instant. Collez un message ou un lien reçu dans la case ci-dessus." }),
+        tableau.length
+          ? h(
+              "div",
+              { class: "actions" },
+              h("button", {
+                class: "bouton petit",
+                type: "button",
+                text: "Exporter vers Excel (.csv)",
+                onclick: () => enregistrerFichier(new Blob([O.csv(QUESTIONS, tableau)], { type: "text/csv;charset=utf-8" }), `reponses-enquete-${dateFichier()}.csv`),
+              }),
+              h("button", {
+                class: "bouton petit secondaire",
+                type: "button",
+                text: ARTEFACT ? "Sauvegarder (.txt)" : "Sauvegarder les liens (.txt)",
+                onclick: async () => {
+                  const lignesTexte = [`Sauvegarde — ${E.titre} — ${tableau.length} réponses — ${O.formaterDate(maintenant())}`, ""];
+                  for (const r of tableau) {
+                    const code = await O.encoder(r);
+                    lignesTexte.push(`${r.id} : ${ARTEFACT ? `#r=${code}` : lienDe(code)}`);
+                  }
+                  const ok = await enregistrerFichier(
+                    new Blob([lignesTexte.join("\r\n")], { type: "text/plain;charset=utf-8" }),
+                    `sauvegarde-enquete-${dateFichier()}.txt`,
+                  );
+                  if (ok) notifier("Sauvegarde enregistrée. Pour la restaurer : « Importer un fichier .txt ».");
+                },
+              }),
+              h("button", {
+                class: "bouton petit danger",
+                type: "button",
+                text: "Tout effacer",
+                onclick: async () => {
+                  if (!(await confirmer(`Effacer les ${tableau.length} réponses de cet appareil ? Faites d'abord une sauvegarde.`, { oui: "Tout effacer", danger: true }))) return;
+                  oublier(CLE_TABLEAU);
+                  espaceChercheur();
+                },
+              }),
+            )
+          : null,
+      ),
+      tableau.length ? blocResultats(tableau) : null,
+      tableau.length ? blocReponsesOuvertes(tableau) : null,
+      h("footer", { class: "pied" }, h("p", {}, h("a", { href: "#accueil", text: "Retour au questionnaire" }))),
+    );
+    zone.addEventListener("paste", () =>
+      setTimeout(() => {
+        if (O.extraireCodes(zone.value).length) importer(zone.value);
+      }, 0),
+    );
+  }
+
+  function dateFichier() {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }
+
+  function pourcent(compte, total) {
+    return total ? Math.round((compte / total) * 100) : 0;
+  }
+
+  function blocResultats(tableau) {
+    const stats = O.statistiques(QUESTIONS, tableau);
+    return h(
+      "div",
+      { class: "bloc" },
+      h("h2", { text: "Résultats par question" }),
+      h("p", {
+        class: "discret",
+        text: "Pourcentage des participants ayant répondu à la question. Quand plusieurs réponses sont possibles, le total peut dépasser 100 %.",
+      }),
+      stats.map((s) =>
+        h(
+          "section",
+          { class: "stat-question" },
+          h("h3", { text: `${s.q.n}. ${s.q.texte}` }),
+          h(
+            "p",
+            { class: "discret" },
+            `${pluriel(s.ensemble.repondants, "répondant")} (catholiques : ${s.groupes[0].repondants}, protestants : ${s.groupes[1].repondants})`,
+          ),
+          h(
+            "div",
+            { class: "defilement" },
+            h(
+              "table",
+              {},
+              h(
+                "thead",
+                {},
+                h("tr", {}, h("th", { text: "Réponse" }), h("th", { text: "Ensemble" }), h("th", { class: "nombre", text: "Cath." }), h("th", { class: "nombre", text: "Prot." })),
+              ),
+              h(
+                "tbody",
+                {},
+                s.q.options.map((o, i) => {
+                  const p = pourcent(s.ensemble.comptes[i], s.ensemble.repondants);
+                  return h(
+                    "tr",
+                    {},
+                    h("td", { text: o.texte }),
+                    h(
+                      "td",
+                      { title: `${s.ensemble.comptes[i]} sur ${s.ensemble.repondants}` },
+                      h(
+                        "div",
+                        { class: "barre-stat" },
+                        h("div", { class: "piste" }, h("span", { style: `width:${p}%` })),
+                        h("span", { class: "nombre", text: `${p} %` }),
+                      ),
+                    ),
+                    h("td", { class: "nombre", text: `${pourcent(s.groupes[0].comptes[i], s.groupes[0].repondants)} %` }),
+                    h("td", { class: "nombre", text: `${pourcent(s.groupes[1].comptes[i], s.groupes[1].repondants)} %` }),
+                  );
+                }),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  function blocReponsesOuvertes(tableau) {
+    const confession = (r) => {
+      const v = Array.isArray(r.a[3]) ? r.a[3][0] : -1;
+      return v === 0 ? "catholique" : v === 1 ? "protestant" : "confession non indiquée";
+    };
+    const autres = tableau.filter((r) => (r.a["7t"] || "").trim());
+    return h(
+      "div",
+      { class: "bloc" },
+      h("h2", { text: "Réponses écrites" }),
+      autres.length
+        ? h(
+            "details",
+            {},
+            h("summary", { text: `7. « Autre » : précisions (${autres.length})` }),
+            autres.map((r) => h("p", { class: "citation" }, r.a["7t"], h("span", { class: "discret", text: `${r.id} · ${confession(r)}` }))),
+          )
+        : null,
+      QUESTIONS.filter((q) => q.ouverte).map((q) => {
+        const textes = tableau.filter((r) => (r.a[q.n] || "").trim());
+        return h(
+          "details",
+          {},
+          h("summary", { text: `${q.n}. ${q.texte} (${textes.length})` }),
+          textes.length
+            ? textes.map((r) => h("p", { class: "citation" }, r.a[q.n].trim(), h("span", { class: "discret", text: `${r.id} · ${confession(r)}` })))
+            : h("p", { class: "discret", text: "Aucune réponse." }),
+        );
+      }),
+    );
+  }
+
+  window.addEventListener("hashchange", route);
+  route();
+})();
+</script>

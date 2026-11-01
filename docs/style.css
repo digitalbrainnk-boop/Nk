@@ -111,7 +111,7 @@ a {
 /* Barre de progression en haut de l'écran */
 .barre-progression {
   position: sticky;
-  top: 0;
+  top: env(safe-area-inset-top, 0px);
   z-index: 5;
   height: 5px;
   background: var(--filet);
@@ -1079,4 +1079,36 @@ details > summary {
 }
 .tuile:hover {
   border-color: var(--indigo);
+}
+
+/* Fenêtre de confirmation */
+.fenetre-fond {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  background: rgb(10 12 24 / 0.5);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.fenetre {
+  background: var(--feuille);
+  color: var(--encre);
+  border-radius: var(--rayon);
+  padding: 1.25rem;
+  max-width: 26rem;
+  width: 100%;
+  display: grid;
+  gap: 1rem;
+  box-shadow: 0 12px 40px rgb(0 0 0 / 0.3);
+}
+.fenetre .actions {
+  justify-content: flex-end;
+}
+.texte-message {
+  font-family: var(--police-code);
+  font-size: 0.82rem;
+  min-height: 8rem;
+  margin-top: 0;
 }

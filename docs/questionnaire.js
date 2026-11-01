@@ -33,6 +33,9 @@ window.ENQUETE = {
     // réponses quand la page est ouverte depuis un fichier sur le téléphone.
     lienDuSite: "https://digitalbrainnk-boop.github.io/Nk/",
 
+    // Adresse de l'application publiée sur claude.ai (lien à envoyer aux participants).
+    lienArtefact: "https://claude.ai/artifact/2TRJFjgvArJcnyXXMiTjYQ",
+
     // Objectif d'échantillonnage affiché dans l'espace chercheur.
     objectifParConfession: 50,
 

@@ -281,7 +281,7 @@
   }
 
   async function supprimer(doc) {
-    if (!confirm(`Supprimer « ${doc.titre} » ? Le lien ne fonctionnera plus.`)) return;
+    if (!(await window.Commun.confirmer(`Supprimer « ${doc.titre} » ? Le lien ne fonctionnera plus.`, { oui: "Supprimer", danger: true }))) return;
     try {
       notifier("Suppression…");
       documents = await enregistrer(`Document retiré : ${doc.titre}`, (liste) => ({

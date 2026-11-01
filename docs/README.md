@@ -5,6 +5,20 @@ Les participants ouvrent un lien, répondent aux 37 questions sur leur télépho
 leurs réponses au chercheur. Une deuxième partie, « Mes documents », transforme un livre, un PDF ou
 un fichier Word en lien de lecture.
 
+## Version en ligne sur claude.ai (sans réglage)
+
+L'application est publiée ici : **https://claude.ai/artifact/2TRJFjgvArJcnyXXMiTjYQ**
+- lien pour les participants : celui-ci, tel quel ;
+- espace du chercheur : le même lien suivi de `#appli`.
+
+Pour que tout le monde puisse l'ouvrir, la page doit être partagée publiquement depuis son menu « Partager »
+sur claude.ai. Sur cette version, les réponses arrivent en **message WhatsApp** (toutes les réponses en clair,
+plus une ligne « #r=… » que l'espace chercheur sait lire) ; « Mes documents » et l'installation complète
+n'existent que sur la version site (GitHub Pages).
+
+Cette page unique est fabriquée à partir du dossier `docs/` par `python3 artefact/assembler.py`
+(fichier `artefact/enquete-grace-liberte.html`).
+
 ## Ce que fait l'application
 
 **Pour le participant**
