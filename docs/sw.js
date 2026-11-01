@@ -1,10 +1,10 @@
 /*
- * Fonctionnement hors connexion de l'application.
+ * Pages gardées sur le téléphone : le site s'ouvre même quand la connexion coupe.
  * Toujours la dernière version quand il y a internet ; sinon (ou si le réseau
  * met trop de temps à répondre), la copie gardée sur le téléphone.
  * Changer VERSION à chaque modification de la liste COQUILLE.
  */
-const VERSION = "2026-11-01";
+const VERSION = "2026-11-01-site";
 const CACHE = `enquete-${VERSION}`;
 const COQUILLE = [
   "./",
@@ -17,7 +17,6 @@ const COQUILLE = [
   "app.js",
   "documents.js",
   "lecteur.js",
-  "manifest.webmanifest",
   "icones/icone-192.png",
   "icones/icone-512.png",
 ];

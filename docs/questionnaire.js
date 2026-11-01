@@ -40,12 +40,12 @@ window.ENQUETE = {
     objectifParConfession: 50,
 
     // « Mes documents » : dépôt GitHub où sont rangés les documents mis en lien.
-    // La branche et le dossier doivent être ceux choisis dans GitHub Pages.
+    // Le site est publié depuis la branche « gh-pages », à la racine (dossier vide).
     depot: {
       proprietaire: "digitalbrainnk-boop",
       nom: "Nk",
-      branche: "claude/theology-survey-app-sqz80q",
-      dossier: "docs",
+      branche: "gh-pages",
+      dossier: "",
     },
   },
 

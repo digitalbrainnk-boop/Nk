@@ -13,6 +13,8 @@
   const D = R.depot;
   const API = "https://api.github.com";
   const DEPOT = `/repos/${D.proprietaire}/${D.nom}`;
+  // Dossier du site dans la branche (vide : le site est à la racine).
+  const PREFIXE = D.dossier ? `${D.dossier.replace(/\/+$/, "")}/` : "";
   const CLE_JETON = "documents:jeton";
   const TAILLE_MAX = 50 * 1024 * 1024;
   const INTERDITS = ["html", "htm", "xhtml", "shtml", "js", "mjs", "svg", "xml", "php"];
@@ -107,7 +109,7 @@
     return new TextDecoder().decode(octets);
   }
 
-  const cheminListe = `${D.dossier}/d/liste.json`;
+  const cheminListe = `${PREFIXE}d/liste.json`;
 
   async function lireListe(ref) {
     try {
@@ -242,8 +244,8 @@
       documents = await enregistrer(message, (liste) => {
         const entrees = [];
         for (const { doc, sha } of nouveaux) {
-          entrees.push({ path: `${D.dossier}/d/${doc.id}/${doc.fichier}`, mode: "100644", type: "blob", sha });
-          entrees.push({ path: `${D.dossier}/d/${doc.id}/index.html`, mode: "100644", type: "blob", content: pageDeLecture(doc) });
+          entrees.push({ path: `${PREFIXE}d/${doc.id}/${doc.fichier}`, mode: "100644", type: "blob", sha });
+          entrees.push({ path: `${PREFIXE}d/${doc.id}/index.html`, mode: "100644", type: "blob", content: pageDeLecture(doc) });
         }
         return { entrees, nouvelleListe: [...nouveaux.map((n) => n.doc), ...liste] };
       });
@@ -286,8 +288,8 @@
       notifier("Suppression…");
       documents = await enregistrer(`Document retiré : ${doc.titre}`, (liste) => ({
         entrees: [
-          { path: `${D.dossier}/d/${doc.id}/${doc.fichier}`, mode: "100644", type: "blob", sha: null },
-          { path: `${D.dossier}/d/${doc.id}/index.html`, mode: "100644", type: "blob", sha: null },
+          { path: `${PREFIXE}d/${doc.id}/${doc.fichier}`, mode: "100644", type: "blob", sha: null },
+          { path: `${PREFIXE}d/${doc.id}/index.html`, mode: "100644", type: "blob", sha: null },
         ],
         nouvelleListe: liste.filter((x) => x.id !== doc.id),
       }));
@@ -310,7 +312,7 @@
       h("h1", { text: "Transformer un document en lien" }),
       h("p", {
         class: "discret",
-        text: "Déposez un livre, un PDF, un fichier Word… L'application le met en ligne et vous donne un lien. La personne qui reçoit le lien l'ouvre et lit le document en entier sur son téléphone, sans rien installer.",
+        text: "Déposez un livre, un PDF, un fichier Word… Le site le met en ligne et vous donne un lien. La personne qui reçoit le lien l'ouvre et lit le document en entier sur son téléphone, sans rien installer.",
       }),
     );
   }
@@ -346,7 +348,7 @@
         { class: "bloc", onsubmit: connecter },
         h("h2", { text: "Connexion à GitHub (une seule fois)" }),
         h("p", {
-          text: `Vos documents sont rangés dans votre dépôt GitHub « ${D.nom} ». Pour que l'application puisse les y déposer, elle a besoin d'une clé d'accès GitHub. La clé reste sur cet appareil.`,
+          text: `Vos documents sont rangés dans votre dépôt GitHub « ${D.nom} ». Pour que le site puisse les y déposer, il a besoin d'une clé d'accès GitHub. La clé reste sur cet appareil.`,
         }),
         h(
           "ol",

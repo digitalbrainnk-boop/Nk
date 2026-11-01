@@ -15,7 +15,7 @@
   const app = document.getElementById("app");
   const barre = document.getElementById("barre");
 
-  const { ARTEFACT, h, icone, lire, ecrire, oublier, notifier, enregistrerFichier, siTelechargement, confirmer, copier, navChercheur, carteInstallation } =
+  const { ARTEFACT, h, icone, lire, ecrire, oublier, notifier, enregistrerFichier, siTelechargement, confirmer, copier, navChercheur } =
     window.Commun;
 
   function adresseBase() {
@@ -88,7 +88,7 @@
     window.scrollTo(0, 0);
     if (ancre.startsWith("r=")) return vueReponse(ancre.slice(2));
     if (ancre === "chercheur") return espaceChercheur();
-    if (ancre === "appli") return ecranAppli();
+    if (ancre === "espace" || ancre === "appli") return ecranEspace();
     const m = ancre.match(/^partie-(\d+)$/);
     if (m && +m[1] >= 1 && +m[1] <= PARTIES.length) return ecranPartie(+m[1] - 1);
     if (ancre === "fin") return ecranFin();
@@ -180,15 +180,15 @@
       "footer",
       { class: "pied" },
       h("p", { text: `Thèse de doctorat en théologie · ${E.institution}` }),
-      h("p", {}, h("a", { href: "#appli", text: "Espace chercheur" })),
+      h("p", {}, h("a", { href: "#espace", text: "Espace chercheur" })),
     );
   }
 
   // ---------------------------------------------------------------------------
-  // Accueil du chercheur (écran d'ouverture de l'application installée)
+  // Accueil de l'espace chercheur
   // ---------------------------------------------------------------------------
-  function ecranAppli() {
-    document.title = `Mon application · ${E.titre}`;
+  function ecranEspace() {
+    document.title = `Espace chercheur · ${E.titre}`;
     const lien = adresseBase();
     const invitation = `Bonjour, dans le cadre de ma thèse de doctorat en théologie, je mène une enquête sur « ${E.titre} ». Pouvez-vous répondre au questionnaire ? C'est anonyme et cela prend environ 15 minutes :\n${lien}`;
     const champ = h("input", { type: "text", readonly: true, value: lien, id: "lien-questionnaire", "aria-label": "Lien du questionnaire" });
@@ -199,11 +199,10 @@
       h(
         "header",
         { class: "entete" },
-        h("p", { class: "surtitre", text: "Mon application" }),
+        h("p", { class: "surtitre", text: "Espace chercheur" }),
         h("h1", { text: E.titre }),
         h("p", { class: "discret", text: `${E.chercheur} · ${E.institution}` }),
       ),
-      carteInstallation(),
       h(
         "section",
         { class: "bloc" },
@@ -495,7 +494,7 @@
     const boutonEmail = ARTEFACT ? null : h("a", { class: "lien-bouton", href: "#", "aria-disabled": "true", text: "Envoyer par e-mail" });
     const boutonPartager =
       !ARTEFACT && typeof navigator.share === "function"
-        ? h("button", { class: "lien-bouton", type: "button", text: "Partager avec une autre application" })
+        ? h("button", { class: "lien-bouton", type: "button", text: "Partager autrement" })
         : null;
     const recap = h("div", { class: "recap", hidden: true }, recapitulatif(etat.a));
 

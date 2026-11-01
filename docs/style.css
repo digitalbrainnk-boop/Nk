@@ -1055,9 +1055,6 @@ details > summary {
 /* ---------------------------------------------------------------------------
    Accueil du chercheur
    --------------------------------------------------------------------------- */
-.installation {
-  border-color: var(--ocre);
-}
 .raccourcis {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
