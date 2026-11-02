@@ -192,12 +192,241 @@
       "nav",
       { class: "onglets", "aria-label": "Espace chercheur" },
       liens.map(([cle, texte, href]) => h("a", { href, text: texte, "aria-current": cle === actif ? "page" : null })),
+      h("button", {
+        class: "lien-bouton verrouiller",
+        type: "button",
+        text: "Verrouiller",
+        onclick: () => {
+          coffre.fermer();
+          location.href = `${racine}index.html#espace`;
+          if (/index\.html$|\/$/.test(location.pathname)) location.reload();
+        },
+      }),
     );
   }
 
   // Pages gardées sur le téléphone pour les connexions lentes ou coupées.
   if (!ARTEFACT && "serviceWorker" in navigator && /^https?:$/.test(location.protocol)) {
     window.addEventListener("load", () => navigator.serviceWorker.register(new URL("sw.js", ICI)).catch(() => {}));
+  }
+
+  // ---------------------------------------------------------------------------
+  // Coffre du chercheur : un code secret protège l'espace chercheur, et les
+  // données gardées sur l'appareil (réponses rassemblées, clé GitHub) sont
+  // chiffrées avec ce code (AES-GCM, clé tirée du code par PBKDF2).
+  // ---------------------------------------------------------------------------
+  const PREFIXE_COFFRE = "coffre:";
+  const CLE_SESSION = "coffre:session";
+  const ITERATIONS = 250000;
+  const LONGUEUR_CODE = 6;
+  let cleCoffre = null;
+
+  function versB64(octets) {
+    let binaire = "";
+    for (let i = 0; i < octets.length; i += 0x8000) binaire += String.fromCharCode.apply(null, octets.subarray(i, i + 0x8000));
+    return btoa(binaire);
+  }
+  function depuisB64(texte) {
+    const binaire = atob(texte);
+    const octets = new Uint8Array(binaire.length);
+    for (let i = 0; i < binaire.length; i++) octets[i] = binaire.charCodeAt(i);
+    return octets;
+  }
+  async function deriver(code, sel) {
+    const base = await crypto.subtle.importKey("raw", new TextEncoder().encode(code), "PBKDF2", false, ["deriveKey"]);
+    return crypto.subtle.deriveKey(
+      { name: "PBKDF2", salt: sel, iterations: ITERATIONS, hash: "SHA-256" },
+      base,
+      { name: "AES-GCM", length: 256 },
+      true,
+      ["encrypt", "decrypt"],
+    );
+  }
+  async function chiffrer(cle, valeur) {
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const donnees = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, cle, new TextEncoder().encode(JSON.stringify(valeur)));
+    return { iv: versB64(iv), d: versB64(new Uint8Array(donnees)) };
+  }
+  async function dechiffrer(cle, boite) {
+    const clair = await crypto.subtle.decrypt({ name: "AES-GCM", iv: depuisB64(boite.iv) }, cle, depuisB64(boite.d));
+    return JSON.parse(new TextDecoder().decode(clair));
+  }
+  async function memoriser(cle) {
+    cleCoffre = cle;
+    try {
+      // Le temps de l'onglet seulement : refermer l'onglet reverrouille l'espace.
+      sessionStorage.setItem(CLE_SESSION, versB64(new Uint8Array(await crypto.subtle.exportKey("raw", cle))));
+    } catch {
+      /* sans stockage de session : le code sera redemandé à chaque page */
+    }
+  }
+
+  const coffre = {
+    disponible: () => !!(window.crypto && crypto.subtle),
+    configure: () => !!lire(`${PREFIXE_COFFRE}sel`, null),
+    ouvert: () => !!cleCoffre,
+    async reprendre() {
+      if (cleCoffre) return true;
+      try {
+        const brut = sessionStorage.getItem(CLE_SESSION);
+        if (!brut || !coffre.configure()) return false;
+        cleCoffre = await crypto.subtle.importKey("raw", depuisB64(brut), "AES-GCM", true, ["encrypt", "decrypt"]);
+        await dechiffrer(cleCoffre, lire(`${PREFIXE_COFFRE}verif`, null));
+        return true;
+      } catch {
+        cleCoffre = null;
+        return false;
+      }
+    },
+    async creer(code) {
+      const sel = crypto.getRandomValues(new Uint8Array(16));
+      const cle = await deriver(code, sel);
+      ecrire(`${PREFIXE_COFFRE}sel`, versB64(sel));
+      ecrire(`${PREFIXE_COFFRE}verif`, await chiffrer(cle, "ok"));
+      await memoriser(cle);
+    },
+    async ouvrir(code) {
+      const sel = lire(`${PREFIXE_COFFRE}sel`, null);
+      if (!sel) return false;
+      try {
+        const cle = await deriver(code, depuisB64(sel));
+        if ((await dechiffrer(cle, lire(`${PREFIXE_COFFRE}verif`, null))) !== "ok") return false;
+        await memoriser(cle);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    fermer() {
+      cleCoffre = null;
+      try {
+        sessionStorage.removeItem(CLE_SESSION);
+      } catch {
+        /* rien à faire */
+      }
+    },
+    async lire(nom, defaut) {
+      const boite = lire(`${PREFIXE_COFFRE}d:${nom}`, null);
+      if (!boite || !cleCoffre) return defaut;
+      try {
+        return await dechiffrer(cleCoffre, boite);
+      } catch {
+        return defaut;
+      }
+    },
+    async ecrire(nom, valeur) {
+      if (!cleCoffre) throw new Error("coffre fermé");
+      return ecrire(`${PREFIXE_COFFRE}d:${nom}`, await chiffrer(cleCoffre, valeur));
+    },
+    supprimer(nom) {
+      oublier(`${PREFIXE_COFFRE}d:${nom}`);
+    },
+    // Range dans le coffre une donnée gardée en clair par une version précédente.
+    async migrer(cleClaire, nom) {
+      const valeur = lire(cleClaire, null);
+      if (valeur === null || !cleCoffre) return;
+      await coffre.ecrire(nom, valeur);
+      oublier(cleClaire);
+    },
+    reinitialiser() {
+      coffre.fermer();
+      try {
+        Object.keys(localStorage)
+          .filter((k) => k.startsWith(PREFIXE_COFFRE))
+          .forEach((k) => localStorage.removeItem(k));
+      } catch {
+        /* rien à faire */
+      }
+    },
+  };
+
+  // Formulaire du code : création la première fois, puis saisie.
+  function formulaireCode(apresOuverture, { titre } = {}) {
+    const creation = !coffre.configure();
+    const champ = h("input", { type: "password", id: "code-secret", autocomplete: creation ? "new-password" : "current-password", minlength: LONGUEUR_CODE, required: true });
+    const confirmation = creation ? h("input", { type: "password", id: "code-confirmation", autocomplete: "new-password", required: true }) : null;
+    const etat = h("p", { class: "etiquette-refus", role: "alert" });
+    const bouton = h("button", { class: "bouton", type: "submit", text: creation ? "Créer mon code" : "Ouvrir" });
+    let echecs = 0;
+    const formulaire = h(
+      "form",
+      { class: "bloc coffre", autocomplete: "off" },
+      h("h2", { text: titre || (creation ? "Protéger l'espace chercheur" : "Espace chercheur protégé") }),
+      h("p", {
+        class: "discret",
+        text: creation
+          ? `Choisissez un code secret d'au moins ${LONGUEUR_CODE} chiffres ou lettres. Il sera demandé pour ouvrir l'espace chercheur, et les réponses rassemblées sur ce téléphone seront chiffrées avec lui. Notez-le bien.`
+          : "Entrez votre code secret.",
+      }),
+      h("label", { for: "code-secret", class: "discret", text: creation ? "Nouveau code" : "Code secret" }),
+      champ,
+      creation ? [h("label", { for: "code-confirmation", class: "discret", text: "Retapez le code" }), confirmation] : null,
+      etat,
+      h("div", { class: "actions" }, bouton),
+      creation
+        ? null
+        : h("button", {
+            class: "lien-bouton",
+            type: "button",
+            text: "Code oublié ?",
+            onclick: async () => {
+              const ok = await confirmer(
+                "Sans le code, les réponses rassemblées et la clé GitHub gardées sur ce téléphone seront effacées. Vous pourrez rajouter les réponses en recollant les messages WhatsApp. Continuer ?",
+                { oui: "Effacer et choisir un nouveau code", danger: true },
+              );
+              if (!ok) return;
+              coffre.reinitialiser();
+              formulaire.replaceWith(formulaireCode(apresOuverture, { titre }));
+            },
+          }),
+    );
+    formulaire.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const code = champ.value;
+      etat.textContent = "";
+      if (!coffre.disponible()) {
+        etat.textContent = "Ce navigateur est trop ancien pour protéger les données. Utilisez Chrome, Safari ou Firefox à jour.";
+        return;
+      }
+      if (creation) {
+        if (code.length < LONGUEUR_CODE) return (etat.textContent = `Le code doit avoir au moins ${LONGUEUR_CODE} caractères.`);
+        if (code !== confirmation.value) return (etat.textContent = "Les deux codes ne sont pas identiques.");
+        bouton.disabled = true;
+        await coffre.creer(code);
+        return apresOuverture();
+      }
+      bouton.disabled = true;
+      bouton.textContent = "Vérification…";
+      const ok = await coffre.ouvrir(code);
+      if (ok) return apresOuverture();
+      echecs++;
+      champ.value = "";
+      const attente = echecs >= 5 ? 30 : 0;
+      etat.textContent = attente ? `Code incorrect. Patientez ${attente} secondes.` : "Code incorrect.";
+      setTimeout(() => {
+        bouton.disabled = false;
+        bouton.textContent = "Ouvrir";
+        champ.focus();
+      }, attente * 1000);
+    });
+    setTimeout(() => champ.focus(), 50);
+    return formulaire;
+  }
+
+  // Ouvre le coffre dans une fenêtre par-dessus la page (pour une action ponctuelle).
+  async function deverrouiller() {
+    if (await coffre.reprendre()) return true;
+    return new Promise((resoudre) => {
+      const fond = h("div", { class: "fenetre-fond" });
+      const fermer = (valeur) => {
+        fond.remove();
+        resoudre(valeur);
+      };
+      const boite = h("div", { class: "fenetre", role: "dialog", "aria-modal": "true" }, formulaireCode(() => fermer(true)));
+      boite.append(h("div", { class: "actions" }, h("button", { class: "bouton petit secondaire", type: "button", text: "Annuler", onclick: () => fermer(false) })));
+      fond.append(boite);
+      document.body.append(fond);
+    });
   }
 
   window.Commun = {
@@ -215,5 +444,8 @@
     copier,
     taille,
     navChercheur,
+    coffre,
+    formulaireCode,
+    deverrouiller,
   };
 })();

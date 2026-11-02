@@ -10,7 +10,7 @@ un fichier Word en lien de lecture.
 
 - **Questionnaire, pour les participants** : https://digitalbrainnk-boop.github.io/Nk/
 - **Espace chercheur** : https://digitalbrainnk-boop.github.io/Nk/#espace
-  (partager le questionnaire, réponses reçues, Mes documents)
+  (partager le questionnaire, réponses reçues, Mes documents), protégé par un code secret
 
 Le site est publié par GitHub Pages depuis la branche `gh-pages`. Après une modification du dossier `docs/`,
 lancez `./publier-site.sh` : il recopie le site sur `gh-pages` en gardant les documents déposés (`d/`).
@@ -100,6 +100,18 @@ Tout se règle en haut du fichier [`questionnaire.js`](questionnaire.js), dans `
 Les questions, les choix de réponse et les textes d'introduction se modifient dans ce même fichier.
 Pour qu'une question n'accepte qu'**une seule réponse**, ajoutez-lui `multiple: false`. Ne changez pas les numéros
 des questions une fois l'enquête commencée : les liens déjà reçus s'appuient sur eux.
+
+## Sécurité
+
+- **Code secret** : l'espace chercheur (`#espace`, réponses reçues, Mes documents) ne s'ouvre qu'avec un code
+  choisi à la première visite (au moins 6 caractères). Il est redemandé à chaque nouvel onglet, et le bouton
+  « Verrouiller » referme l'espace.
+- **Données chiffrées** : le tableau des réponses rassemblées et la clé GitHub sont gardés sur l'appareil chiffrés
+  avec ce code (AES-GCM 256 bits, clé tirée du code par PBKDF2). Sans le code, ils sont illisibles. Code oublié :
+  ces données sont effacées ; on rajoute les réponses en recollant les messages WhatsApp.
+- **Aucun lien vers l'espace chercheur** n'apparaît sur les pages des participants.
+- **Politique de sécurité du navigateur** (Content-Security-Policy) sur toutes les pages : seuls les scripts du site
+  s'exécutent, la page ne parle qu'à GitHub, et les adresses ne sont pas transmises aux autres sites.
 
 ## Confidentialité
 

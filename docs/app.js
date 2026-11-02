@@ -15,7 +15,7 @@
   const app = document.getElementById("app");
   const barre = document.getElementById("barre");
 
-  const { ARTEFACT, h, icone, lire, ecrire, oublier, notifier, enregistrerFichier, siTelechargement, confirmer, copier, navChercheur } =
+  const { ARTEFACT, h, icone, lire, ecrire, oublier, notifier, enregistrerFichier, siTelechargement, confirmer, copier, navChercheur, coffre, formulaireCode, deverrouiller } =
     window.Commun;
 
   function adresseBase() {
@@ -87,8 +87,8 @@
     barre.hidden = true;
     window.scrollTo(0, 0);
     if (ancre.startsWith("r=")) return vueReponse(ancre.slice(2));
-    if (ancre === "chercheur") return espaceChercheur();
-    if (ancre === "espace" || ancre === "appli") return ecranEspace();
+    if (ancre === "chercheur") return protege(espaceChercheur);
+    if (ancre === "espace" || ancre === "appli") return protege(ecranEspace);
     const m = ancre.match(/^partie-(\d+)$/);
     if (m && +m[1] >= 1 && +m[1] <= PARTIES.length) return ecranPartie(+m[1] - 1);
     if (ancre === "fin") return ecranFin();
@@ -177,19 +177,48 @@
       "footer",
       { class: "pied" },
       h("p", { text: "Thèse de doctorat en théologie" }),
-      h("p", {}, h("a", { href: "#espace", text: "Espace chercheur" })),
     );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Code secret : l'espace chercheur ne s'ouvre qu'avec lui, et le tableau des
+  // réponses est gardé chiffré sur l'appareil.
+  // ---------------------------------------------------------------------------
+  async function protege(ecran) {
+    if (await coffre.reprendre()) {
+      await coffre.migrer(CLE_TABLEAU, "tableau");
+      return ecran();
+    }
+    document.title = `Espace chercheur · ${E.titre}`;
+    afficher(
+      h("header", { class: "entete" }, h("p", { class: "surtitre", text: "Espace chercheur" }), h("h1", { text: E.titre })),
+      formulaireCode(async () => {
+        await coffre.migrer(CLE_TABLEAU, "tableau");
+        ecran();
+      }),
+    );
+  }
+
+  const lireTableau = () => coffre.lire("tableau", []);
+  async function ecrireTableau(tableau) {
+    try {
+      await coffre.ecrire("tableau", tableau);
+      return true;
+    } catch {
+      notifier("Impossible d'enregistrer sur cet appareil (mémoire du navigateur bloquée ou espace verrouillé).");
+      return false;
+    }
   }
 
   // ---------------------------------------------------------------------------
   // Accueil de l'espace chercheur
   // ---------------------------------------------------------------------------
-  function ecranEspace() {
+  async function ecranEspace() {
     document.title = `Espace chercheur · ${E.titre}`;
     const lien = adresseBase();
     const invitation = `Bonjour, dans le cadre de ma thèse de doctorat en théologie, je mène une enquête sur « ${E.titre} ». Pouvez-vous répondre au questionnaire ? C'est anonyme et cela prend environ 15 minutes :\n${lien}`;
     const champ = h("input", { type: "text", readonly: true, value: lien, id: "lien-questionnaire", "aria-label": "Lien du questionnaire" });
-    const nombre = lire(CLE_TABLEAU, []).length;
+    const nombre = (await lireTableau()).length;
     const tuile = (titre, detail, href) => h("a", { class: "tuile", href }, h("strong", { text: titre }), h("span", { class: "discret", text: detail }));
     afficher(
       navChercheur("accueil"),
@@ -602,8 +631,8 @@
             class: "bouton petit secondaire",
             type: "button",
             text: "Enregistrer et passer au participant suivant",
-            onclick: () => {
-              ajouterAuTableau([O.nettoyer(donneesEnvoi(), QUESTIONS)]);
+            onclick: async () => {
+              if (!(await ajouterAuTableau([O.nettoyer(donneesEnvoi(), QUESTIONS)]))) return;
               etat = null;
               oublier(CLE_BROUILLON);
               avertis.clear();
@@ -723,16 +752,18 @@
       return;
     }
     const repondues = nombreRepondues(reponse.a);
-    const dejaLa = lire(CLE_TABLEAU, []).find((r) => r.id === reponse.id);
+    const dejaLa = (await coffre.reprendre()) ? (await lireTableau()).find((r) => r.id === reponse.id) : null;
     const boutonTableau = h("button", {
       class: "bouton secondaire",
       type: "button",
       text: dejaLa ? (dejaLa.t >= reponse.t ? "Déjà dans mon tableau ✓" : "Mettre à jour dans mon tableau") : "Ajouter à mon tableau",
       disabled: dejaLa && dejaLa.t >= reponse.t,
-      onclick: (e) => {
-        const bilan = ajouterAuTableau([reponse]);
-        e.currentTarget.textContent = "Dans mon tableau ✓";
-        e.currentTarget.disabled = true;
+      onclick: async (e) => {
+        const bouton = e.currentTarget;
+        const bilan = await ajouterAuTableau([reponse]);
+        if (!bilan) return;
+        bouton.textContent = "Dans mon tableau ✓";
+        bouton.disabled = true;
         notifier(bilan.ajoutees ? "Réponses ajoutées à votre tableau (Espace chercheur)." : "Réponses mises à jour dans votre tableau.");
       },
     });
@@ -779,8 +810,10 @@
   // ---------------------------------------------------------------------------
   // Espace chercheur : rassembler les réponses, résultats, export Excel
   // ---------------------------------------------------------------------------
-  function ajouterAuTableau(reponses) {
-    const tableau = lire(CLE_TABLEAU, []);
+  async function ajouterAuTableau(reponses) {
+    if (!(await deverrouiller())) return null;
+    await coffre.migrer(CLE_TABLEAU, "tableau");
+    const tableau = await lireTableau();
     let ajoutees = 0;
     let majs = 0;
     for (const r of reponses) {
@@ -794,13 +827,13 @@
       }
     }
     tableau.sort((x, y) => (x.t || 0) - (y.t || 0));
-    if (!ecrire(CLE_TABLEAU, tableau)) notifier("Impossible d'enregistrer sur cet appareil (mémoire du navigateur bloquée).");
+    if (!(await ecrireTableau(tableau))) return null;
     return { ajoutees, majs };
   }
 
-  function espaceChercheur() {
+  async function espaceChercheur() {
     document.title = `Espace chercheur · ${E.titre}`;
-    const tableau = lire(CLE_TABLEAU, []);
+    const tableau = await lireTableau();
     const objectif = R.objectifParConfession || 50;
     const confession = (r) => (Array.isArray(r.a[3]) ? r.a[3][0] : -1);
     const libelle = (n, r) => {
@@ -843,7 +876,8 @@
           abimes++;
         }
       }
-      const bilan = ajouterAuTableau(reponses);
+      const bilan = await ajouterAuTableau(reponses);
+      if (!bilan) return;
       const morceaux = [`${pluriel(bilan.ajoutees, "réponse ajoutée")}`];
       if (bilan.majs) morceaux.push(`${pluriel(bilan.majs, "mise")} à jour`);
       const deja = reponses.length - bilan.ajoutees - bilan.majs;
@@ -878,10 +912,7 @@
             text: "Retirer",
             onclick: async () => {
               if (!(await confirmer(`Retirer les réponses ${r.id} du tableau ?`, { oui: "Retirer", danger: true }))) return;
-              ecrire(
-                CLE_TABLEAU,
-                lire(CLE_TABLEAU, []).filter((x) => x.id !== r.id),
-              );
+              await ecrireTableau((await lireTableau()).filter((x) => x.id !== r.id));
               espaceChercheur();
             },
           }),
@@ -984,7 +1015,7 @@
                 text: "Tout effacer",
                 onclick: async () => {
                   if (!(await confirmer(`Effacer les ${tableau.length} réponses de cet appareil ? Faites d'abord une sauvegarde.`, { oui: "Tout effacer", danger: true }))) return;
-                  oublier(CLE_TABLEAU);
+                  coffre.supprimer("tableau");
                   espaceChercheur();
                 },
               }),
