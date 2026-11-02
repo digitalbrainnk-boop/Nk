@@ -100,14 +100,19 @@ describeDb("Base de données Supabase (migrations + RLS)", () => {
     adminUser = await createUser({ ...validMeta(), display_name: "Admin" });
     await db.query("update public.profiles set role = 'admin' where id = $1", [adminUser]);
 
-    // Jeu de données football minimal
+    // Jeu de données multi-sports minimal (identifiants internes fixés via « overriding system value »)
     await db.query(`
-      insert into public.competitions (id, name, country_name, is_enabled) values (9001, 'Ligue cachée', 'Test', false);
-      insert into public.teams (id, name) values (1, 'ASFA Yennenga'), (2, 'Rahimo FC');
-      insert into public.fixtures (id, competition_id, season, kickoff_at, home_team_id, away_team_id)
-        values (100, 39, 2026, now() + interval '1 day', 1, 2),
-               (101, 39, 2026, now() - interval '2 days', 2, 1);
-      update public.fixtures set status_short = 'FT', home_goals = 2, away_goals = 0 where id = 101;
+      insert into public.competitions (id, sport, external_id, name, country_name, is_enabled) overriding system value
+        values (9001, 'football', 9001, 'Ligue cachée', 'Test', false),
+               (9002, 'basketball', 12, 'NBA', 'USA', true);
+      insert into public.teams (id, sport, external_id, name) overriding system value
+        values (1, 'football', 1, 'ASFA Yennenga'), (2, 'football', 2, 'Rahimo FC'),
+               (3, 'basketball', 1, 'Lakers'), (4, 'basketball', 2, 'Celtics');
+      insert into public.events (id, sport, external_id, competition_id, season, starts_at, home_team_id, away_team_id) overriding system value
+        values (100, 'football', 100, (select id from public.competitions where sport = 'football' and external_id = 39), '2026', now() + interval '1 day', 1, 2),
+               (101, 'football', 101, (select id from public.competitions where sport = 'football' and external_id = 39), '2026', now() - interval '2 days', 2, 1),
+               (102, 'basketball', 102, 9002, '2026-2027', now() + interval '1 day', 3, 4);
+      update public.events set status_short = 'FT', status_group = 'finished', home_score = 2, away_score = 0 where id = 101;
     `);
   }, 60_000);
 
@@ -192,37 +197,70 @@ describeDb("Base de données Supabase (migrations + RLS)", () => {
     });
   });
 
-  describe("données football", () => {
-    it("n'affiche aux visiteurs que les compétitions activées", async () => {
-      const ids = await as("anon", null, async (c) =>
-        (await c.query("select id from public.competitions")).rows.map((r) => r.id),
+  describe("données sportives", () => {
+    it("n'affiche aux visiteurs que les sports et compétitions activés", async () => {
+      const sports = await as("anon", null, async (c) =>
+        (await c.query("select code from public.sports order by display_order")).rows.map((r) => r.code),
       );
-      expect(ids).toContain(39);
-      expect(ids).not.toContain(9001);
+      expect(sports).toEqual(["football", "basketball", "ice_hockey", "handball", "volleyball", "rugby", "baseball", "american_football"]);
+      const names = await as("anon", null, async (c) =>
+        (await c.query("select name from public.competitions")).rows.map((r) => r.name),
+      );
+      expect(names).toContain("Premier League");
+      expect(names).toContain("NBA");
+      expect(names).not.toContain("Ligue cachée");
     });
 
-    it("calcule le groupe de statut du match", async () => {
-      const { rows } = await db.query("select id, status_group from public.fixtures order by id");
-      expect(rows).toEqual([
-        { id: 100, status_group: "scheduled" },
-        { id: 101, status_group: "finished" },
-      ]);
+    it("accepte le même identifiant fournisseur dans deux sports différents", async () => {
+      const { rows } = await db.query("select count(*)::int as n from public.teams where external_id = 1");
+      expect(rows[0].n).toBe(2);
     });
 
-    it("interdit aux visiteurs et utilisateurs d'écrire les données football", async () => {
+    it("refuse un événement dont la compétition ou les équipes sont d'un autre sport", async () => {
+      await db.query("begin");
+      await expectError(
+        db,
+        "insert into public.events (sport, external_id, competition_id, starts_at, home_team_id, away_team_id) values ('basketball', 999, 9001, now(), 3, 4)",
+        [],
+        /foreign key/,
+      );
+      await expectError(
+        db,
+        "insert into public.events (sport, external_id, competition_id, starts_at, home_team_id, away_team_id) values ('basketball', 998, 9002, now(), 1, 4)",
+        [],
+        /foreign key/,
+      );
+      await db.query("rollback");
+    });
+
+    it("vérifie la cohérence marché / ligne / sélection des cotes", async () => {
+      await db.query("begin");
+      await db.query(`insert into public.event_odds (event_id, bookmaker_id, bookmaker_name, market, line, selection, odd)
+        values (102, 1, 'Test', 'TOTAL', 215.5, 'OVER', 1.9), (102, 1, 'Test', 'ML', null, '1', 1.6), (100, 1, 'Test', 'HTFT', null, 'X/1', 4.5)`);
+      await expectError(db, "insert into public.event_odds (event_id, bookmaker_id, bookmaker_name, market, line, selection, odd) values (102, 1, 'T', 'TOTAL', null, 'OVER', 1.9)", [], /check/);
+      await expectError(db, "insert into public.event_odds (event_id, bookmaker_id, bookmaker_name, market, line, selection, odd) values (102, 1, 'T', '1X2', null, 'Y', 1.9)", [], /check/);
+      await expectError(db, "insert into public.event_odds (event_id, bookmaker_id, bookmaker_name, market, line, selection, odd) values (102, 1, 'T', 'ML', null, '1', 1.7)", [], /duplicate key/);
+      await db.query("rollback");
+    });
+
+    it("interdit aux visiteurs et utilisateurs d'écrire les données sportives", async () => {
       await as("anon", null, async (c) => {
-        await expectError(c, "insert into public.teams (id, name) values (3, 'Pirate')", [], /permission denied/);
+        await expectError(c, "insert into public.teams (sport, external_id, name) values ('football', 3, 'Pirate')", [], /permission denied/);
       });
       await as("authenticated", alice, async (c) => {
-        await expectError(c, "update public.fixtures set home_goals = 9 where id = 100", [], /permission denied/);
+        await expectError(c, "update public.events set home_score = 9 where id = 100", [], /permission denied/);
       });
     });
 
-    it("laisse l'admin, et lui seul, activer une compétition", async () => {
+    it("laisse l'admin, et lui seul, activer une compétition ou un sport", async () => {
       await as("authenticated", alice, async (c) => {
         const res = await c.query("update public.competitions set is_enabled = true where id = 9001");
         expect(res.rowCount).toBe(0);
-        await expectError(c, "update public.competitions set name = 'X' where id = 39", [], /permission denied/);
+        await expectError(c, "update public.competitions set name = 'X' where id = 9002", [], /permission denied/);
+        expect((await c.query("update public.sports set is_enabled = true where code = 'tennis'")).rowCount).toBe(0);
+      });
+      await as("authenticated", adminUser, async (c) => {
+        expect((await c.query("update public.sports set is_enabled = true where code = 'tennis'")).rowCount).toBe(1);
       });
       await as("authenticated", adminUser, async (c) => {
         const res = await c.query("update public.competitions set is_enabled = true where id = 9001");
@@ -271,20 +309,20 @@ describeDb("Base de données Supabase (migrations + RLS)", () => {
   describe("pronostics et historique", () => {
     beforeAll(async () => {
       await db.query(`
-        insert into public.predictions (id, fixture_id, model_version, expected_home_goals, expected_away_goals, probabilities)
+        insert into public.predictions (id, event_id, model_version, expected_home, expected_away, probabilities)
         values ('00000000-0000-0000-0000-000000000001', 100, 'test', 1.6, 0.9, '{"1X2": {"1": 0.5, "X": 0.27, "2": 0.23}}'),
                ('00000000-0000-0000-0000-000000000002', 101, 'test', 1.2, 1.1, '{"1X2": {"1": 0.4, "X": 0.3, "2": 0.3}}');
-        insert into public.prediction_picks (id, prediction_id, fixture_id, competition_id, market, selection, probability, confidence, is_premium)
-        values ('00000000-0000-0000-0000-0000000000a1', '00000000-0000-0000-0000-000000000001', 100, 39, '1X2', '1', 0.5, 3, false),
-               ('00000000-0000-0000-0000-0000000000a2', '00000000-0000-0000-0000-000000000001', 100, 39, 'OU25', 'OVER', 0.55, 4, true),
-               ('00000000-0000-0000-0000-0000000000a3', '00000000-0000-0000-0000-000000000002', 101, 39, '1X2', '2', 0.3, 2, true);
+        insert into public.prediction_picks (id, prediction_id, event_id, competition_id, sport, market, line, selection, probability, confidence, is_premium)
+        values ('00000000-0000-0000-0000-0000000000a1', '00000000-0000-0000-0000-000000000001', 100, (select competition_id from public.events where id = 100), 'football', '1X2', null, '1', 0.5, 3, false),
+               ('00000000-0000-0000-0000-0000000000a2', '00000000-0000-0000-0000-000000000001', 100, (select competition_id from public.events where id = 100), 'football', 'TOTAL', 2.5, 'OVER', 0.55, 4, true),
+               ('00000000-0000-0000-0000-0000000000a3', '00000000-0000-0000-0000-000000000002', 101, (select competition_id from public.events where id = 101), 'football', '1X2', null, '2', 0.3, 2, true);
         update public.prediction_picks set result = 'lost', settled_at = now() where id = '00000000-0000-0000-0000-0000000000a3';
       `);
     });
 
     const visiblePicks = (role: Role, user: string | null) =>
       as(role, user, async (c) =>
-        (await c.query("select market from public.prediction_picks order by market, fixture_id")).rows.map((r) => r.market),
+        (await c.query("select market from public.prediction_picks order by market, event_id")).rows.map((r) => r.market),
       );
 
     it("montre aux gratuits les pronostics gratuits + l'historique réglé", async () => {
@@ -297,7 +335,7 @@ describeDb("Base de données Supabase (migrations + RLS)", () => {
         "insert into public.subscriptions (user_id, plan_code, ends_at) values ($1, 'weekly', now() + interval '7 days')",
         [bob],
       );
-      expect(await visiblePicks("authenticated", bob)).toEqual(["1X2", "1X2", "OU25"]);
+      expect(await visiblePicks("authenticated", bob)).toEqual(["1X2", "1X2", "TOTAL"]);
     });
 
     it("ne donne plus l'accès premium quand l'abonnement est expiré", async () => {
@@ -309,11 +347,23 @@ describeDb("Base de données Supabase (migrations + RLS)", () => {
       expect(await visiblePicks("authenticated", carol)).toEqual(["1X2", "1X2"]);
     });
 
-    it("réserve les probabilités détaillées aux premium, sauf match terminé", async () => {
-      const anonFixtures = await as("anon", null, async (c) =>
-        (await c.query("select fixture_id from public.predictions")).rows.map((r) => r.fixture_id),
+    it("réserve les probabilités détaillées aux premium, sauf événement terminé", async () => {
+      const anonEvents = await as("anon", null, async (c) =>
+        (await c.query("select event_id from public.predictions")).rows.map((r) => Number(r.event_id)),
       );
-      expect(anonFixtures).toEqual([101]);
+      expect(anonEvents).toEqual([101]);
+    });
+
+    it("refuse deux pronostics publiés sur le même marché et la même ligne", async () => {
+      await db.query("begin");
+      await expectError(
+        db,
+        `insert into public.prediction_picks (prediction_id, event_id, competition_id, sport, market, line, selection, probability, confidence)
+         values ('00000000-0000-0000-0000-000000000001', 100, (select competition_id from public.events where id = 100), 'football', 'TOTAL', 2.5, 'UNDER', 0.45, 2)`,
+        [],
+        /duplicate key/,
+      );
+      await db.query("rollback");
     });
 
     it("fige un pronostic publié : seul le résultat peut changer", async () => {
@@ -354,34 +404,75 @@ describeDb("Base de données Supabase (migrations + RLS)", () => {
       await as("authenticated", alice, async (c) => {
         await expectError(
           c,
-          `insert into public.coupons (user_id, target_odds, risk_level, period, total_odds, estimated_probability)
-           values ($1, 5, 'prudent', 'jour', 5.2, 0.15)`,
+          `insert into public.coupons (user_id, source, target_odds, risk_level, period, total_odds, estimated_probability)
+           values ($1, 'generated', 5, 'prudent', 'jour', 5.2, 0.15)`,
           [alice],
           /permission denied/,
         );
       });
     });
 
-    it("montre ses coupons et les coupons mis en avant", async () => {
+    it("montre ses coupons et les coupons mis en avant (premium réservés aux abonnés)", async () => {
       await db.query(`
-        insert into public.coupons (user_id, target_odds, risk_level, period, total_odds, estimated_probability, is_featured)
-        values ('${alice}', 5, 'prudent', 'jour', 5.1, 0.2, false),
-               ('${bob}', 3, 'equilibre', 'weekend', 3.2, 0.3, false),
-               (null, 10, 'audacieux', 'long_terme', 10.4, 0.07, true)`);
-      const rows = await as("authenticated", alice, async (c) =>
-        (await c.query("select target_odds::float as t from public.coupons order by t")).rows.map((r) => r.t),
+        insert into public.coupons (id, user_id, source, target_odds, risk_level, period, total_odds, estimated_probability, is_featured, is_premium)
+        values ('00000000-0000-0000-0000-0000000000c1', '${alice}', 'generated', 5, 'prudent', 'jour', 5.1, 0.2, false, false),
+               ('00000000-0000-0000-0000-0000000000c2', '${bob}', 'generated', 3, 'equilibre', 'weekend', 3.2, 0.3, false, false),
+               ('00000000-0000-0000-0000-0000000000c3', null, 'editorial', 10, null, null, 10.4, 0.07, true, false),
+               ('00000000-0000-0000-0000-0000000000c4', null, 'editorial', 20, null, null, 21.0, 0.04, true, true)`);
+      const visible = (role: Role, user: string | null) =>
+        as(role, user, async (c) =>
+          (await c.query("select target_odds::float as t from public.coupons order by t")).rows.map((r) => r.t),
+        );
+      expect(await visible("authenticated", alice)).toEqual([5, 10]);
+      expect(await visible("anon", null)).toEqual([10]);
+      expect(await visible("authenticated", bob)).toEqual([3, 10, 20]); // bob est premium
+    });
+
+    it("exige les paramètres d'un coupon généré", async () => {
+      await db.query("begin");
+      await expectError(
+        db,
+        "insert into public.coupons (user_id, source, total_odds) values ($1, 'generated', 5)",
+        [alice],
+        /coupons_generated_params/,
       );
-      expect(rows).toEqual([5, 10]);
-      const anonRows = await as("anon", null, async (c) =>
-        (await c.query("select target_odds::float as t from public.coupons")).rows.map((r) => r.t),
-      );
-      expect(anonRows).toEqual([10]);
+      await db.query("rollback");
+    });
+
+    it("partage les codes de chargement avec le coupon, saisis par l'admin seulement", async () => {
+      await as("authenticated", alice, async (c) => {
+        await expectError(
+          c,
+          "insert into public.coupon_booking_codes (coupon_id, bookmaker, code, created_by) values ('00000000-0000-0000-0000-0000000000c3', '1xbet', 'ABC12', $1)",
+          [alice],
+          /row-level security/,
+        );
+      });
+      await as("authenticated", adminUser, async (c) => {
+        await c.query(
+          `insert into public.coupon_booking_codes (coupon_id, bookmaker, country_code, code, created_by)
+           values ('00000000-0000-0000-0000-0000000000c3', '1xbet', 'BF', 'ABC12', $1),
+                  ('00000000-0000-0000-0000-0000000000c4', '1xbet', 'BF', 'PREM99', $1)`,
+          [adminUser],
+        );
+        await expectError(
+          c,
+          "insert into public.coupon_booking_codes (coupon_id, bookmaker, code, created_by) values ('00000000-0000-0000-0000-0000000000c3', '1xbet', 'bad code!', $1)",
+          [adminUser],
+          /check/,
+        );
+        // Lecture par un visiteur dans la même transaction : seul le code du coupon gratuit est visible
+        await c.query("set local role anon");
+        await c.query("select set_config('request.jwt.claims', '{}', true)");
+        const codes = (await c.query("select code from public.coupon_booking_codes")).rows.map((r) => r.code);
+        expect(codes).toEqual(["ABC12"]);
+      });
     });
 
     it("gère ses équipes favorites, sans pouvoir toucher à celles des autres", async () => {
       await as("authenticated", alice, async (c) => {
         await c.query("insert into public.favorite_teams (team_id) values (1)");
-        const { rows } = await c.query("select user_id, team_id from public.favorite_teams");
+        const { rows } = await c.query("select user_id, team_id::int from public.favorite_teams");
         expect(rows).toEqual([{ user_id: alice, team_id: 1 }]);
         await expectError(c, "insert into public.favorite_teams (user_id, team_id) values ($1, 2)", [bob], /row-level security/);
       });

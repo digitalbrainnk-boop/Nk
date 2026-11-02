@@ -7,10 +7,10 @@ export const metadata: Metadata = { title: "Pronostics" };
 export default function PredictionsPage() {
   return (
     <>
-      <PageHeader title="Pronostics" subtitle="Probabilités calculées et indice de confiance." />
-      <ComingSoon title="Moteur de pronostics">
-        1X2, double chance, plus/moins de buts, les deux équipes marquent, mi-temps/fin de match et détection des value
-        bets : livré en phase 4. Aucun pronostic n&apos;est garanti.
+      <PageHeader kicker="Analyse" title="Pronostics" subtitle="Probabilités calculées et indice de confiance, tous sports." />
+      <ComingSoon title="Pronostics du jour" emoji="🎯">
+        Vainqueur, double chance, plus/moins, handicap, les deux équipes marquent… avec détection des value bets. Livré en
+        phase 4. Aucun pronostic n&apos;est garanti.
       </ComingSoon>
     </>
   );

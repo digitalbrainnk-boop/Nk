@@ -6,7 +6,7 @@ import { z } from "zod";
  * L'import de « server-only » fait échouer la compilation si ce fichier est
  * importé par erreur dans un composant client.
  *
- * Les clés des phases suivantes (API-Football, CinetPay/FedaPay, VAPID…)
+ * Les clés des phases suivantes (API-Sports, CinetPay/FedaPay, VAPID…)
  * seront ajoutées ici au fur et à mesure.
  */
 const serverEnvSchema = z.object({

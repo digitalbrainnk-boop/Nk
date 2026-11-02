@@ -3,7 +3,10 @@
 -- -----------------------------------------------------------------------------
 -- Principes :
 --   * Row Level Security (RLS) activée sur TOUTES les tables du schéma public.
---   * Les données football (compétitions, équipes, matchs…) sont en lecture
+--   * Multi-sports : football, basketball, hockey sur glace, handball, volley…
+--     Chaque compétition, équipe et événement appartient à un sport ; les
+--     identifiants des fournisseurs (API-Sports) sont uniques PAR sport.
+--   * Les données sportives (compétitions, équipes, événements…) sont en lecture
 --     publique et ne sont écrites que par le serveur (clé secrète / service_role).
 --   * Les données personnelles (profils, favoris, paiements…) ne sont lisibles
 --     que par leur propriétaire (et par les administrateurs quand c'est utile).
@@ -42,19 +45,42 @@ begin
 end;
 $$;
 
--- Liste des marchés gérés par le moteur de pronostics (phase 4).
---   1X2   : victoire domicile / nul / victoire extérieur
+-- Marchés gérés (tous sports). « line » = la ligne du marché quand il y en a une.
+--   1X2   : victoire domicile / nul / victoire extérieur (temps réglementaire)
 --   DC    : double chance (1X, 12, X2)
---   OU05… : plus/moins de 0.5, 1.5, 2.5, 3.5 buts
+--   ML    : vainqueur du match, prolongations incluses (basket, hockey, volley…)
+--   DNB   : remboursé si match nul
+--   TOTAL : plus/moins de « line » buts/points (ex. 2.5, 5.5, 215.5)
+--   HCP   : handicap de « line » pour l'équipe à domicile (ex. -1.5 → domicile −1.5)
 --   BTTS  : les deux équipes marquent
---   HTFT  : mi-temps / fin de match
+--   HTFT  : mi-temps / fin de match (ex. « 1/1 », « X/2 »)
 create or replace function public.is_valid_market(p_market text)
 returns boolean
 language sql
 immutable
 set search_path = ''
 as $$
-  select p_market in ('1X2', 'DC', 'OU05', 'OU15', 'OU25', 'OU35', 'BTTS', 'HTFT');
+  select p_market in ('1X2', 'DC', 'ML', 'DNB', 'TOTAL', 'HCP', 'BTTS', 'HTFT');
+$$;
+
+-- Combinaison marché / ligne / sélection cohérente
+create or replace function public.is_valid_selection(p_market text, p_line numeric, p_selection text)
+returns boolean
+language sql
+immutable
+set search_path = ''
+as $$
+  select case p_market
+    when '1X2'   then p_line is null and p_selection in ('1', 'X', '2')
+    when 'DC'    then p_line is null and p_selection in ('1X', '12', 'X2')
+    when 'ML'    then p_line is null and p_selection in ('1', '2')
+    when 'DNB'   then p_line is null and p_selection in ('1', '2')
+    when 'BTTS'  then p_line is null and p_selection in ('YES', 'NO')
+    when 'HTFT'  then p_line is null and p_selection ~ '^[1X2]/[1X2]$'
+    when 'TOTAL' then p_line is not null and p_line > 0 and p_selection in ('OVER', 'UNDER')
+    when 'HCP'   then p_line is not null and p_selection in ('1', '2')
+    else false
+  end;
 $$;
 
 -- =============================================================================
@@ -178,43 +204,67 @@ create trigger on_auth_user_contact_updated
   execute function public.handle_user_contact_update();
 
 -- =============================================================================
--- 2. DONNÉES FOOTBALL (synchronisées depuis API-Football — phase 2)
+-- 2. DONNÉES SPORTIVES (synchronisées depuis API-Sports — phase 2)
 -- =============================================================================
 
+create table public.sports (
+  code           text primary key check (code ~ '^[a-z_]{2,30}$'),
+  name           text not null,
+  emoji          text not null,
+  has_draw       boolean not null,                  -- le match nul existe-t-il (temps réglementaire) ?
+  is_enabled     boolean not null default true,     -- affiché dans l'application (géré par l'admin)
+  display_order  smallint not null default 100,
+  created_at     timestamptz not null default now(),
+  updated_at     timestamptz not null default now()
+);
+
+create trigger sports_set_updated_at
+  before update on public.sports
+  for each row execute function public.set_updated_at();
+
 create table public.competitions (
-  id                integer primary key,            -- identifiant « league » d'API-Football
+  id                bigint generated always as identity primary key,
+  sport             text not null references public.sports (code),
+  external_id       integer not null,               -- identifiant « league » du fournisseur
   name              text not null,
   type              text not null default 'league' check (type in ('league', 'cup')),
   country_name      text not null,
   country_code      text,                           -- ISO 3166-1 alpha-2 (null pour « World »)
   country_flag_url  text,
   logo_url          text,
-  current_season    smallint,
+  current_season    text,                           -- « 2026 » ou « 2026-2027 » selon le sport
   is_enabled        boolean not null default false, -- affichée dans l'application (géré par l'admin)
   is_featured       boolean not null default false, -- mise en avant sur l'accueil
   display_order     smallint not null default 100,
   created_at        timestamptz not null default now(),
-  updated_at        timestamptz not null default now()
+  updated_at        timestamptz not null default now(),
+  unique (sport, external_id),
+  unique (id, sport)                                -- pour les clés étrangères (id, sport)
 );
 
-create index competitions_enabled_idx on public.competitions (display_order, name) where is_enabled;
+create index competitions_enabled_idx on public.competitions (sport, display_order, name) where is_enabled;
 create trigger competitions_set_updated_at
   before update on public.competitions
   for each row execute function public.set_updated_at();
 
+-- Équipes, ou joueurs pour les sports individuels (tennis…)
 create table public.teams (
-  id              integer primary key,              -- identifiant « team » d'API-Football
+  id              bigint generated always as identity primary key,
+  sport           text not null references public.sports (code),
+  external_id     integer not null,
   name            text not null,
   short_code      text,
   country_name    text,
   logo_url        text,
   is_national     boolean not null default false,
   venue_name      text,
-  -- Classement Elo calculé par le moteur (phase 4)
+  -- Classement Elo calculé par le moteur (phase 4), propre à chaque sport
   elo_rating      numeric(7, 2) not null default 1500,
   elo_updated_at  timestamptz,
   created_at      timestamptz not null default now(),
-  updated_at      timestamptz not null default now()
+  updated_at      timestamptz not null default now(),
+  unique (sport, external_id),
+  unique (id, sport)
 );
 
 -- Recherche d'équipe rapide (ILIKE '%…%')
@@ -223,95 +273,98 @@ create trigger teams_set_updated_at
   before update on public.teams
   for each row execute function public.set_updated_at();
 
-create table public.fixtures (
-  id              integer primary key,              -- identifiant « fixture » d'API-Football
-  competition_id  integer not null references public.competitions (id) on delete cascade,
-  season          smallint not null,
+-- Événements = matchs de tous les sports
+create table public.events (
+  id              bigint generated always as identity primary key,
+  sport           text not null references public.sports (code),
+  external_id     bigint not null,                  -- identifiant « fixture » / « game » du fournisseur
+  competition_id  bigint not null,
+  season          text,
   round           text,
-  kickoff_at      timestamptz not null,
-  status_short    text not null default 'NS',
+  starts_at       timestamptz not null,
+  status_short    text not null default 'NS',       -- statut brut du fournisseur
   status_long     text,
-  -- Regroupement des statuts API-Football pour filtrer facilement
-  status_group    text generated always as (
-    case
-      when status_short in ('1H', 'HT', '2H', 'ET', 'BT', 'P', 'SUSP', 'INT', 'LIVE') then 'live'
-      when status_short in ('FT', 'AET', 'PEN') then 'finished'
-      when status_short = 'PST' then 'postponed'
-      when status_short in ('CANC', 'ABD', 'AWD', 'WO') then 'cancelled'
-      else 'scheduled'
-    end
-  ) stored,
-  elapsed         smallint,                         -- minute de jeu
-  elapsed_extra   smallint,                         -- temps additionnel
-  home_team_id    integer not null references public.teams (id),
-  away_team_id    integer not null references public.teams (id),
-  home_goals      smallint,
-  away_goals      smallint,
-  ht_home_goals   smallint,
-  ht_away_goals   smallint,
+  -- Statut normalisé, calculé par la synchronisation selon le sport
+  status_group    text not null default 'scheduled'
+                  check (status_group in ('scheduled', 'live', 'finished', 'postponed', 'cancelled')),
+  live_clock      text,                             -- affichage du temps de jeu : « 67' », « Q3 04:12 », « 2e set »
+  elapsed         smallint,                         -- minute de jeu quand elle existe
+  home_team_id    bigint not null,
+  away_team_id    bigint not null,
+  home_score      smallint,
+  away_score      smallint,
+  -- Scores par période : {"ht":[1,0]} (football), {"q1":[25,22],…} (basket), {"p1":[1,0],…} (hockey)
+  period_scores   jsonb,
   venue_name      text,
   venue_city      text,
   referee         text,
   last_synced_at  timestamptz not null default now(),
   created_at      timestamptz not null default now(),
   updated_at      timestamptz not null default now(),
-  constraint fixtures_distinct_teams check (home_team_id <> away_team_id)
+  unique (sport, external_id),
+  unique (id, sport),
+  constraint events_distinct_teams check (home_team_id <> away_team_id),
+  -- La compétition et les équipes doivent être du même sport que l'événement
+  foreign key (competition_id, sport) references public.competitions (id, sport) on delete cascade,
+  foreign key (home_team_id, sport) references public.teams (id, sport),
+  foreign key (away_team_id, sport) references public.teams (id, sport)
 );
 
-create index fixtures_kickoff_idx on public.fixtures (kickoff_at);
-create index fixtures_competition_kickoff_idx on public.fixtures (competition_id, kickoff_at);
-create index fixtures_live_idx on public.fixtures (kickoff_at) where status_group = 'live';
-create index fixtures_home_team_idx on public.fixtures (home_team_id, kickoff_at desc);
-create index fixtures_away_team_idx on public.fixtures (away_team_id, kickoff_at desc);
-create trigger fixtures_set_updated_at
-  before update on public.fixtures
+create index events_starts_idx on public.events (starts_at);
+create index events_sport_starts_idx on public.events (sport, starts_at);
+create index events_competition_starts_idx on public.events (competition_id, starts_at);
+create index events_live_idx on public.events (sport, starts_at) where status_group = 'live';
+create index events_home_team_idx on public.events (home_team_id, starts_at desc);
+create index events_away_team_idx on public.events (away_team_id, starts_at desc);
+create trigger events_set_updated_at
+  before update on public.events
   for each row execute function public.set_updated_at();
 
--- Buts, cartons, remplacements, VAR
-create table public.fixture_events (
+-- Faits de match : buts, cartons, remplacements, VAR, pénalités (hockey)…
+create table public.event_incidents (
   id            bigint generated always as identity primary key,
-  fixture_id    integer not null references public.fixtures (id) on delete cascade,
-  minute        smallint not null,
+  event_id      bigint not null references public.events (id) on delete cascade,
+  minute        smallint,
   extra_minute  smallint,
-  team_id       integer references public.teams (id),
+  period        text,                               -- « 1H », « P2 », « Q4 »…
+  team_id       bigint references public.teams (id),
   player_name   text,
   assist_name   text,
-  type          text not null,                      -- Goal, Card, subst, Var
-  detail        text,                               -- Normal Goal, Penalty, Own Goal, Yellow Card, Red Card…
+  type          text not null,                      -- Goal, Card, subst, Var, Penalty…
+  detail        text,
   comments      text,
-  event_key     text not null,                      -- clé de dédoublonnage calculée à la synchro
+  incident_key  text not null,                      -- clé de dédoublonnage calculée à la synchro
   created_at    timestamptz not null default now(),
-  unique (fixture_id, event_key)
+  unique (event_id, incident_key)
 );
 
-create index fixture_events_fixture_idx on public.fixture_events (fixture_id, minute);
+create index event_incidents_event_idx on public.event_incidents (event_id, minute);
 
 create table public.standings (
-  competition_id      integer not null references public.competitions (id) on delete cascade,
-  season              smallint not null,
+  competition_id      bigint not null references public.competitions (id) on delete cascade,
+  season              text not null,
   group_name          text not null default '',
-  team_id             integer not null references public.teams (id) on delete cascade,
+  team_id             bigint not null references public.teams (id) on delete cascade,
   rank                smallint not null,
   points              smallint not null default 0,
-  goals_diff          smallint not null default 0,
   played              smallint not null default 0,
   won                 smallint not null default 0,
   drawn               smallint not null default 0,
   lost                smallint not null default 0,
-  goals_for           smallint not null default 0,
-  goals_against       smallint not null default 0,
+  scored              integer not null default 0,   -- buts ou points marqués
+  conceded            integer not null default 0,
   home_played         smallint not null default 0,
   home_won            smallint not null default 0,
   home_drawn          smallint not null default 0,
   home_lost           smallint not null default 0,
-  home_goals_for      smallint not null default 0,
-  home_goals_against  smallint not null default 0,
+  home_scored         integer not null default 0,
+  home_conceded       integer not null default 0,
   away_played         smallint not null default 0,
   away_won            smallint not null default 0,
   away_drawn          smallint not null default 0,
   away_lost           smallint not null default 0,
-  away_goals_for      smallint not null default 0,
-  away_goals_against  smallint not null default 0,
+  away_scored         integer not null default 0,
+  away_conceded       integer not null default 0,
   form                text,                         -- ex : « WWDLW »
   description         text,                         -- ex : « Promotion - Champions League »
   updated_at          timestamptz not null default now(),
@@ -319,18 +372,23 @@ create table public.standings (
 );
 
 -- Cotes des bookmakers fournies par l'API (affichage + détection des value bets)
-create table public.fixture_odds (
-  fixture_id      integer not null references public.fixtures (id) on delete cascade,
+create table public.event_odds (
+  id              bigint generated always as identity primary key,
+  event_id        bigint not null references public.events (id) on delete cascade,
   bookmaker_id    integer not null,
   bookmaker_name  text not null,
   market          text not null check (public.is_valid_market(market)),
+  line            numeric(6, 2),
   selection       text not null,
   odd             numeric(7, 3) not null check (odd > 1),
   updated_at      timestamptz not null default now(),
-  primary key (fixture_id, bookmaker_id, market, selection)
+  check (public.is_valid_selection(market, line, selection))
 );
 
--- Cache des réponses brutes d'API-Football (compositions, blessés,
+create unique index event_odds_unique_idx
+  on public.event_odds (event_id, bookmaker_id, market, line, selection) nulls not distinct;
+
+-- Cache des réponses brutes d'API-Sports (compositions, blessés,
 -- confrontations directes…) pour respecter les quotas. Serveur uniquement.
 create table public.api_cache (
   cache_key   text primary key,
@@ -435,36 +493,38 @@ as $$
 $$;
 
 -- =============================================================================
--- 4. PRONOSTICS, HISTORIQUE ET COUPONS (phases 4 et 5)
+-- 4. PRONOSTICS, HISTORIQUE, COUPONS ET CODES DE CHARGEMENT (phases 4 et 5)
 -- =============================================================================
 
--- Sortie brute du modèle pour un match (toutes les probabilités de tous les marchés)
+-- Sortie brute du modèle pour un événement (toutes les probabilités de tous les marchés)
 create table public.predictions (
-  id                   uuid primary key default gen_random_uuid(),
-  fixture_id           integer not null references public.fixtures (id) on delete cascade,
-  model_version        text not null,
-  expected_home_goals  numeric(5, 3) not null check (expected_home_goals >= 0),
-  expected_away_goals  numeric(5, 3) not null check (expected_away_goals >= 0),
-  home_elo             numeric(7, 2),
-  away_elo             numeric(7, 2),
-  -- ex : {"1X2": {"1": 0.47, "X": 0.27, "2": 0.26}, "OU25": {"OVER": 0.52, "UNDER": 0.48}, …}
-  probabilities        jsonb not null,
+  id               uuid primary key default gen_random_uuid(),
+  event_id         bigint not null references public.events (id) on delete cascade,
+  model_version    text not null,                   -- ex. « poisson-elo-v1 », « normal-points-v1 »
+  expected_home    numeric(6, 2) not null check (expected_home >= 0),  -- buts/points attendus
+  expected_away    numeric(6, 2) not null check (expected_away >= 0),
+  home_rating      numeric(7, 2),
+  away_rating      numeric(7, 2),
+  -- ex : {"1X2": {"1": 0.47, "X": 0.27, "2": 0.26}, "TOTAL": {"2.5": {"OVER": 0.52, "UNDER": 0.48}}, …}
+  probabilities    jsonb not null,
   -- Données d'entrée utilisées (forme, absences…) pour l'explication et le débogage
-  inputs               jsonb,
-  computed_at          timestamptz not null default now(),
-  unique (fixture_id, model_version)
+  inputs           jsonb,
+  computed_at      timestamptz not null default now(),
+  unique (event_id, model_version)
 );
 
-create index predictions_fixture_idx on public.predictions (fixture_id);
+create index predictions_event_idx on public.predictions (event_id);
 
 -- Pronostics PUBLIÉS = historique public. Une ligne publiée est figée :
 -- seul le résultat (result, settled_at) peut ensuite être renseigné.
 create table public.prediction_picks (
   id                   uuid primary key default gen_random_uuid(),
   prediction_id        uuid not null references public.predictions (id) on delete restrict,
-  fixture_id           integer not null references public.fixtures (id) on delete restrict,
-  competition_id       integer not null references public.competitions (id) on delete restrict,
+  event_id             bigint not null references public.events (id) on delete restrict,
+  competition_id       bigint not null references public.competitions (id) on delete restrict,
+  sport                text not null references public.sports (code),
   market               text not null check (public.is_valid_market(market)),
+  line                 numeric(6, 2),
   selection            text not null,
   probability          numeric(5, 4) not null check (probability > 0 and probability < 1),
   best_odd             numeric(7, 3) check (best_odd > 1),
@@ -477,11 +537,13 @@ create table public.prediction_picks (
   published_at         timestamptz not null default now(),
   result               public.pick_result not null default 'pending',
   settled_at           timestamptz,
-  unique (fixture_id, market)
+  check (public.is_valid_selection(market, line, selection))
 );
 
+create unique index prediction_picks_unique_idx
+  on public.prediction_picks (event_id, market, line) nulls not distinct;
 create index prediction_picks_published_idx on public.prediction_picks (published_at desc);
-create index prediction_picks_stats_idx on public.prediction_picks (market, competition_id) where result <> 'pending';
+create index prediction_picks_stats_idx on public.prediction_picks (sport, market, competition_id) where result <> 'pending';
 
 -- Transparence : interdiction de réécrire l'histoire.
 create or replace function public.protect_published_pick()
@@ -494,11 +556,11 @@ begin
     raise exception 'PICK_IMMUTABLE: un pronostic publié ne peut pas être supprimé (marquez-le « void »)';
   end if;
 
-  if (new.prediction_id, new.fixture_id, new.competition_id, new.market, new.selection,
+  if (new.prediction_id, new.event_id, new.competition_id, new.sport, new.market, new.line, new.selection,
       new.probability, new.best_odd, new.bookmaker_name, new.implied_probability, new.edge,
       new.is_value_bet, new.confidence, new.published_at)
      is distinct from
-     (old.prediction_id, old.fixture_id, old.competition_id, old.market, old.selection,
+     (old.prediction_id, old.event_id, old.competition_id, old.sport, old.market, old.line, old.selection,
       old.probability, old.best_odd, old.bookmaker_name, old.implied_probability, old.edge,
       old.is_value_bet, old.confidence, old.published_at)
   then
@@ -517,21 +579,32 @@ create trigger prediction_picks_protect_delete
   before delete on public.prediction_picks
   for each row execute function public.protect_published_pick();
 
--- Coupons : générés par l'utilisateur (user_id renseigné) ou éditoriaux (user_id null, créés par l'admin)
+-- Coupons :
+--   generated : « code de X » généré pour un utilisateur (cote visée + risque + période)
+--   analyzed  : coupon saisi par l'utilisateur puis analysé
+--   editorial : coupon publié par l'admin (ex. « coupon du jour »), éventuellement premium
 create table public.coupons (
   id                     uuid primary key default gen_random_uuid(),
   user_id                uuid references auth.users (id) on delete cascade,
+  source                 text not null check (source in ('generated', 'analyzed', 'editorial')),
   title                  text check (char_length(title) <= 80),
-  target_odds            numeric(8, 2) not null check (target_odds >= 1.1 and target_odds <= 1000),
-  risk_level             public.risk_level not null,
-  period                 public.coupon_period not null,
+  target_odds            numeric(8, 2) check (target_odds >= 1.1 and target_odds <= 1000),
+  risk_level             public.risk_level,
+  period                 public.coupon_period,
+  sports                 text[] not null default '{}',
   total_odds             numeric(10, 3) not null check (total_odds > 1),
-  estimated_probability  numeric(6, 5) not null check (estimated_probability > 0 and estimated_probability < 1),
+  estimated_probability  numeric(6, 5) check (estimated_probability > 0 and estimated_probability < 1),
+  analysis               jsonb,                     -- points faibles, conseils (coupons analysés)
   is_featured            boolean not null default false,
+  is_premium             boolean not null default false,  -- coupon mis en avant réservé aux abonnés
   featured_by            uuid references auth.users (id) on delete set null,
   status                 public.pick_result not null default 'pending',
   created_at             timestamptz not null default now(),
-  settled_at             timestamptz
+  settled_at             timestamptz,
+  constraint coupons_generated_params check (
+    source <> 'generated' or (target_odds is not null and risk_level is not null and period is not null)
+  ),
+  constraint coupons_owner check (source = 'editorial' or user_id is not null)
 );
 
 create index coupons_user_idx on public.coupons (user_id, created_at desc);
@@ -540,18 +613,35 @@ create index coupons_featured_idx on public.coupons (created_at desc) where is_f
 create table public.coupon_selections (
   id           bigint generated always as identity primary key,
   coupon_id    uuid not null references public.coupons (id) on delete cascade,
-  fixture_id   integer not null references public.fixtures (id) on delete cascade,
+  event_id     bigint not null references public.events (id) on delete cascade,
   pick_id      uuid references public.prediction_picks (id) on delete set null,
   market       text not null check (public.is_valid_market(market)),
+  line         numeric(6, 2),
   selection    text not null,
   odd          numeric(7, 3) not null check (odd > 1),
-  probability  numeric(5, 4) not null check (probability > 0 and probability < 1),
+  probability  numeric(5, 4) check (probability > 0 and probability < 1),
   result       public.pick_result not null default 'pending',
-  -- Une seule sélection par match dans un coupon (évite les paris corrélés)
-  unique (coupon_id, fixture_id)
+  check (public.is_valid_selection(market, line, selection)),
+  -- Une seule sélection par événement dans un coupon (évite les paris corrélés)
+  unique (coupon_id, event_id)
 );
 
-create index coupon_selections_fixture_idx on public.coupon_selections (fixture_id);
+create index coupon_selections_event_idx on public.coupon_selections (event_id);
+
+-- Codes de chargement (« booking codes ») d'un coupon chez un bookmaker :
+-- l'utilisateur copie le code et le charge dans son application de paris.
+-- Un code dépend du bookmaker et souvent du pays (site miroir).
+create table public.coupon_booking_codes (
+  id            bigint generated always as identity primary key,
+  coupon_id     uuid not null references public.coupons (id) on delete cascade,
+  bookmaker     text not null check (bookmaker ~ '^[a-z0-9_]{2,30}$'),
+  country_code  text check (country_code ~ '^[A-Z]{2}$'),
+  code          text not null check (code ~ '^[A-Za-z0-9_-]{3,32}$'),
+  created_by    uuid references auth.users (id) on delete set null,
+  created_at    timestamptz not null default now(),
+  expires_at    timestamptz,                        -- en général : début du premier événement
+  unique nulls not distinct (coupon_id, bookmaker, country_code)
+);
 
 -- =============================================================================
 -- 5. FAVORIS ET NOTIFICATIONS (phase 7)
@@ -559,7 +649,7 @@ create index coupon_selections_fixture_idx on public.coupon_selections (fixture_
 
 create table public.favorite_teams (
   user_id     uuid not null default auth.uid() references auth.users (id) on delete cascade,
-  team_id     integer not null references public.teams (id) on delete cascade,
+  team_id     bigint not null references public.teams (id) on delete cascade,
   created_at  timestamptz not null default now(),
   primary key (user_id, team_id)
 );
@@ -583,11 +673,11 @@ create index push_subscriptions_user_idx on public.push_subscriptions (user_id);
 create table public.notification_log (
   id          bigint generated always as identity primary key,
   user_id     uuid not null references auth.users (id) on delete cascade,
-  fixture_id  integer references public.fixtures (id) on delete cascade,
+  event_id    bigint references public.events (id) on delete cascade,
   kind        text not null check (kind in ('kickoff', 'goal', 'result', 'coupon', 'info')),
-  event_key   text not null default '',
+  dedupe_key  text not null default '',
   sent_at     timestamptz not null default now(),
-  unique (user_id, fixture_id, kind, event_key)
+  unique (user_id, event_id, kind, dedupe_key)
 );
 
 -- =============================================================================
@@ -685,10 +775,11 @@ declare
   t text;
 begin
   foreach t in array array[
-    'profiles', 'competitions', 'teams', 'fixtures', 'fixture_events', 'standings',
-    'fixture_odds', 'api_cache', 'sync_runs', 'plans', 'payments', 'subscriptions',
-    'predictions', 'prediction_picks', 'coupons', 'coupon_selections', 'favorite_teams',
-    'push_subscriptions', 'notification_log', 'app_settings', 'admin_audit_log', 'rate_limits'
+    'profiles', 'sports', 'competitions', 'teams', 'events', 'event_incidents', 'standings',
+    'event_odds', 'api_cache', 'sync_runs', 'plans', 'payments', 'subscriptions',
+    'predictions', 'prediction_picks', 'coupons', 'coupon_selections', 'coupon_booking_codes',
+    'favorite_teams', 'push_subscriptions', 'notification_log', 'app_settings', 'admin_audit_log',
+    'rate_limits'
   ]
   loop
     execute format('alter table public.%I enable row level security', t);
@@ -722,10 +813,20 @@ create policy "profiles: mise à jour de son profil"
   using (id = (select auth.uid()))
   with check (id = (select auth.uid()));
 
--- --- Données football : lecture publique ---------------------------------------
-grant select on public.competitions, public.teams, public.fixtures, public.fixture_events,
-  public.standings, public.fixture_odds, public.plans
+-- --- Données sportives : lecture publique -------------------------------------
+grant select on public.sports, public.competitions, public.teams, public.events, public.event_incidents,
+  public.standings, public.event_odds, public.plans
   to anon, authenticated;
+
+create policy "sports: lecture des sports actifs"
+  on public.sports for select to anon, authenticated
+  using (is_enabled or (select public.is_admin()));
+
+grant update (is_enabled, display_order) on public.sports to authenticated;
+create policy "sports: gestion par l'admin"
+  on public.sports for update to authenticated
+  using ((select public.is_admin()))
+  with check ((select public.is_admin()));
 
 create policy "competitions: lecture des compétitions actives"
   on public.competitions for select to anon, authenticated
@@ -741,17 +842,17 @@ create policy "competitions: gestion par l'admin"
 create policy "teams: lecture publique"
   on public.teams for select to anon, authenticated using (true);
 
-create policy "fixtures: lecture publique"
-  on public.fixtures for select to anon, authenticated using (true);
+create policy "events: lecture publique"
+  on public.events for select to anon, authenticated using (true);
 
-create policy "fixture_events: lecture publique"
-  on public.fixture_events for select to anon, authenticated using (true);
+create policy "event_incidents: lecture publique"
+  on public.event_incidents for select to anon, authenticated using (true);
 
 create policy "standings: lecture publique"
   on public.standings for select to anon, authenticated using (true);
 
-create policy "fixture_odds: lecture publique"
-  on public.fixture_odds for select to anon, authenticated using (true);
+create policy "event_odds: lecture publique"
+  on public.event_odds for select to anon, authenticated using (true);
 
 create policy "plans: lecture des offres actives"
   on public.plans for select to anon, authenticated
@@ -783,7 +884,7 @@ create policy "subscriptions: lecture de ses abonnements"
   on public.subscriptions for select to authenticated
   using (user_id = (select auth.uid()) or (select public.is_admin()));
 
--- --- predictions : premium/admin, ou public une fois le match terminé ---------
+-- --- predictions : premium/admin, ou public une fois l'événement terminé -----
 grant select on public.predictions to anon, authenticated;
 create policy "predictions: premium ou match terminé"
   on public.predictions for select to anon, authenticated
@@ -791,8 +892,8 @@ create policy "predictions: premium ou match terminé"
     (select public.is_premium())
     or (select public.is_admin())
     or exists (
-      select 1 from public.fixtures f
-      where f.id = predictions.fixture_id and f.status_group = 'finished'
+      select 1 from public.events e
+      where e.id = predictions.event_id and e.status_group = 'finished'
     )
   );
 
@@ -810,15 +911,19 @@ create policy "prediction_picks: lecture selon l'offre"
 
 -- --- coupons ------------------------------------------------------------------
 -- Création côté serveur uniquement (le moteur calcule cotes et probabilités) ;
--- l'utilisateur peut lire et supprimer ses coupons, tout le monde lit les
--- coupons mis en avant.
+-- l'utilisateur lit et supprime ses coupons ; les coupons mis en avant sont
+-- visibles par tous, sauf ceux réservés aux abonnés premium.
 grant select, delete on public.coupons to authenticated;
 grant select on public.coupons to anon;
-grant select on public.coupon_selections to anon, authenticated;
+grant select on public.coupon_selections, public.coupon_booking_codes to anon, authenticated;
 
 create policy "coupons: lecture de ses coupons et des coupons mis en avant"
   on public.coupons for select to anon, authenticated
-  using (is_featured or user_id = (select auth.uid()) or (select public.is_admin()));
+  using (
+    user_id = (select auth.uid())
+    or (select public.is_admin())
+    or (is_featured and (not is_premium or (select public.is_premium())))
+  );
 
 create policy "coupons: suppression de ses coupons"
   on public.coupons for delete to authenticated
@@ -827,6 +932,26 @@ create policy "coupons: suppression de ses coupons"
 create policy "coupon_selections: lecture si le coupon est visible"
   on public.coupon_selections for select to anon, authenticated
   using (exists (select 1 from public.coupons c where c.id = coupon_selections.coupon_id));
+
+-- Codes de chargement : visibles avec le coupon, saisis par l'admin.
+create policy "coupon_booking_codes: lecture si le coupon est visible"
+  on public.coupon_booking_codes for select to anon, authenticated
+  using (exists (select 1 from public.coupons c where c.id = coupon_booking_codes.coupon_id));
+
+grant insert (coupon_id, bookmaker, country_code, code, created_by, expires_at),
+      update (code, expires_at),
+      delete
+  on public.coupon_booking_codes to authenticated;
+create policy "coupon_booking_codes: ajout par l'admin"
+  on public.coupon_booking_codes for insert to authenticated
+  with check ((select public.is_admin()) and created_by = (select auth.uid()));
+create policy "coupon_booking_codes: modification par l'admin"
+  on public.coupon_booking_codes for update to authenticated
+  using ((select public.is_admin()))
+  with check ((select public.is_admin()));
+create policy "coupon_booking_codes: suppression par l'admin"
+  on public.coupon_booking_codes for delete to authenticated
+  using ((select public.is_admin()));
 
 -- --- favorite_teams, push_subscriptions : gérés par l'utilisateur -------------
 grant select, insert, delete on public.favorite_teams to authenticated;

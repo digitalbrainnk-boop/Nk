@@ -1,17 +1,17 @@
 import type { Metadata } from "next";
-import { ComingSoon } from "@/components/layout/coming-soon";
+import { CouponsTabs } from "@/components/coupons/coupons-tabs";
 import { PageHeader } from "@/components/layout/page-header";
 
-export const metadata: Metadata = { title: "Générateur de coupons" };
+export const metadata: Metadata = {
+  title: "Générer un code ou analyser un coupon",
+  description: "Choisissez votre cote (code de 2, 5, 10…) et votre niveau de risque, ou faites analyser votre coupon.",
+};
 
 export default function CouponsPage() {
   return (
     <>
-      <PageHeader title="Coupons" subtitle="Cote visée, niveau de risque et période." />
-      <ComingSoon title="Générateur de coupons">
-        Choisissez une cote totale (2, 5, 10…), un niveau de risque (prudent, équilibré, audacieux) et une période :
-        l&apos;application affichera la probabilité réelle estimée du coupon. Livré en phase 4.
-      </ComingSoon>
+      <PageHeader kicker="Coupons" title="Mon code" subtitle="Multi-sports · chance réelle affichée · aucun gain garanti." />
+      <CouponsTabs />
     </>
   );
 }

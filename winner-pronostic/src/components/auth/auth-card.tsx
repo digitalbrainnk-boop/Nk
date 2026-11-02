@@ -4,10 +4,13 @@ export function AuthCard({ title, subtitle, children, footer }: { title: string;
   return (
     <div className="mx-auto max-w-md py-2">
       <div className="mb-5">
-        <h1 className="text-2xl font-extrabold tracking-tight">{title}</h1>
+        <h1 className="font-display text-3xl font-extrabold uppercase tracking-tight">{title}</h1>
         {subtitle ? <p className="mt-1 text-sm text-muted">{subtitle}</p> : null}
       </div>
-      <div className="rounded-(--radius-card) border border-line bg-surface p-4 sm:p-5">{children}</div>
+      <div className="relative overflow-hidden rounded-(--radius-card) border border-line bg-surface p-4 sm:p-5">
+        <span className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand via-gold to-info" aria-hidden />
+        {children}
+      </div>
       {footer ? <div className="mt-5 text-center text-sm text-muted">{footer}</div> : null}
     </div>
   );

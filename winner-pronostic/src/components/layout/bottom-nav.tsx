@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils/cn";
 type NavItem = { href: string; label: string; Icon: ComponentType<SVGProps<SVGSVGElement>> };
 
 export const NAV_ITEMS: NavItem[] = [
-  { href: "/", label: "Matchs", Icon: CalendarIcon },
+  { href: "/", label: "Sports", Icon: CalendarIcon },
   { href: "/direct", label: "Direct", Icon: LiveIcon },
   { href: "/pronostics", label: "Pronos", Icon: TargetIcon },
   { href: "/coupons", label: "Coupons", Icon: TicketIcon },
@@ -33,11 +33,14 @@ function NavList({ pathname }: { pathname: string | null }) {
               href={href}
               aria-current={active ? "page" : undefined}
               className={cn(
-                "flex h-full flex-col items-center justify-center gap-0.5 text-[11px] font-medium",
+                "relative flex h-full flex-col items-center justify-center gap-0.5 text-[11px] font-semibold uppercase tracking-wide",
                 active ? "text-brand" : "text-muted hover:text-ink",
               )}
             >
-              <Icon className="size-[22px]" />
+              {active ? (
+                <span className="absolute inset-x-4 top-0 h-[3px] rounded-b-full bg-brand shadow-[0_0_12px_2px_rgb(34_224_125/0.6)]" aria-hidden />
+              ) : null}
+              <Icon className={cn("size-[22px]", active && "drop-shadow-[0_0_8px_rgb(34_224_125/0.7)]")} />
               {label}
             </Link>
           </li>

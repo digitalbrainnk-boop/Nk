@@ -87,13 +87,15 @@ export type Database = {
       competitions: {
         Row: {
           id: number;
+          sport: string;
+          external_id: number;
           name: string;
           type: string;
           country_name: string;
           country_code: string | null;
           country_flag_url: string | null;
           logo_url: string | null;
-          current_season: number | null;
+          current_season: string | null;
           is_enabled: boolean;
           is_featured: boolean;
           display_order: number;
@@ -101,14 +103,16 @@ export type Database = {
           updated_at: string;
         };
         Insert: {
-          id: number;
+          id?: never;
+          sport: string;
+          external_id: number;
           name: string;
           type?: string;
           country_name: string;
           country_code?: string | null;
           country_flag_url?: string | null;
           logo_url?: string | null;
-          current_season?: number | null;
+          current_season?: string | null;
           is_enabled?: boolean;
           is_featured?: boolean;
           display_order?: number;
@@ -116,54 +120,108 @@ export type Database = {
           updated_at?: string;
         };
         Update: {
-          id?: number;
+          id?: never;
+          sport?: string;
+          external_id?: number;
           name?: string;
           type?: string;
           country_name?: string;
           country_code?: string | null;
           country_flag_url?: string | null;
           logo_url?: string | null;
-          current_season?: number | null;
+          current_season?: string | null;
           is_enabled?: boolean;
           is_featured?: boolean;
           display_order?: number;
           created_at?: string;
           updated_at?: string;
         };
-        Relationships: [];
+        Relationships: [
+          {
+            foreignKeyName: "competitions_sport_fkey";
+            columns: ["sport"];
+            isOneToOne: false;
+            referencedRelation: "sports";
+            referencedColumns: ["code"];
+          },
+        ];
+      };
+      coupon_booking_codes: {
+        Row: {
+          id: number;
+          coupon_id: string;
+          bookmaker: string;
+          country_code: string | null;
+          code: string;
+          created_by: string | null;
+          created_at: string;
+          expires_at: string | null;
+        };
+        Insert: {
+          id?: never;
+          coupon_id: string;
+          bookmaker: string;
+          country_code?: string | null;
+          code: string;
+          created_by?: string | null;
+          created_at?: string;
+          expires_at?: string | null;
+        };
+        Update: {
+          id?: never;
+          coupon_id?: string;
+          bookmaker?: string;
+          country_code?: string | null;
+          code?: string;
+          created_by?: string | null;
+          created_at?: string;
+          expires_at?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "coupon_booking_codes_coupon_id_fkey";
+            columns: ["coupon_id"];
+            isOneToOne: false;
+            referencedRelation: "coupons";
+            referencedColumns: ["id"];
+          },
+        ];
       };
       coupon_selections: {
         Row: {
           id: number;
           coupon_id: string;
-          fixture_id: number;
+          event_id: number;
           pick_id: string | null;
           market: string;
+          line: number | null;
           selection: string;
           odd: number;
-          probability: number;
+          probability: number | null;
           result: Database["public"]["Enums"]["pick_result"];
         };
         Insert: {
           id?: never;
           coupon_id: string;
-          fixture_id: number;
+          event_id: number;
           pick_id?: string | null;
           market: string;
+          line?: number | null;
           selection: string;
           odd: number;
-          probability: number;
+          probability?: number | null;
           result?: Database["public"]["Enums"]["pick_result"];
         };
         Update: {
           id?: never;
           coupon_id?: string;
-          fixture_id?: number;
+          event_id?: number;
           pick_id?: string | null;
           market?: string;
+          line?: number | null;
           selection?: string;
           odd?: number;
-          probability?: number;
+          probability?: number | null;
           result?: Database["public"]["Enums"]["pick_result"];
         };
         Relationships: [
@@ -175,10 +233,10 @@ export type Database = {
             referencedColumns: ["id"];
           },
           {
-            foreignKeyName: "coupon_selections_fixture_id_fkey";
-            columns: ["fixture_id"];
+            foreignKeyName: "coupon_selections_event_id_fkey";
+            columns: ["event_id"];
             isOneToOne: false;
-            referencedRelation: "fixtures";
+            referencedRelation: "events";
             referencedColumns: ["id"];
           },
           {
@@ -194,13 +252,17 @@ export type Database = {
         Row: {
           id: string;
           user_id: string | null;
+          source: string;
           title: string | null;
-          target_odds: number;
-          risk_level: Database["public"]["Enums"]["risk_level"];
-          period: Database["public"]["Enums"]["coupon_period"];
+          target_odds: number | null;
+          risk_level: Database["public"]["Enums"]["risk_level"] | null;
+          period: Database["public"]["Enums"]["coupon_period"] | null;
+          sports: string[];
           total_odds: number;
-          estimated_probability: number;
+          estimated_probability: number | null;
+          analysis: Json | null;
           is_featured: boolean;
+          is_premium: boolean;
           featured_by: string | null;
           status: Database["public"]["Enums"]["pick_result"];
           created_at: string;
@@ -209,13 +271,17 @@ export type Database = {
         Insert: {
           id?: string;
           user_id?: string | null;
+          source: string;
           title?: string | null;
-          target_odds: number;
-          risk_level: Database["public"]["Enums"]["risk_level"];
-          period: Database["public"]["Enums"]["coupon_period"];
+          target_odds?: number | null;
+          risk_level?: Database["public"]["Enums"]["risk_level"] | null;
+          period?: Database["public"]["Enums"]["coupon_period"] | null;
+          sports?: string[];
           total_odds: number;
-          estimated_probability: number;
+          estimated_probability?: number | null;
+          analysis?: Json | null;
           is_featured?: boolean;
+          is_premium?: boolean;
           featured_by?: string | null;
           status?: Database["public"]["Enums"]["pick_result"];
           created_at?: string;
@@ -224,19 +290,237 @@ export type Database = {
         Update: {
           id?: string;
           user_id?: string | null;
+          source?: string;
           title?: string | null;
-          target_odds?: number;
-          risk_level?: Database["public"]["Enums"]["risk_level"];
-          period?: Database["public"]["Enums"]["coupon_period"];
+          target_odds?: number | null;
+          risk_level?: Database["public"]["Enums"]["risk_level"] | null;
+          period?: Database["public"]["Enums"]["coupon_period"] | null;
+          sports?: string[];
           total_odds?: number;
-          estimated_probability?: number;
+          estimated_probability?: number | null;
+          analysis?: Json | null;
           is_featured?: boolean;
+          is_premium?: boolean;
           featured_by?: string | null;
           status?: Database["public"]["Enums"]["pick_result"];
           created_at?: string;
           settled_at?: string | null;
         };
         Relationships: [];
+      };
+      event_incidents: {
+        Row: {
+          id: number;
+          event_id: number;
+          minute: number | null;
+          extra_minute: number | null;
+          period: string | null;
+          team_id: number | null;
+          player_name: string | null;
+          assist_name: string | null;
+          type: string;
+          detail: string | null;
+          comments: string | null;
+          incident_key: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: never;
+          event_id: number;
+          minute?: number | null;
+          extra_minute?: number | null;
+          period?: string | null;
+          team_id?: number | null;
+          player_name?: string | null;
+          assist_name?: string | null;
+          type: string;
+          detail?: string | null;
+          comments?: string | null;
+          incident_key: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: never;
+          event_id?: number;
+          minute?: number | null;
+          extra_minute?: number | null;
+          period?: string | null;
+          team_id?: number | null;
+          player_name?: string | null;
+          assist_name?: string | null;
+          type?: string;
+          detail?: string | null;
+          comments?: string | null;
+          incident_key?: string;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "event_incidents_event_id_fkey";
+            columns: ["event_id"];
+            isOneToOne: false;
+            referencedRelation: "events";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "event_incidents_team_id_fkey";
+            columns: ["team_id"];
+            isOneToOne: false;
+            referencedRelation: "teams";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      event_odds: {
+        Row: {
+          id: number;
+          event_id: number;
+          bookmaker_id: number;
+          bookmaker_name: string;
+          market: string;
+          line: number | null;
+          selection: string;
+          odd: number;
+          updated_at: string;
+        };
+        Insert: {
+          id?: never;
+          event_id: number;
+          bookmaker_id: number;
+          bookmaker_name: string;
+          market: string;
+          line?: number | null;
+          selection: string;
+          odd: number;
+          updated_at?: string;
+        };
+        Update: {
+          id?: never;
+          event_id?: number;
+          bookmaker_id?: number;
+          bookmaker_name?: string;
+          market?: string;
+          line?: number | null;
+          selection?: string;
+          odd?: number;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "event_odds_event_id_fkey";
+            columns: ["event_id"];
+            isOneToOne: false;
+            referencedRelation: "events";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      events: {
+        Row: {
+          id: number;
+          sport: string;
+          external_id: number;
+          competition_id: number;
+          season: string | null;
+          round: string | null;
+          starts_at: string;
+          status_short: string;
+          status_long: string | null;
+          status_group: string;
+          live_clock: string | null;
+          elapsed: number | null;
+          home_team_id: number;
+          away_team_id: number;
+          home_score: number | null;
+          away_score: number | null;
+          period_scores: Json | null;
+          venue_name: string | null;
+          venue_city: string | null;
+          referee: string | null;
+          last_synced_at: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: never;
+          sport: string;
+          external_id: number;
+          competition_id: number;
+          season?: string | null;
+          round?: string | null;
+          starts_at: string;
+          status_short?: string;
+          status_long?: string | null;
+          status_group?: string;
+          live_clock?: string | null;
+          elapsed?: number | null;
+          home_team_id: number;
+          away_team_id: number;
+          home_score?: number | null;
+          away_score?: number | null;
+          period_scores?: Json | null;
+          venue_name?: string | null;
+          venue_city?: string | null;
+          referee?: string | null;
+          last_synced_at?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: never;
+          sport?: string;
+          external_id?: number;
+          competition_id?: number;
+          season?: string | null;
+          round?: string | null;
+          starts_at?: string;
+          status_short?: string;
+          status_long?: string | null;
+          status_group?: string;
+          live_clock?: string | null;
+          elapsed?: number | null;
+          home_team_id?: number;
+          away_team_id?: number;
+          home_score?: number | null;
+          away_score?: number | null;
+          period_scores?: Json | null;
+          venue_name?: string | null;
+          venue_city?: string | null;
+          referee?: string | null;
+          last_synced_at?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "events_away_team_id_sport_fkey";
+            columns: ["away_team_id", "sport"];
+            isOneToOne: false;
+            referencedRelation: "teams";
+            referencedColumns: ["id", "sport"];
+          },
+          {
+            foreignKeyName: "events_competition_id_sport_fkey";
+            columns: ["competition_id", "sport"];
+            isOneToOne: false;
+            referencedRelation: "competitions";
+            referencedColumns: ["id", "sport"];
+          },
+          {
+            foreignKeyName: "events_home_team_id_sport_fkey";
+            columns: ["home_team_id", "sport"];
+            isOneToOne: false;
+            referencedRelation: "teams";
+            referencedColumns: ["id", "sport"];
+          },
+          {
+            foreignKeyName: "events_sport_fkey";
+            columns: ["sport"];
+            isOneToOne: false;
+            referencedRelation: "sports";
+            referencedColumns: ["code"];
+          },
+        ];
       };
       favorite_teams: {
         Row: {
@@ -264,232 +548,37 @@ export type Database = {
           },
         ];
       };
-      fixture_events: {
-        Row: {
-          id: number;
-          fixture_id: number;
-          minute: number;
-          extra_minute: number | null;
-          team_id: number | null;
-          player_name: string | null;
-          assist_name: string | null;
-          type: string;
-          detail: string | null;
-          comments: string | null;
-          event_key: string;
-          created_at: string;
-        };
-        Insert: {
-          id?: never;
-          fixture_id: number;
-          minute: number;
-          extra_minute?: number | null;
-          team_id?: number | null;
-          player_name?: string | null;
-          assist_name?: string | null;
-          type: string;
-          detail?: string | null;
-          comments?: string | null;
-          event_key: string;
-          created_at?: string;
-        };
-        Update: {
-          id?: never;
-          fixture_id?: number;
-          minute?: number;
-          extra_minute?: number | null;
-          team_id?: number | null;
-          player_name?: string | null;
-          assist_name?: string | null;
-          type?: string;
-          detail?: string | null;
-          comments?: string | null;
-          event_key?: string;
-          created_at?: string;
-        };
-        Relationships: [
-          {
-            foreignKeyName: "fixture_events_fixture_id_fkey";
-            columns: ["fixture_id"];
-            isOneToOne: false;
-            referencedRelation: "fixtures";
-            referencedColumns: ["id"];
-          },
-          {
-            foreignKeyName: "fixture_events_team_id_fkey";
-            columns: ["team_id"];
-            isOneToOne: false;
-            referencedRelation: "teams";
-            referencedColumns: ["id"];
-          },
-        ];
-      };
-      fixture_odds: {
-        Row: {
-          fixture_id: number;
-          bookmaker_id: number;
-          bookmaker_name: string;
-          market: string;
-          selection: string;
-          odd: number;
-          updated_at: string;
-        };
-        Insert: {
-          fixture_id: number;
-          bookmaker_id: number;
-          bookmaker_name: string;
-          market: string;
-          selection: string;
-          odd: number;
-          updated_at?: string;
-        };
-        Update: {
-          fixture_id?: number;
-          bookmaker_id?: number;
-          bookmaker_name?: string;
-          market?: string;
-          selection?: string;
-          odd?: number;
-          updated_at?: string;
-        };
-        Relationships: [
-          {
-            foreignKeyName: "fixture_odds_fixture_id_fkey";
-            columns: ["fixture_id"];
-            isOneToOne: false;
-            referencedRelation: "fixtures";
-            referencedColumns: ["id"];
-          },
-        ];
-      };
-      fixtures: {
-        Row: {
-          id: number;
-          competition_id: number;
-          season: number;
-          round: string | null;
-          kickoff_at: string;
-          status_short: string;
-          status_long: string | null;
-          status_group: string | null;
-          elapsed: number | null;
-          elapsed_extra: number | null;
-          home_team_id: number;
-          away_team_id: number;
-          home_goals: number | null;
-          away_goals: number | null;
-          ht_home_goals: number | null;
-          ht_away_goals: number | null;
-          venue_name: string | null;
-          venue_city: string | null;
-          referee: string | null;
-          last_synced_at: string;
-          created_at: string;
-          updated_at: string;
-        };
-        Insert: {
-          id: number;
-          competition_id: number;
-          season: number;
-          round?: string | null;
-          kickoff_at: string;
-          status_short?: string;
-          status_long?: string | null;
-          status_group?: never;
-          elapsed?: number | null;
-          elapsed_extra?: number | null;
-          home_team_id: number;
-          away_team_id: number;
-          home_goals?: number | null;
-          away_goals?: number | null;
-          ht_home_goals?: number | null;
-          ht_away_goals?: number | null;
-          venue_name?: string | null;
-          venue_city?: string | null;
-          referee?: string | null;
-          last_synced_at?: string;
-          created_at?: string;
-          updated_at?: string;
-        };
-        Update: {
-          id?: number;
-          competition_id?: number;
-          season?: number;
-          round?: string | null;
-          kickoff_at?: string;
-          status_short?: string;
-          status_long?: string | null;
-          status_group?: never;
-          elapsed?: number | null;
-          elapsed_extra?: number | null;
-          home_team_id?: number;
-          away_team_id?: number;
-          home_goals?: number | null;
-          away_goals?: number | null;
-          ht_home_goals?: number | null;
-          ht_away_goals?: number | null;
-          venue_name?: string | null;
-          venue_city?: string | null;
-          referee?: string | null;
-          last_synced_at?: string;
-          created_at?: string;
-          updated_at?: string;
-        };
-        Relationships: [
-          {
-            foreignKeyName: "fixtures_away_team_id_fkey";
-            columns: ["away_team_id"];
-            isOneToOne: false;
-            referencedRelation: "teams";
-            referencedColumns: ["id"];
-          },
-          {
-            foreignKeyName: "fixtures_competition_id_fkey";
-            columns: ["competition_id"];
-            isOneToOne: false;
-            referencedRelation: "competitions";
-            referencedColumns: ["id"];
-          },
-          {
-            foreignKeyName: "fixtures_home_team_id_fkey";
-            columns: ["home_team_id"];
-            isOneToOne: false;
-            referencedRelation: "teams";
-            referencedColumns: ["id"];
-          },
-        ];
-      };
       notification_log: {
         Row: {
           id: number;
           user_id: string;
-          fixture_id: number | null;
+          event_id: number | null;
           kind: string;
-          event_key: string;
+          dedupe_key: string;
           sent_at: string;
         };
         Insert: {
           id?: never;
           user_id: string;
-          fixture_id?: number | null;
+          event_id?: number | null;
           kind: string;
-          event_key?: string;
+          dedupe_key?: string;
           sent_at?: string;
         };
         Update: {
           id?: never;
           user_id?: string;
-          fixture_id?: number | null;
+          event_id?: number | null;
           kind?: string;
-          event_key?: string;
+          dedupe_key?: string;
           sent_at?: string;
         };
         Relationships: [
           {
-            foreignKeyName: "notification_log_fixture_id_fkey";
-            columns: ["fixture_id"];
+            foreignKeyName: "notification_log_event_id_fkey";
+            columns: ["event_id"];
             isOneToOne: false;
-            referencedRelation: "fixtures";
+            referencedRelation: "events";
             referencedColumns: ["id"];
           },
         ];
@@ -593,9 +682,11 @@ export type Database = {
         Row: {
           id: string;
           prediction_id: string;
-          fixture_id: number;
+          event_id: number;
           competition_id: number;
+          sport: string;
           market: string;
+          line: number | null;
           selection: string;
           probability: number;
           best_odd: number | null;
@@ -612,9 +703,11 @@ export type Database = {
         Insert: {
           id?: string;
           prediction_id: string;
-          fixture_id: number;
+          event_id: number;
           competition_id: number;
+          sport: string;
           market: string;
+          line?: number | null;
           selection: string;
           probability: number;
           best_odd?: number | null;
@@ -631,9 +724,11 @@ export type Database = {
         Update: {
           id?: string;
           prediction_id?: string;
-          fixture_id?: number;
+          event_id?: number;
           competition_id?: number;
+          sport?: string;
           market?: string;
+          line?: number | null;
           selection?: string;
           probability?: number;
           best_odd?: number | null;
@@ -656,10 +751,10 @@ export type Database = {
             referencedColumns: ["id"];
           },
           {
-            foreignKeyName: "prediction_picks_fixture_id_fkey";
-            columns: ["fixture_id"];
+            foreignKeyName: "prediction_picks_event_id_fkey";
+            columns: ["event_id"];
             isOneToOne: false;
-            referencedRelation: "fixtures";
+            referencedRelation: "events";
             referencedColumns: ["id"];
           },
           {
@@ -669,51 +764,58 @@ export type Database = {
             referencedRelation: "predictions";
             referencedColumns: ["id"];
           },
+          {
+            foreignKeyName: "prediction_picks_sport_fkey";
+            columns: ["sport"];
+            isOneToOne: false;
+            referencedRelation: "sports";
+            referencedColumns: ["code"];
+          },
         ];
       };
       predictions: {
         Row: {
           id: string;
-          fixture_id: number;
+          event_id: number;
           model_version: string;
-          expected_home_goals: number;
-          expected_away_goals: number;
-          home_elo: number | null;
-          away_elo: number | null;
+          expected_home: number;
+          expected_away: number;
+          home_rating: number | null;
+          away_rating: number | null;
           probabilities: Json;
           inputs: Json | null;
           computed_at: string;
         };
         Insert: {
           id?: string;
-          fixture_id: number;
+          event_id: number;
           model_version: string;
-          expected_home_goals: number;
-          expected_away_goals: number;
-          home_elo?: number | null;
-          away_elo?: number | null;
+          expected_home: number;
+          expected_away: number;
+          home_rating?: number | null;
+          away_rating?: number | null;
           probabilities: Json;
           inputs?: Json | null;
           computed_at?: string;
         };
         Update: {
           id?: string;
-          fixture_id?: number;
+          event_id?: number;
           model_version?: string;
-          expected_home_goals?: number;
-          expected_away_goals?: number;
-          home_elo?: number | null;
-          away_elo?: number | null;
+          expected_home?: number;
+          expected_away?: number;
+          home_rating?: number | null;
+          away_rating?: number | null;
           probabilities?: Json;
           inputs?: Json | null;
           computed_at?: string;
         };
         Relationships: [
           {
-            foreignKeyName: "predictions_fixture_id_fkey";
-            columns: ["fixture_id"];
+            foreignKeyName: "predictions_event_id_fkey";
+            columns: ["event_id"];
             isOneToOne: false;
-            referencedRelation: "fixtures";
+            referencedRelation: "events";
             referencedColumns: ["id"];
           },
         ];
@@ -817,93 +919,123 @@ export type Database = {
         };
         Relationships: [];
       };
+      sports: {
+        Row: {
+          code: string;
+          name: string;
+          emoji: string;
+          has_draw: boolean;
+          is_enabled: boolean;
+          display_order: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          code: string;
+          name: string;
+          emoji: string;
+          has_draw: boolean;
+          is_enabled?: boolean;
+          display_order?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          code?: string;
+          name?: string;
+          emoji?: string;
+          has_draw?: boolean;
+          is_enabled?: boolean;
+          display_order?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       standings: {
         Row: {
           competition_id: number;
-          season: number;
+          season: string;
           group_name: string;
           team_id: number;
           rank: number;
           points: number;
-          goals_diff: number;
           played: number;
           won: number;
           drawn: number;
           lost: number;
-          goals_for: number;
-          goals_against: number;
+          scored: number;
+          conceded: number;
           home_played: number;
           home_won: number;
           home_drawn: number;
           home_lost: number;
-          home_goals_for: number;
-          home_goals_against: number;
+          home_scored: number;
+          home_conceded: number;
           away_played: number;
           away_won: number;
           away_drawn: number;
           away_lost: number;
-          away_goals_for: number;
-          away_goals_against: number;
+          away_scored: number;
+          away_conceded: number;
           form: string | null;
           description: string | null;
           updated_at: string;
         };
         Insert: {
           competition_id: number;
-          season: number;
+          season: string;
           group_name?: string;
           team_id: number;
           rank: number;
           points?: number;
-          goals_diff?: number;
           played?: number;
           won?: number;
           drawn?: number;
           lost?: number;
-          goals_for?: number;
-          goals_against?: number;
+          scored?: number;
+          conceded?: number;
           home_played?: number;
           home_won?: number;
           home_drawn?: number;
           home_lost?: number;
-          home_goals_for?: number;
-          home_goals_against?: number;
+          home_scored?: number;
+          home_conceded?: number;
           away_played?: number;
           away_won?: number;
           away_drawn?: number;
           away_lost?: number;
-          away_goals_for?: number;
-          away_goals_against?: number;
+          away_scored?: number;
+          away_conceded?: number;
           form?: string | null;
           description?: string | null;
           updated_at?: string;
         };
         Update: {
           competition_id?: number;
-          season?: number;
+          season?: string;
           group_name?: string;
           team_id?: number;
           rank?: number;
           points?: number;
-          goals_diff?: number;
           played?: number;
           won?: number;
           drawn?: number;
           lost?: number;
-          goals_for?: number;
-          goals_against?: number;
+          scored?: number;
+          conceded?: number;
           home_played?: number;
           home_won?: number;
           home_drawn?: number;
           home_lost?: number;
-          home_goals_for?: number;
-          home_goals_against?: number;
+          home_scored?: number;
+          home_conceded?: number;
           away_played?: number;
           away_won?: number;
           away_drawn?: number;
           away_lost?: number;
-          away_goals_for?: number;
-          away_goals_against?: number;
+          away_scored?: number;
+          away_conceded?: number;
           form?: string | null;
           description?: string | null;
           updated_at?: string;
@@ -1012,6 +1144,8 @@ export type Database = {
       teams: {
         Row: {
           id: number;
+          sport: string;
+          external_id: number;
           name: string;
           short_code: string | null;
           country_name: string | null;
@@ -1024,7 +1158,9 @@ export type Database = {
           updated_at: string;
         };
         Insert: {
-          id: number;
+          id?: never;
+          sport: string;
+          external_id: number;
           name: string;
           short_code?: string | null;
           country_name?: string | null;
@@ -1037,7 +1173,9 @@ export type Database = {
           updated_at?: string;
         };
         Update: {
-          id?: number;
+          id?: never;
+          sport?: string;
+          external_id?: number;
           name?: string;
           short_code?: string | null;
           country_name?: string | null;
@@ -1049,7 +1187,15 @@ export type Database = {
           created_at?: string;
           updated_at?: string;
         };
-        Relationships: [];
+        Relationships: [
+          {
+            foreignKeyName: "teams_sport_fkey";
+            columns: ["sport"];
+            isOneToOne: false;
+            referencedRelation: "sports";
+            referencedColumns: ["code"];
+          },
+        ];
       };
     };
     Views: { [_ in never]: never };
@@ -1057,6 +1203,7 @@ export type Database = {
       is_admin: { Args: never; Returns: boolean };
       is_premium: { Args: never; Returns: boolean };
       is_valid_market: { Args: { p_market: string }; Returns: boolean };
+      is_valid_selection: { Args: { p_market: string; p_line: number; p_selection: string }; Returns: boolean };
       prune_rate_limits: { Args: { p_older_than_seconds?: number }; Returns: number };
       rate_limit_hit: { Args: { p_key: string; p_limit: number; p_window_seconds: number }; Returns: boolean };
     };

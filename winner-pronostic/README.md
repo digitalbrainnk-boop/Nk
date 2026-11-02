@@ -1,21 +1,23 @@
-# ⚽ Winner Pronostic
+# 🏆 Winner Pronostic
 
-Application web mobile (**PWA installable sur Android**) de pronostics football pour l'Afrique de l'Ouest (Burkina Faso en priorité), en français.
+Application web mobile (**PWA installable sur Android**) de pronostics **multi-sports** pour l'Afrique de l'Ouest (Burkina Faso en priorité), en français :
+⚽ football · 🏀 basketball · 🏒 hockey sur glace · 🤾 handball · 🏐 volleyball · 🏉 rugby · ⚾ baseball · 🏈 football américain.
 
-Programme des matchs, scores en direct, statistiques, pronostics calculés (Poisson + Elo + forme) et générateur de coupons.
+Programme des matchs, scores en direct, statistiques, pronostics calculés, **générateur de « code de X »** (cote visée 2, 5, 10…) et **analyse de coupon**.
 **Outil d'analyse uniquement : l'application ne prend aucun pari et ne gère aucune mise d'argent.**
 
-> Stack : Next.js 16 (App Router, TypeScript, Tailwind CSS 4) · Supabase (PostgreSQL, Auth, RLS) · API-Football · CinetPay/FedaPay · Vercel.
+> Stack : Next.js 16 (App Router, TypeScript, Tailwind CSS 4) · Supabase (PostgreSQL, Auth, RLS) · API-Sports · CinetPay/FedaPay · Vercel.
 > Architecture, schéma de la base et règles d'accès : [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ## Avancement
 
 | Phase | Contenu | État |
 |---|---|---|
-| 1 | Structure, base de données, authentification (e-mail + téléphone), PWA | ✅ |
-| 2 | Synchronisation des matchs, programme, direct | ⏳ |
+| 1 | Structure, base multi-sports, authentification (e-mail + téléphone), PWA, interface sportive | ✅ |
+| 1+ | Générateur « code de X » (optimisation + tests), analyse de coupon, codes de chargement (stockage + affichage) | ✅ |
+| 2 | Synchronisation des matchs tous sports (API-Sports), programme, direct | ⏳ |
 | 3 | Fiche match et statistiques | ⏳ |
-| 4 | Moteur de pronostics, générateur de coupons, tests | ⏳ |
+| 4 | Moteur de pronostics par sport (Poisson, Elo, points), tests | ⏳ |
 | 5 | Historique et taux de réussite | ⏳ |
 | 6 | Abonnements Mobile Money | ⏳ |
 | 7 | Notifications, espace admin, finitions, déploiement | ⏳ |
@@ -27,7 +29,7 @@ Programme des matchs, scores en direct, statistiques, pronostics calculés (Pois
 - **Node.js 20.9 ou plus récent** (22 conseillé) : https://nodejs.org
 - Un compte **Supabase** (gratuit) : https://supabase.com
 - Un compte **Vercel** (gratuit) : https://vercel.com
-- Plus tard : un compte **API-Football** (phase 2) et un compte marchand **CinetPay** ou **FedaPay** (phase 6).
+- Plus tard : un compte **API-Sports** (même compte qu'API-Football, phase 2) et un compte marchand **CinetPay** ou **FedaPay** (phase 6).
 
 ## 2. Installation en local
 
@@ -102,7 +104,8 @@ Toutes sont décrites dans [`.env.example`](.env.example). Les clés secrètes n
 | `SUPABASE_SECRET_KEY` | 1 | Clé secrète, serveur uniquement (anti-abus, cron, webhooks) |
 | `NEXT_PUBLIC_SITE_URL` | 1 | Adresse publique (liens des e-mails) |
 | `RATE_LIMIT_SALT` | 1 | Sel pour anonymiser les compteurs anti-abus (`openssl rand -hex 24`) |
-| `API_FOOTBALL_KEY`, `CRON_SECRET` | 2 | API-Football et sécurisation des tâches planifiées |
+| `API_SPORTS_KEY`, `CRON_SECRET` | 2 | API-Sports (tous les sports) et sécurisation des tâches planifiées |
+| `NEXT_PUBLIC_DESIGN_PREVIEW` | — | `1` pour afficher la page `/apercu` (données fictives) en production |
 | `CINETPAY_*` / `FEDAPAY_*` | 6 | Paiements Mobile Money |
 | `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` | 7 | Notifications push |
 
@@ -143,7 +146,14 @@ npx supabase gen types typescript --project-id <id> > src/types/database.ts
 
 Ouvrez le site dans **Chrome** → menu ⋮ → **Installer l'application** (ou « Ajouter à l'écran d'accueil »). L'application s'ouvre ensuite en plein écran, avec son icône, et les pages déjà consultées restent lisibles hors connexion.
 
-## 7. Sécurité (résumé)
+## 7. Coupons : « code de X », analyse et codes de chargement
+
+- **Générer un code** (`/coupons`) : l'utilisateur choisit la cote visée (2, 5, 10, 20…), le niveau de risque, la période et les sports (mélangés ou non). Le moteur (`src/lib/coupons/generator.ts`) cherche la combinaison dont la cote atteint la cible (100 à 115 %) avec la **probabilité réelle la plus élevée** — résolution exacte, vérifiée par des tests contre une recherche exhaustive. La chance réelle est toujours affichée (« 1 chance sur N ») : aucun coupon n'est présenté comme sûr.
+- **Analyser un coupon** : l'utilisateur recopie ses sélections et leurs cotes ; l'application calcule la chance réelle (marge du bookmaker retirée), signale le maillon le plus faible et ce que changerait son retrait. Quand les matchs seront synchronisés, les sélections reconnues utiliseront les probabilités du modèle.
+- **Codes de chargement (1xBet…)** : la table `coupon_booking_codes` stocke le code d'un coupon par bookmaker et par pays ; l'utilisateur le copie en un geste et le charge dans son application de paris. Les codes sont saisis par l'admin (pas d'API officielle connue pour les générer automatiquement — voir `docs/ARCHITECTURE.md`).
+- Gratuit : `free_coupons_per_day` codes par jour (réglage), Premium : illimité.
+
+## 8. Sécurité (résumé)
 
 - **Row Level Security** sur toutes les tables, droits par défaut retirés, tests automatiques des règles.
 - **Validation zod côté serveur** de chaque formulaire, messages d'erreur traduits sans détail technique.
@@ -152,6 +162,6 @@ Ouvrez le site dans **Chrome** → menu ⋮ → **Installer l'application** (ou 
 - **Redirections internes uniquement** (pas de redirection ouverte), **en-têtes de sécurité** (CSP, anti-iframe, HSTS…).
 - **Pronostics publiés immuables** : impossible de réécrire l'historique.
 
-## 8. Jeu responsable
+## 9. Jeu responsable
 
 Bandeau de prévention visible sur toutes les pages, page `/jeu-responsable`, inscription interdite aux mineurs. L'application n'affiche jamais de mention du type « gain garanti » ou « coupon sûr ».

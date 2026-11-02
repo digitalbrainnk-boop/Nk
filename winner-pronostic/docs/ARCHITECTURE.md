@@ -19,16 +19,20 @@ erDiagram
   plans ||--o{ payments : ""
   plans ||--o{ subscriptions : ""
   payments ||--o| subscriptions : "active"
-  competitions ||--o{ fixtures : ""
+  sports ||--o{ competitions : ""
+  sports ||--o{ teams : ""
+  sports ||--o{ events : ""
+  competitions ||--o{ events : ""
   competitions ||--o{ standings : ""
-  teams ||--o{ fixtures : "domicile / extérieur"
+  teams ||--o{ events : "domicile / extérieur"
   teams ||--o{ standings : ""
   teams ||--o{ favorite_teams : ""
-  fixtures ||--o{ fixture_events : "buts, cartons"
-  fixtures ||--o{ fixture_odds : "cotes"
-  fixtures ||--o{ predictions : "sortie du modèle"
+  events ||--o{ event_incidents : "buts, cartons"
+  events ||--o{ event_odds : "cotes"
+  events ||--o{ predictions : "sortie du modèle"
   predictions ||--o{ prediction_picks : "pronostics publiés"
   coupons ||--o{ coupon_selections : ""
+  coupons ||--o{ coupon_booking_codes : "codes 1xBet…"
   prediction_picks ||--o{ coupon_selections : ""
 ```
 
@@ -38,29 +42,33 @@ erDiagram
 |---|---|---|
 | `profiles` | 1 ligne par compte (créée automatiquement à l'inscription) | `display_name`, `email`, `phone`, `birth_date` (**contrainte ≥ 18 ans**), `country_code`, `role` (`user`/`admin`), préférences de notifications |
 
-### Données football (synchronisées depuis API-Football, phase 2)
+### Données sportives (synchronisées depuis API-Sports, phase 2)
+
+Tous les sports partagent les mêmes tables. Les identifiants des fournisseurs ne sont uniques **que par sport** (la ligue 39 du football n'est pas la ligue 39 du basket) : chaque table a un identifiant interne et un couple unique `(sport, external_id)`. Des clés étrangères composites garantissent qu'un événement, sa compétition et ses équipes sont du même sport.
 
 | Table | Rôle | Colonnes clés |
 |---|---|---|
-| `competitions` | Ligues et coupes (id = id API) | `name`, `country_name`, `type`, `current_season`, `is_enabled` (affichée), `is_featured`, `display_order` |
-| `teams` | Équipes | `name`, `logo_url`, `elo_rating` (classement Elo du moteur) |
-| `fixtures` | Matchs | `kickoff_at`, `status_short`, `status_group` (calculé : scheduled / live / finished / postponed / cancelled), `elapsed`, scores mi-temps et fin |
-| `fixture_events` | Buteurs, cartons, remplacements | `minute`, `type`, `detail`, `player_name`, `event_key` (anti-doublon) |
-| `standings` | Classements | rang, points, buts pour/contre **domicile et extérieur**, `form` |
-| `fixture_odds` | Cotes des bookmakers | `market`, `selection`, `odd` |
-| `api_cache` | Cache des réponses brutes de l'API (compos, blessés, H2H) | `cache_key`, `payload`, `expires_at` |
+| `sports` | Sports proposés | `code` (football, basketball, ice_hockey, handball, volleyball, rugby, baseball, american_football, tennis), `name`, `emoji`, `has_draw`, `is_enabled` |
+| `competitions` | Ligues et coupes | `sport`, `external_id`, `name`, `country_name`, `current_season`, `is_enabled`, `is_featured`, `display_order` |
+| `teams` | Équipes (ou joueurs pour les sports individuels) | `sport`, `external_id`, `name`, `logo_url`, `elo_rating` |
+| `events` | Matchs de tous les sports | `starts_at`, `status_short` (brut), `status_group` (scheduled / live / finished / postponed / cancelled), `live_clock` (« 67' », « Q3 04:12 »), scores, `period_scores` (mi-temps, quart-temps, périodes, sets) |
+| `event_incidents` | Buts, cartons, pénalités… | `minute`, `period`, `type`, `detail`, `player_name` |
+| `standings` | Classements | rang, points, marqués/encaissés **domicile et extérieur**, `form` |
+| `event_odds` | Cotes des bookmakers | `market`, `line`, `selection`, `odd` |
+| `api_cache` | Cache des réponses brutes (compos, blessés, H2H) | `cache_key`, `payload`, `expires_at` |
 | `sync_runs` | Journal des tâches cron et du quota API | `job`, `status`, `api_requests` |
 
 ### Pronostics, historique et coupons (phases 4 et 5)
 
 | Table | Rôle | Colonnes clés |
 |---|---|---|
-| `predictions` | Probabilités de **tous les marchés** pour un match | `expected_home_goals`, `expected_away_goals` (λ de Poisson), `home_elo`, `away_elo`, `probabilities` (JSON), `inputs` (forme, absences) |
-| `prediction_picks` | Pronostics **publiés** = historique public | `market`, `selection`, `probability`, `best_odd`, `implied_probability`, `edge` (value), `confidence` 1–5, `is_premium`, `result` |
-| `coupons` | Coupons générés (utilisateur) ou éditoriaux (admin) | `target_odds`, `risk_level`, `period`, `total_odds`, `estimated_probability`, `is_featured` |
-| `coupon_selections` | Sélections d'un coupon (1 par match) | `market`, `selection`, `odd`, `probability`, `result` |
+| `predictions` | Probabilités de **tous les marchés** pour un événement | `model_version`, `expected_home`, `expected_away` (buts/points attendus), `probabilities` (JSON), `inputs` |
+| `prediction_picks` | Pronostics **publiés** = historique public | `sport`, `market`, `line`, `selection`, `probability`, `best_odd`, `edge` (value), `confidence` 1–5, `is_premium`, `result` |
+| `coupons` | Coupons `generated` (« code de X »), `analyzed` ou `editorial` (admin, éventuellement premium) | `target_odds`, `risk_level`, `period`, `sports[]`, `total_odds`, `estimated_probability`, `analysis` |
+| `coupon_selections` | Sélections d'un coupon (1 par événement) | `market`, `line`, `selection`, `odd`, `probability`, `result` |
+| `coupon_booking_codes` | **Codes de chargement** d'un coupon chez un bookmaker | `bookmaker` (ex. `1xbet`), `country_code`, `code`, `expires_at` |
 
-Marchés gérés : `1X2`, `DC` (double chance), `OU05`/`OU15`/`OU25`/`OU35` (plus/moins de buts), `BTTS` (les deux équipes marquent), `HTFT` (mi-temps/fin de match).
+Marchés (tous sports) : `1X2`, `DC` (double chance), `ML` (vainqueur prolongations incluses), `DNB` (remboursé si nul), `TOTAL` (plus/moins de *ligne* buts ou points), `HCP` (handicap de *ligne*), `BTTS` (les deux équipes marquent), `HTFT` (mi-temps/fin). La fonction SQL `is_valid_selection(market, line, selection)` refuse toute combinaison incohérente.
 
 ### Abonnements et paiements (phase 6)
 
@@ -86,6 +94,7 @@ Marchés gérés : `1X2`, `DC` (double chance), `OU05`/`OU15`/`OU25`/`OU35` (plu
 | Fonction | Usage |
 |---|---|
 | `is_admin()` / `is_premium()` | Utilisées par les politiques RLS |
+| `is_valid_market()` / `is_valid_selection()` | Cohérence marché / ligne / sélection |
 | `handle_new_user()` | Déclencheur : crée le profil, **refuse les moins de 18 ans** et l'absence d'acceptation des conditions |
 | `protect_published_pick()` | Déclencheur : un pronostic publié ne peut plus être modifié ni supprimé (seul son résultat change) |
 | `rate_limit_hit(clé, limite, fenêtre)` | Limitation de requêtes (serveur uniquement) |
@@ -96,12 +105,13 @@ La RLS est activée sur **toutes** les tables et les droits par défaut de Supab
 
 | Données | Visiteur | Utilisateur | Premium | Admin | Serveur (clé secrète) |
 |---|---|---|---|---|---|
-| Matchs, équipes, classements, cotes | lecture | lecture | lecture | lecture | écriture |
-| Compétitions | actives | actives | actives | toutes + activer/ordonner | écriture |
+| Événements, équipes, classements, cotes | lecture | lecture | lecture | lecture | écriture |
+| Sports, compétitions | actifs | actifs | actifs | tous + activer/ordonner | écriture |
 | Profil | — | le sien (nom, pays, notifications modifiables ; **rôle et âge non modifiables**) | idem | tous (lecture) | tout |
 | Pronostics publiés | gratuits + historique réglé | idem | **tous** | tous | publication, résultats |
 | Probabilités détaillées | matchs terminés | idem | tous | tous | écriture |
-| Coupons | mis en avant | les siens + mis en avant (suppression des siens) | idem | tous | création |
+| Coupons | mis en avant gratuits | les siens + mis en avant gratuits (suppression des siens) | + mis en avant premium | tous | création |
+| Codes de chargement | ceux des coupons visibles | idem | idem | ajout / modification | tout |
 | Paiements, abonnements | — | les siens (lecture) | idem | tous (lecture) | écriture (webhooks) |
 | Favoris, abonnements push | — | les siens (ajout/suppression) | idem | — | lecture pour l'envoi |
 | Cache API, compteurs anti-abus | — | — | — | — | tout |
@@ -116,45 +126,35 @@ winner-pronostic/
 ├── docs/ARCHITECTURE.md          ce document
 ├── .env.example                  variables d'environnement (par phase)
 ├── next.config.ts                Cache Components, en-têtes de sécurité (CSP…)
-├── vitest.config.mts             tests
 ├── public/
 │   ├── sw.js                     service worker (hors ligne, push en phase 7)
-│   ├── icon-source.svg           logo source
 │   └── icons/                    icônes PWA (192, 512, maskable, Apple)
-├── scripts/
-│   ├── gen-db-types.mjs          génère src/types/database.ts depuis les migrations
-│   └── generate-icons.mjs        génère les PNG depuis le SVG
-├── supabase/
-│   ├── config.toml               CLI Supabase (local)
-│   └── migrations/               schéma SQL versionné
+├── scripts/                      génération des types de la base et des icônes
+├── supabase/migrations/          schéma SQL versionné
 ├── tests/
-│   ├── unit/                     validations, sécurité, (moteur de pronostics en phase 4)
+│   ├── unit/                     validations, sécurité, générateur, analyseur, sports
 │   └── db/                       migrations + RLS sur PostgreSQL
 └── src/
     ├── proxy.ts                  rafraîchit la session, protège /compte et /admin
     ├── app/
-    │   ├── layout.tsx            coquille : en-tête, bandeau 18+, navigation du bas
-    │   ├── manifest.ts           manifeste PWA
-    │   ├── page.tsx              accueil (programme des matchs en phase 2)
-    │   ├── (auth)/               connexion, inscription, vérification SMS, mot de passe
-    │   ├── auth/confirm/         liens reçus par e-mail
-    │   ├── compte/               profil, offre, déconnexion
-    │   ├── admin/                espace administrateur (complet en phase 7)
-    │   ├── direct/ pronostics/ coupons/        (phases 2 et 4)
+    │   ├── page.tsx              accueil sportif (programme multi-sports en phase 2)
+    │   ├── coupons/              « code de X » + analyse de coupon
+    │   ├── (auth)/ auth/confirm/ connexion, inscription, code SMS, mot de passe
+    │   ├── compte/ admin/        compte utilisateur, back-office
+    │   ├── direct/ pronostics/   (phases 2 et 4)
+    │   ├── apercu/               galerie de composants (données fictives)
     │   ├── jeu-responsable/ conditions/ hors-ligne/
-    │   ├── match/[id]/           fiche match (phase 3)
-    │   ├── historique/           taux de réussite (phase 5)
-    │   ├── premium/              abonnements (phase 6)
     │   └── api/                  cron/*, webhooks/paiement, push (phases 2, 6, 7)
-    ├── components/               ui/, layout/, auth/, account/, pwa/, brand/
+    ├── components/
+    │   ├── sport/                cartes de match, onglets sports, confiance, live…
+    │   ├── coupons/              ticket, code de chargement, générateur, analyseur
+    │   ├── admin/ home/ layout/ ui/ auth/ account/ pwa/ brand/
     ├── lib/
-    │   ├── env.ts, env.server.ts variables validées avec zod
-    │   ├── supabase/             clients navigateur, serveur, admin, proxy
-    │   ├── auth/                 actions serveur, schémas zod, DAL, erreurs
-    │   ├── security/             limitation de requêtes, redirections sûres, IP
-    │   ├── validation/           téléphone (E.164, Afrique de l'Ouest), âge
-    │   ├── football/             client API-Football + cache + synchro (phase 2)
-    │   ├── predictions/          Poisson, Elo, marchés, coupons (phase 4)
+    │   ├── sports/catalog.ts     sports, fournisseur, normalisation des statuts
+    │   ├── predictions/          marchés, libellés, confiance (moteur en phase 4)
+    │   ├── coupons/              générateur (optimisation), analyseur, cotes, périodes, actions
+    │   ├── auth/ security/ validation/ supabase/ env…
+    │   ├── sync/                 synchronisation API-Sports (phase 2)
     │   └── payments/             CinetPay / FedaPay (phase 6)
     └── types/database.ts         types générés de la base
 ```
@@ -166,3 +166,13 @@ winner-pronostic/
 - **Téléphone d'abord** : l'inscription par numéro (code SMS) est proposée en premier, l'e-mail en second.
 - **Validation côté serveur systématique** (zod dans les Server Actions), **RLS** comme deuxième barrière, **limitation des tentatives** partagée en base (SMS coûteux, force brute).
 - **Transparence** : les pronostics publiés sont figés par un déclencheur SQL ; l'historique réglé est public, y compris les pronostics premium.
+
+## 5. Codes de chargement 1xBet : ce qui est possible
+
+**Objectif** : l'utilisateur copie un code et le charge dans son compte 1xBet, sans ressaisir les matchs.
+
+- **Pas d'API officielle connue** pour *générer* un code de coupon 1xBet. Les accès API documentés passent par le programme d'affiliation (suivi des inscriptions, liens) ; aucune source officielle ne mentionne la création de codes de coupon.
+- Les outils qui le font utilisent les adresses internes non documentées du site : contraire aux conditions d'utilisation, bloqué par les protections anti-robots, et susceptible de casser du jour au lendemain. Brancher l'application sur un compte 1xBet (identifiants stockés côté serveur) ferait courir un risque de **blocage du compte** et de **fuite des identifiants**. Ce n'est donc pas implémenté.
+- **Ce qui est livré** : la table `coupon_booking_codes` et l'affichage « Code 1xBet + Copier ». L'admin crée le coupon du jour dans 1xBet (« Enregistrer le coupon », environ 1 minute), colle le code dans l'espace admin, et tous les utilisateurs le chargent en un geste. Pour les coupons personnalisés : copie du coupon et partage WhatsApp.
+- **Piste officielle à explorer** : demander au gestionnaire du programme partenaire 1xBet s'il fournit une API de création de codes ou des liens de pré-remplissage de coupon. Si oui, un module `BookingCodeProvider` s'ajoutera sans changer la base.
+- **Cadre légal** : vérifier l'autorisation de l'opérateur au Burkina Faso et les règles de promotion des paris avant de mettre en avant un bookmaker.

@@ -100,7 +100,7 @@ try {
     return udt.startsWith("_") ? `${ts}[]` : ts;
   };
   const fmtType = (formatted) => {
-    const map = { "text": "string", "integer": "number", "boolean": "boolean", "uuid": "string", "smallint": "number", "bigint": "number", "jsonb": "Json" };
+    const map = { text: "string", integer: "number", boolean: "boolean", uuid: "string", smallint: "number", bigint: "number", numeric: "number", jsonb: "Json", "text[]": "string[]" };
     if (map[formatted]) return map[formatted];
     if (enumNames.has(formatted)) return `Database["public"]["Enums"]["${formatted}"]`;
     return "unknown";

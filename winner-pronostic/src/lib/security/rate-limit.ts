@@ -24,6 +24,8 @@ export const RATE_LIMITS = {
   passwordResetByIp: { limit: 5, windowSeconds: 60 * 60 },
   /** Mise à jour du profil, par utilisateur */
   profileUpdate: { limit: 20, windowSeconds: 60 * 60 },
+  /** Génération de coupons, par utilisateur (même premium) */
+  couponGenerate: { limit: 30, windowSeconds: 60 * 60 },
 } satisfies Record<string, RateLimitRule>;
 
 const memory = new MemoryRateLimiter();

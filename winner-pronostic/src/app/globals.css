@@ -1,31 +1,61 @@
 @import "tailwindcss";
 
 /*
- * Thème sombre unique de Winner Pronostic.
- * Polices système : aucun téléchargement de police (connexions lentes).
+ * Thème « sport » de Winner Pronostic : nuit de stade, vert pelouse, or du trophée,
+ * une couleur d'accent par sport. Police d'affichage condensée (titres, scores, cotes),
+ * police système pour le texte (rien à télécharger).
  */
 @theme {
-  --color-bg: #0a0f1a;
-  --color-surface: #111a2b;
-  --color-surface-2: #172238;
-  --color-surface-3: #1e2b45;
-  --color-line: #24324d;
-  --color-ink: #e8edf7;
-  --color-muted: #94a3bf;
-  --color-faint: #64748f;
+  --color-bg: #070b14;
+  --color-surface: #0f1726;
+  --color-surface-2: #152036;
+  --color-surface-3: #1c2a45;
+  --color-line: #233352;
+  --color-ink: #eef3fb;
+  --color-muted: #98a6c2;
+  --color-faint: #63708c;
 
-  --color-brand: #1ed47c;        /* vert « pelouse » */
-  --color-brand-strong: #12b866;
-  --color-brand-ink: #04170d;    /* texte sur fond vert */
-  --color-gold: #f6c544;         /* trophée */
-  --color-live: #ff4d5e;         /* en direct */
+  --color-brand: #22e07d;
+  --color-brand-strong: #13c468;
+  --color-brand-ink: #03140a;
+  --color-gold: #ffc83d;
+  --color-live: #ff3b4f;
   --color-danger: #ff5c6c;
   --color-warning: #ffb443;
-  --color-info: #5aa9ff;
+  --color-info: #4fb3ff;
+
+  /* Accents par sport */
+  --color-sport-football: #22e07d;
+  --color-sport-basketball: #ff8a3d;
+  --color-sport-hockey: #4cc9ff;
+  --color-sport-handball: #ff5c8a;
+  --color-sport-volleyball: #ffd23f;
+  --color-sport-rugby: #b18cff;
+  --color-sport-baseball: #ff6b6b;
+  --color-sport-american: #d9a066;
+  --color-sport-tennis: #d4ff3f;
 
   --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
 
-  --radius-card: 0.875rem;
+  --radius-card: 1rem;
+
+  --animate-live-pulse: live-pulse 1.4s ease-in-out infinite;
+
+  @keyframes live-pulse {
+    0%,
+    100% {
+      opacity: 1;
+      transform: scale(1);
+    }
+    50% {
+      opacity: 0.35;
+      transform: scale(0.8);
+    }
+  }
+}
+
+@theme inline {
+  --font-display: var(--font-barlow), "Arial Narrow", "Roboto Condensed", system-ui, sans-serif;
 }
 
 :root {
@@ -35,19 +65,22 @@
 
 html {
   background-color: var(--color-bg);
-  /* Évite le zoom automatique du texte en mode paysage sur Android */
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
 }
 
 body {
   background-color: var(--color-bg);
+  /* Éclairage de stade en haut de l'écran */
+  background-image:
+    radial-gradient(60rem 22rem at 50% -8rem, rgb(34 224 125 / 0.13), transparent 70%),
+    radial-gradient(30rem 18rem at 100% 0, rgb(79 179 255 / 0.1), transparent 70%);
+  background-repeat: no-repeat;
   color: var(--color-ink);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
 }
 
-/* Champs de saisie : 16px minimum pour éviter le zoom au focus sur mobile */
 input,
 select,
 textarea {
@@ -59,7 +92,6 @@ textarea {
   outline-offset: 2px;
 }
 
-/* Icône calendrier lisible sur fond sombre */
 input[type="date"]::-webkit-calendar-picker-indicator {
   filter: invert(0.8);
 }
@@ -75,5 +107,44 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 
 /* Espace réservé à la barre de navigation fixe + bandeau de prévention */
 .pb-safe-nav {
-  padding-bottom: calc(5.75rem + env(safe-area-inset-bottom));
+  padding-bottom: calc(6rem + env(safe-area-inset-bottom));
+}
+
+/* Chiffres de tableau d'affichage : police condensée, chiffres alignés */
+@utility scoreboard {
+  font-family: var(--font-display);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+}
+
+/* Bandes de pelouse tondue */
+@utility bg-pitch {
+  background-image:
+    linear-gradient(135deg, rgb(34 224 125 / 0.22), rgb(15 23 38 / 0) 55%),
+    repeating-linear-gradient(90deg, rgb(255 255 255 / 0.035) 0 28px, transparent 28px 56px);
+}
+
+/* Lignes de terrain (rond central) en filigrane */
+@utility bg-field-lines {
+  background-image:
+    radial-gradient(circle at 85% 50%, transparent 0 46px, rgb(255 255 255 / 0.07) 47px 48px, transparent 49px),
+    linear-gradient(90deg, transparent calc(85% - 1px), rgb(255 255 255 / 0.07) calc(85% - 1px) calc(85% + 1px), transparent calc(85% + 1px));
+}
+
+/* Ticket de coupon : encoches latérales */
+@utility ticket {
+  --notch: 11px;
+  -webkit-mask:
+    radial-gradient(circle var(--notch) at 0 var(--notch-y, 50%), transparent 98%, #000) left / 51% 100% no-repeat,
+    radial-gradient(circle var(--notch) at 100% var(--notch-y, 50%), transparent 98%, #000) right / 51% 100% no-repeat;
+  mask:
+    radial-gradient(circle var(--notch) at 0 var(--notch-y, 50%), transparent 98%, #000) left / 51% 100% no-repeat,
+    radial-gradient(circle var(--notch) at 100% var(--notch-y, 50%), transparent 98%, #000) right / 51% 100% no-repeat;
+}
+
+@utility scrollbar-none {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
 }

@@ -1,10 +1,19 @@
 import type { Metadata, Viewport } from "next";
+import { Barlow_Condensed } from "next/font/google";
 import { AppFooterBar } from "@/components/layout/app-footer-bar";
 import { AppHeader } from "@/components/layout/app-header";
 import { OfflineBanner } from "@/components/pwa/offline-banner";
 import { ServiceWorkerRegister } from "@/components/pwa/service-worker-register";
 import { APP_DESCRIPTION, APP_NAME, THEME_COLOR } from "@/lib/constants";
 import "./globals.css";
+
+/** Police d'affichage condensée (titres, scores, cotes) — auto-hébergée par Next.js. */
+const display = Barlow_Condensed({
+  subsets: ["latin"],
+  weight: ["600", "800"],
+  display: "swap",
+  variable: "--font-barlow",
+});
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
 
@@ -29,7 +38,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="fr">
+    <html lang="fr" className={display.variable}>
       <body className="min-h-dvh">
         <a
           href="#contenu"
