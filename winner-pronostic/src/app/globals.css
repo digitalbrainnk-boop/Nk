@@ -1,0 +1,79 @@
+@import "tailwindcss";
+
+/*
+ * Thème sombre unique de Winner Pronostic.
+ * Polices système : aucun téléchargement de police (connexions lentes).
+ */
+@theme {
+  --color-bg: #0a0f1a;
+  --color-surface: #111a2b;
+  --color-surface-2: #172238;
+  --color-surface-3: #1e2b45;
+  --color-line: #24324d;
+  --color-ink: #e8edf7;
+  --color-muted: #94a3bf;
+  --color-faint: #64748f;
+
+  --color-brand: #1ed47c;        /* vert « pelouse » */
+  --color-brand-strong: #12b866;
+  --color-brand-ink: #04170d;    /* texte sur fond vert */
+  --color-gold: #f6c544;         /* trophée */
+  --color-live: #ff4d5e;         /* en direct */
+  --color-danger: #ff5c6c;
+  --color-warning: #ffb443;
+  --color-info: #5aa9ff;
+
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+
+  --radius-card: 0.875rem;
+}
+
+:root {
+  color-scheme: dark;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html {
+  background-color: var(--color-bg);
+  /* Évite le zoom automatique du texte en mode paysage sur Android */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  background-color: var(--color-bg);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Champs de saisie : 16px minimum pour éviter le zoom au focus sur mobile */
+input,
+select,
+textarea {
+  font-size: 16px;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
+}
+
+/* Icône calendrier lisible sur fond sombre */
+input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.8);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Espace réservé à la barre de navigation fixe + bandeau de prévention */
+.pb-safe-nav {
+  padding-bottom: calc(5.75rem + env(safe-area-inset-bottom));
+}

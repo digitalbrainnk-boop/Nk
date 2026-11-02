@@ -1,0 +1,21 @@
+# Configuration de la CLI Supabase (développement local avec `npx supabase start`,
+# et liaison au projet en ligne avec `npx supabase link`).
+# Les réglages du projet EN LIGNE se font dans le tableau de bord Supabase (voir README).
+project_id = "winner-pronostic"
+
+[auth]
+site_url = "http://localhost:3000"
+additional_redirect_urls = ["http://localhost:3000/auth/confirm"]
+enable_signup = true
+
+[auth.email]
+enable_signup = true
+enable_confirmations = true
+
+[auth.sms]
+enable_signup = true
+enable_confirmations = true
+
+# Numéros de test (local uniquement) : aucun SMS réellement envoyé.
+[auth.sms.test_otp]
+22670123456 = "123456"
