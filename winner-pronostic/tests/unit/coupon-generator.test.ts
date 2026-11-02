@@ -17,6 +17,7 @@ function cand(partial: Partial<Candidate> & Pick<Candidate, "odd" | "probability
     startsAt: partial.startsAt ?? inHours(3),
     home: "Domicile",
     away: "Extérieur",
+    period: partial.period ?? "FT",
     market: partial.market ?? "1X2",
     line: partial.line ?? null,
     selection: partial.selection ?? "1",

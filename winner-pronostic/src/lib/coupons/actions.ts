@@ -125,6 +125,7 @@ export async function generateCouponAction(_prev: GenerateCouponState, formData:
     result.legs.map((l) => ({
       coupon_id: coupon.id,
       event_id: l.eventId,
+      period: l.period,
       market: l.market,
       line: l.line,
       selection: l.selection,
@@ -140,8 +141,8 @@ export async function generateCouponAction(_prev: GenerateCouponState, formData:
     startsAt: l.startsAt,
     home: l.home,
     away: l.away,
-    label: selectionLabel(l.market, l.line, l.selection, { home: l.home, away: l.away }, getSport(l.sport).scoreUnit),
-    notation: betNotation(l.market, l.line, l.selection),
+    label: selectionLabel(l, { home: l.home, away: l.away }, getSport(l.sport).scoreUnit),
+    notation: betNotation(l),
     odd: l.odd,
     probability: l.probability,
     confidence: l.confidence,

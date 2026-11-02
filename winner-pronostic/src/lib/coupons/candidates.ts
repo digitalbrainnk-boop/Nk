@@ -1,7 +1,15 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { confidenceFrom } from "@/lib/predictions/confidence";
-import { MARKETS_BY_SPORT, type Market, type ProbabilityMap, probabilityOf } from "@/lib/predictions/markets";
+import { confidenceScore } from "@/lib/predictions/confidence";
+import {
+  MARKETS_BY_SPORT,
+  MARKET_INFO,
+  type Market,
+  type Period,
+  type ProbabilityMap,
+  isPushFree,
+  probabilityOf,
+} from "@/lib/predictions/markets";
 import { type SportCode, isSportCode } from "@/lib/sports/catalog";
 import type { Candidate } from "./generator";
 import { expectedValue } from "./odds";
@@ -15,8 +23,13 @@ type EventRow = {
   home: { name: string } | null;
   away: { name: string } | null;
   predictions: { probabilities: ProbabilityMap; computed_at: string }[];
-  event_odds: { market: Market; line: number | null; selection: string; odd: number }[];
+  event_odds: { period: Period; market: Market; line: number | null; selection: string; odd: number }[];
 };
+
+/** Marchés utilisés par le générateur : classiques et dérivés fiables, sans remboursement possible. */
+function usableInCoupons(market: Market, line: number | null): boolean {
+  return MARKET_INFO[market].kind !== "exotic" && market !== "DNB" && isPushFree(line);
+}
 
 /**
  * Sélections candidates pour le générateur : événements à venir de la
@@ -33,7 +46,7 @@ export async function loadCandidates(period: CouponPeriod, now: Date = new Date(
        home:teams!events_home_team_id_sport_fkey(name),
        away:teams!events_away_team_id_sport_fkey(name),
        predictions(probabilities, computed_at),
-       event_odds(market, line, selection, odd)`,
+       event_odds(period, market, line, selection, odd)`,
     )
     .eq("status_group", "scheduled")
     .eq("competition.is_enabled", true)
@@ -59,17 +72,18 @@ export function buildCandidates(rows: EventRow[]): Candidate[] {
     if (!prediction) continue;
 
     // Meilleure cote par sélection, tous bookmakers confondus
-    const best = new Map<string, { market: Market; line: number | null; selection: string; odd: number }>();
+    const best = new Map<string, { period: Period; market: Market; line: number | null; selection: string; odd: number }>();
     for (const o of row.event_odds) {
-      if (!MARKETS_BY_SPORT[sport].includes(o.market)) continue;
       const line = o.line === null ? null : Number(o.line);
-      const key = `${o.market}:${line ?? ""}:${o.selection}`;
+      if (!MARKETS_BY_SPORT[sport].includes(o.market) || !usableInCoupons(o.market, line)) continue;
+      const period = o.period ?? "FT";
+      const key = `${period}:${o.market}:${line ?? ""}:${o.selection}`;
       const odd = Number(o.odd);
-      if (!best.has(key) || best.get(key)!.odd < odd) best.set(key, { market: o.market, line, selection: o.selection, odd });
+      if (!best.has(key) || best.get(key)!.odd < odd) best.set(key, { period, market: o.market, line, selection: o.selection, odd });
     }
 
     for (const [key, o] of best) {
-      const probability = probabilityOf(prediction.probabilities, o.market, o.line, o.selection);
+      const probability = probabilityOf(prediction.probabilities, o);
       if (probability === null) continue;
       candidates.push({
         key: `${row.id}:${key}`,
@@ -79,12 +93,18 @@ export function buildCandidates(rows: EventRow[]): Candidate[] {
         startsAt: row.starts_at,
         home: row.home.name,
         away: row.away.name,
+        period: o.period,
         market: o.market,
         line: o.line,
         selection: o.selection,
         odd: o.odd,
         probability,
-        confidence: confidenceFrom(probability, expectedValue(probability, o.odd)),
+        confidence: confidenceScore({
+          probability,
+          market: o.market,
+          marketGap: probability - 1 / o.odd,
+          edge: expectedValue(probability, o.odd),
+        }),
       });
     }
   }

@@ -1,4 +1,4 @@
-import type { Market } from "@/lib/predictions/markets";
+import type { Market, Period } from "@/lib/predictions/markets";
 import type { SportCode } from "@/lib/sports/catalog";
 import { expectedValue, oneIn, product } from "./odds";
 
@@ -30,6 +30,7 @@ export type Candidate = {
   startsAt: string; // ISO 8601
   home: string;
   away: string;
+  period: Period;
   market: Market;
   line: number | null;
   selection: string;

@@ -45,42 +45,73 @@ begin
 end;
 $$;
 
--- Marchés gérés (tous sports). « line » = la ligne du marché quand il y en a une.
---   1X2   : victoire domicile / nul / victoire extérieur (temps réglementaire)
---   DC    : double chance (1X, 12, X2)
---   ML    : vainqueur du match, prolongations incluses (basket, hockey, volley…)
---   DNB   : remboursé si match nul
---   TOTAL : plus/moins de « line » buts/points (ex. 2.5, 5.5, 215.5)
---   HCP   : handicap de « line » pour l'équipe à domicile (ex. -1.5 → domicile −1.5)
---   BTTS  : les deux équipes marquent
---   HTFT  : mi-temps / fin de match (ex. « 1/1 », « X/2 »)
+-- Marchés analysés (tous sports), libellés proches de ceux des bookmakers.
+-- Le catalogue complet et les libellés sont dans src/lib/predictions/markets.ts.
+--   1X2, DC (double chance), DNB (remboursé si nul), ML (vainqueur prol. incluses)
+--   TOTAL / TT1 / TT2 (total du match / de l'équipe 1 / 2, ligne = 2.5, 2.25, 215.5…)
+--   HCP (handicap de « line » pour l'équipe 1), BTTS (les deux équipes marquent)
+--   CS (score exact), ODD_EVEN, combinés (RES_TOTAL, RES_BTTS, DC_BTTS, DC_TOTAL)
+--   HTFT (MT-Fin), mi-temps (SCORE_BOTH_HALVES, WIN_BOTH_HALVES…), temps de jeu
+--   (FIRST_GOAL, GOAL_INTERVAL…), pénaltys/cartons/corners, buteurs (SCORER)
 create or replace function public.is_valid_market(p_market text)
 returns boolean
 language sql
 immutable
 set search_path = ''
 as $$
-  select p_market in ('1X2', 'DC', 'ML', 'DNB', 'TOTAL', 'HCP', 'BTTS', 'HTFT');
+  select p_market in (
+    '1X2', 'DC', 'DNB', 'ML', 'TOTAL', 'TT1', 'TT2', 'HCP', 'BTTS', 'CS', 'ODD_EVEN',
+    'RES_TOTAL', 'RES_BTTS', 'DC_BTTS', 'DC_TOTAL', 'HTFT', 'WIN_NIL', 'CLEAN_SHEET', 'DRAW_GOALS',
+    'SCORE_BOTH_HALVES', 'TEAM_SCORE_BOTH_HALVES', 'WIN_BOTH_HALVES', 'WIN_EITHER_HALF',
+    'DRAW_BOTH_HALVES', 'HIGHEST_HALF', 'FIRST_GOAL', 'GOAL_INTERVAL', 'TEAM_FIRST_GOAL_INTERVAL',
+    'PENALTY', 'RED_CARD', 'PEN_RED_COMBO', 'CORNERS', 'CARDS', 'SCORER'
+  );
 $$;
 
--- Combinaison marché / ligne / sélection cohérente
+-- Combinaison marché / ligne / sélection cohérente (même règle qu'en TypeScript)
 create or replace function public.is_valid_selection(p_market text, p_line numeric, p_selection text)
 returns boolean
 language sql
 immutable
 set search_path = ''
 as $$
-  select case p_market
-    when '1X2'   then p_line is null and p_selection in ('1', 'X', '2')
-    when 'DC'    then p_line is null and p_selection in ('1X', '12', 'X2')
-    when 'ML'    then p_line is null and p_selection in ('1', '2')
-    when 'DNB'   then p_line is null and p_selection in ('1', '2')
-    when 'BTTS'  then p_line is null and p_selection in ('YES', 'NO')
-    when 'HTFT'  then p_line is null and p_selection ~ '^[1X2]/[1X2]$'
-    when 'TOTAL' then p_line is not null and p_line > 0 and p_selection in ('OVER', 'UNDER')
-    when 'HCP'   then p_line is not null and p_selection in ('1', '2')
+  select coalesce(case
+    when p_market = '1X2' then p_line is null and p_selection in ('1', 'X', '2')
+    when p_market = 'DC' then p_line is null and p_selection in ('1X', '12', 'X2')
+    when p_market in ('ML', 'DNB', 'WIN_NIL', 'CLEAN_SHEET', 'WIN_BOTH_HALVES', 'WIN_EITHER_HALF')
+      then p_line is null and p_selection in ('1', '2')
+    when p_market in ('BTTS', 'DRAW_GOALS', 'SCORE_BOTH_HALVES', 'DRAW_BOTH_HALVES', 'PENALTY', 'RED_CARD')
+      then p_line is null and p_selection in ('YES', 'NO')
+    when p_market in ('TOTAL', 'TT1', 'TT2', 'CORNERS', 'CARDS')
+      then p_line is not null and p_line >= 0 and p_selection in ('OVER', 'UNDER')
+    when p_market = 'HCP' then p_line is not null and p_selection in ('1', '2')
+    when p_market = 'CS' then p_line is null and p_selection ~ '^\d{1,2}-\d{1,2}$'
+    when p_market = 'ODD_EVEN' then p_line is null and p_selection in ('ODD', 'EVEN')
+    when p_market = 'RES_TOTAL' then p_line is not null and p_selection ~ '^[1X2]&(OVER|UNDER)$'
+    when p_market = 'RES_BTTS' then p_line is null and p_selection ~ '^[1X2]&(YES|NO)$'
+    when p_market = 'DC_BTTS' then p_line is null and p_selection ~ '^(1X|12|X2)&(YES|NO)$'
+    when p_market = 'DC_TOTAL' then p_line is not null and p_selection ~ '^(1X|12|X2)&(OVER|UNDER)$'
+    when p_market = 'HTFT' then p_line is null and p_selection ~ '^[1X2]/[1X2]$'
+    when p_market = 'TEAM_SCORE_BOTH_HALVES' then p_line is null and p_selection ~ '^[12]:(YES|NO)$'
+    when p_market = 'HIGHEST_HALF' then p_line is null and p_selection in ('1H', '2H', 'EQ')
+    when p_market = 'FIRST_GOAL' then p_line is null and p_selection in ('1', '2', 'NONE')
+    when p_market = 'GOAL_INTERVAL' then p_line is null and p_selection ~ '^\d{1,2}-\d{1,3}:(YES|NO)$'
+    when p_market = 'TEAM_FIRST_GOAL_INTERVAL' then p_line is null and p_selection ~ '^[12]:\d{1,2}-\d{1,3}$'
+    when p_market = 'PEN_RED_COMBO'
+      then p_line is null and p_selection in ('PEN_AND_RED', 'PEN_NO_RED', 'RED_NO_PEN', 'NEITHER', 'PEN_OR_RED')
+    when p_market = 'SCORER' then p_line is null and p_selection ~ '^P\d{1,10}$'
     else false
-  end;
+  end, false);
+$$;
+
+-- Période concernée : match entier, mi-temps, périodes (hockey), quarts (basket), sets (volley)
+create or replace function public.is_valid_period(p_period text)
+returns boolean
+language sql
+immutable
+set search_path = ''
+as $$
+  select p_period ~ '^(FT|1H|2H|P[1-3]|Q[1-4]|S[1-5])$';
 $$;
 
 -- =============================================================================
@@ -377,6 +408,7 @@ create table public.event_odds (
   event_id        bigint not null references public.events (id) on delete cascade,
   bookmaker_id    integer not null,
   bookmaker_name  text not null,
+  period          text not null default 'FT' check (public.is_valid_period(period)),
   market          text not null check (public.is_valid_market(market)),
   line            numeric(6, 2),
   selection       text not null,
@@ -386,7 +418,7 @@ create table public.event_odds (
 );
 
 create unique index event_odds_unique_idx
-  on public.event_odds (event_id, bookmaker_id, market, line, selection) nulls not distinct;
+  on public.event_odds (event_id, bookmaker_id, period, market, line, selection) nulls not distinct;
 
 -- Cache des réponses brutes d'API-Sports (compositions, blessés,
 -- confrontations directes…) pour respecter les quotas. Serveur uniquement.
@@ -505,7 +537,8 @@ create table public.predictions (
   expected_away    numeric(6, 2) not null check (expected_away >= 0),
   home_rating      numeric(7, 2),
   away_rating      numeric(7, 2),
-  -- ex : {"1X2": {"1": 0.47, "X": 0.27, "2": 0.26}, "TOTAL": {"2.5": {"OVER": 0.52, "UNDER": 0.48}}, …}
+  -- Dictionnaire « période|marché|ligne|sélection » → probabilité :
+  -- {"FT|1X2||1": 0.47, "FT|TOTAL|2.5|OVER": 0.52, "1H|BTTS||YES": 0.18, …}
   probabilities    jsonb not null,
   -- Données d'entrée utilisées (forme, absences…) pour l'explication et le débogage
   inputs           jsonb,
@@ -523,6 +556,7 @@ create table public.prediction_picks (
   event_id             bigint not null references public.events (id) on delete restrict,
   competition_id       bigint not null references public.competitions (id) on delete restrict,
   sport                text not null references public.sports (code),
+  period               text not null default 'FT' check (public.is_valid_period(period)),
   market               text not null check (public.is_valid_market(market)),
   line                 numeric(6, 2),
   selection            text not null,
@@ -541,7 +575,7 @@ create table public.prediction_picks (
 );
 
 create unique index prediction_picks_unique_idx
-  on public.prediction_picks (event_id, market, line) nulls not distinct;
+  on public.prediction_picks (event_id, period, market, line) nulls not distinct;
 create index prediction_picks_published_idx on public.prediction_picks (published_at desc);
 create index prediction_picks_stats_idx on public.prediction_picks (sport, market, competition_id) where result <> 'pending';
 
@@ -556,11 +590,11 @@ begin
     raise exception 'PICK_IMMUTABLE: un pronostic publié ne peut pas être supprimé (marquez-le « void »)';
   end if;
 
-  if (new.prediction_id, new.event_id, new.competition_id, new.sport, new.market, new.line, new.selection,
+  if (new.prediction_id, new.event_id, new.competition_id, new.sport, new.period, new.market, new.line, new.selection,
       new.probability, new.best_odd, new.bookmaker_name, new.implied_probability, new.edge,
       new.is_value_bet, new.confidence, new.published_at)
      is distinct from
-     (old.prediction_id, old.event_id, old.competition_id, old.sport, old.market, old.line, old.selection,
+     (old.prediction_id, old.event_id, old.competition_id, old.sport, old.period, old.market, old.line, old.selection,
       old.probability, old.best_odd, old.bookmaker_name, old.implied_probability, old.edge,
       old.is_value_bet, old.confidence, old.published_at)
   then
@@ -615,6 +649,7 @@ create table public.coupon_selections (
   coupon_id    uuid not null references public.coupons (id) on delete cascade,
   event_id     bigint not null references public.events (id) on delete cascade,
   pick_id      uuid references public.prediction_picks (id) on delete set null,
+  period       text not null default 'FT' check (public.is_valid_period(period)),
   market       text not null check (public.is_valid_market(market)),
   line         numeric(6, 2),
   selection    text not null,

@@ -33,24 +33,30 @@ describe("construction des sélections candidates", () => {
     competition: { name: "NBA", is_enabled: true },
     home: { name: "Lakers" },
     away: { name: "Celtics" },
-    predictions: [
-      { computed_at: "2026-11-03T10:00:00Z", probabilities: { ML: { "1": 0.4, "2": 0.6 } } },
-      { computed_at: "2026-11-04T10:00:00Z", probabilities: { ML: { "1": 0.62, "2": 0.38 }, TOTAL: { "215.5": { OVER: 0.55, UNDER: 0.45 } } } },
+    predictions: <{ computed_at: string; probabilities: Record<string, number> }[]>[
+      { computed_at: "2026-11-03T10:00:00Z", probabilities: { "FT|ML||1": 0.4, "FT|ML||2": 0.6 } },
+      {
+        computed_at: "2026-11-04T10:00:00Z",
+        probabilities: { "FT|ML||1": 0.62, "FT|ML||2": 0.38, "FT|TOTAL|215.5|OVER": 0.55, "FT|TOTAL|215|OVER": 0.57, "1H|TOTAL|108.5|OVER": 0.52 },
+      },
     ],
     event_odds: [
-      { market: "ML" as const, line: null, selection: "1", odd: 1.7 },
-      { market: "ML" as const, line: null, selection: "1", odd: 1.75 }, // meilleure cote retenue
-      { market: "TOTAL" as const, line: 215.5, selection: "OVER", odd: 1.9 },
-      { market: "1X2" as const, line: null, selection: "X", odd: 15 }, // marché non proposé en basket
-      { market: "TOTAL" as const, line: 220.5, selection: "OVER", odd: 2.3 }, // pas de probabilité du modèle
+      { period: "FT" as const, market: "ML" as const, line: null, selection: "1", odd: 1.7 },
+      { period: "FT" as const, market: "ML" as const, line: null, selection: "1", odd: 1.75 }, // meilleure cote retenue
+      { period: "FT" as const, market: "TOTAL" as const, line: 215.5, selection: "OVER", odd: 1.9 },
+      { period: "FT" as const, market: "TOTAL" as const, line: 215, selection: "OVER", odd: 1.8 }, // ligne entière (remboursement possible) exclue
+      { period: "1H" as const, market: "TOTAL" as const, line: 108.5, selection: "OVER", odd: 1.85 }, // 1re mi-temps
+      { period: "FT" as const, market: "CS" as const, line: null, selection: "110-105", odd: 90 }, // marché non proposé en basket
+      { period: "FT" as const, market: "TOTAL" as const, line: 220.5, selection: "OVER", odd: 2.3 }, // pas de probabilité du modèle
     ],
   };
 
   it("garde la prédiction la plus récente et la meilleure cote, par marché autorisé", () => {
     const candidates = buildCandidates([row]);
-    expect(candidates.map((c) => [c.market, c.line, c.selection, c.odd, c.probability])).toEqual([
-      ["ML", null, "1", 1.75, 0.62],
-      ["TOTAL", 215.5, "OVER", 1.9, 0.55],
+    expect(candidates.map((c) => [c.period, c.market, c.line, c.selection, c.odd, c.probability])).toEqual([
+      ["FT", "ML", null, "1", 1.75, 0.62],
+      ["FT", "TOTAL", 215.5, "OVER", 1.9, 0.55],
+      ["1H", "TOTAL", 108.5, "OVER", 1.85, 0.52],
     ]);
     expect(candidates[0]).toMatchObject({ eventId: 7, sport: "basketball", home: "Lakers", competition: "NBA" });
     expect(candidates[0].confidence).toBeGreaterThanOrEqual(1);

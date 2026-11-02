@@ -12,6 +12,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { type Market, isValidSelection } from "@/lib/predictions/markets";
 
 const ADMIN_URL = process.env.TEST_DATABASE_URL;
 const ROOT = path.resolve(__dirname, "../..");
@@ -235,12 +236,34 @@ describeDb("Base de données Supabase (migrations + RLS)", () => {
 
     it("vérifie la cohérence marché / ligne / sélection des cotes", async () => {
       await db.query("begin");
-      await db.query(`insert into public.event_odds (event_id, bookmaker_id, bookmaker_name, market, line, selection, odd)
-        values (102, 1, 'Test', 'TOTAL', 215.5, 'OVER', 1.9), (102, 1, 'Test', 'ML', null, '1', 1.6), (100, 1, 'Test', 'HTFT', null, 'X/1', 4.5)`);
+      await db.query(`insert into public.event_odds (event_id, bookmaker_id, bookmaker_name, period, market, line, selection, odd)
+        values (102, 1, 'Test', 'FT', 'TOTAL', 215.5, 'OVER', 1.9), (102, 1, 'Test', 'FT', 'ML', null, '1', 1.6),
+               (100, 1, 'Test', 'FT', 'HTFT', null, 'X/1', 4.5), (100, 1, 'Test', '1H', 'TOTAL', 0.5, 'OVER', 1.4),
+               (100, 1, 'Test', 'FT', 'TOTAL', 0.5, 'OVER', 1.05)`);
+      await expectError(db, "insert into public.event_odds (event_id, bookmaker_id, bookmaker_name, period, market, line, selection, odd) values (100, 1, 'T', 'Z9', 'TOTAL', 1.5, 'OVER', 1.9)", [], /check/);
       await expectError(db, "insert into public.event_odds (event_id, bookmaker_id, bookmaker_name, market, line, selection, odd) values (102, 1, 'T', 'TOTAL', null, 'OVER', 1.9)", [], /check/);
       await expectError(db, "insert into public.event_odds (event_id, bookmaker_id, bookmaker_name, market, line, selection, odd) values (102, 1, 'T', '1X2', null, 'Y', 1.9)", [], /check/);
       await expectError(db, "insert into public.event_odds (event_id, bookmaker_id, bookmaker_name, market, line, selection, odd) values (102, 1, 'T', 'ML', null, '1', 1.7)", [], /duplicate key/);
       await db.query("rollback");
+    });
+
+    it("valide les marchés exactement comme le code TypeScript", async () => {
+      const cases: [Market, number | null, string][] = [
+        ["1X2", null, "X"], ["1X2", 1, "X"], ["DC", null, "1X"], ["ML", null, "X"], ["TOTAL", 2.25, "OVER"],
+        ["TOTAL", null, "OVER"], ["TT1", 1.5, "UNDER"], ["HCP", -1.75, "2"], ["HCP", null, "1"], ["BTTS", null, "YES"],
+        ["CS", null, "2-1"], ["CS", null, "2:1"], ["ODD_EVEN", null, "ODD"], ["RES_TOTAL", 2.5, "1&OVER"],
+        ["RES_TOTAL", null, "1&OVER"], ["RES_BTTS", null, "X&NO"], ["DC_BTTS", null, "12&YES"], ["DC_TOTAL", 3.5, "X2&UNDER"],
+        ["HTFT", null, "X/2"], ["HTFT", null, "3/1"], ["TEAM_SCORE_BOTH_HALVES", null, "2:NO"], ["HIGHEST_HALF", null, "EQ"],
+        ["FIRST_GOAL", null, "NONE"], ["GOAL_INTERVAL", null, "76-90:YES"], ["TEAM_FIRST_GOAL_INTERVAL", null, "1:16-30"],
+        ["PEN_RED_COMBO", null, "NEITHER"], ["CORNERS", 9.5, "OVER"], ["SCORER", null, "P12345"], ["SCORER", null, "Isak"],
+        ["WIN_NIL", null, "2"], ["DRAW_GOALS", null, "YES"], ["PENALTY", 1, "YES"],
+      ];
+      for (const [market, line, selection] of cases) {
+        const { rows } = await db.query("select public.is_valid_selection($1, $2, $3) as ok", [market, line, selection]);
+        expect(rows[0].ok, `${market} ${line} ${selection}`).toBe(isValidSelection(market, line, selection));
+      }
+      const periods = await db.query("select public.is_valid_period('1H') as a, public.is_valid_period('Q4') as b, public.is_valid_period('X1') as c");
+      expect(periods.rows[0]).toEqual({ a: true, b: true, c: false });
     });
 
     it("interdit aux visiteurs et utilisateurs d'écrire les données sportives", async () => {

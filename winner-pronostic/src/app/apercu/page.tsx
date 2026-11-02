@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { CouponTicket } from "@/components/coupons/coupon-ticket";
 import { PageHeader } from "@/components/layout/page-header";
@@ -123,6 +124,9 @@ export default function DesignPreviewPage() {
     <div className="space-y-6">
       <PageHeader kicker="Design" title="Aperçu" subtitle="Composants avec des données d'exemple." />
       <Alert tone="warning">Données fictives, uniquement pour valider le design.</Alert>
+      <Link href="/apercu/rapport" className="block rounded-xl border border-brand/40 bg-brand/10 p-3 text-sm font-semibold text-brand">
+        📊 Voir l&apos;exemple de rapport d&apos;analyse complet (Newcastle – Everton) →
+      </Link>
       <section className="space-y-2.5">
         {EVENTS.map((e) => (
           <EventCard key={e.id} event={e} />

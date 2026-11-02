@@ -68,7 +68,9 @@ Tous les sports partagent les mêmes tables. Les identifiants des fournisseurs n
 | `coupon_selections` | Sélections d'un coupon (1 par événement) | `market`, `line`, `selection`, `odd`, `probability`, `result` |
 | `coupon_booking_codes` | **Codes de chargement** d'un coupon chez un bookmaker | `bookmaker` (ex. `1xbet`), `country_code`, `code`, `expires_at` |
 
-Marchés (tous sports) : `1X2`, `DC` (double chance), `ML` (vainqueur prolongations incluses), `DNB` (remboursé si nul), `TOTAL` (plus/moins de *ligne* buts ou points), `HCP` (handicap de *ligne*), `BTTS` (les deux équipes marquent), `HTFT` (mi-temps/fin). La fonction SQL `is_valid_selection(market, line, selection)` refuse toute combinaison incohérente.
+Chaque cote, pronostic et sélection de coupon porte une **période** (`FT` match entier, `1H`/`2H` mi-temps, `P1`–`P3` périodes de hockey, `Q1`–`Q4` quarts-temps, `S1`–`S5` sets), un **marché**, une **ligne** éventuelle et une **sélection**. Marchés : `1X2`, `DC`, `DNB`, `ML`, `TOTAL`, `TT1`/`TT2` (Total 1 / Total 2), `HCP`, `BTTS`, `CS` (score exact), `ODD_EVEN`, combinés `RES_TOTAL`, `RES_BTTS`, `DC_BTTS`, `DC_TOTAL`, `HTFT` (MT-Fin), mi-temps (`SCORE_BOTH_HALVES`, `TEAM_SCORE_BOTH_HALVES`, `WIN_BOTH_HALVES`, `WIN_EITHER_HALF`, `DRAW_BOTH_HALVES`, `HIGHEST_HALF`), temps de jeu (`FIRST_GOAL`, `GOAL_INTERVAL`, `TEAM_FIRST_GOAL_INTERVAL`), `WIN_NIL`, `CLEAN_SHEET`, `DRAW_GOALS`, `PENALTY`, `RED_CARD`, `PEN_RED_COMBO`, `CORNERS`, `CARDS`, `SCORER`. Les fonctions SQL `is_valid_period` et `is_valid_selection` appliquent exactement les mêmes règles que `src/lib/predictions/markets.ts` (vérifié par un test).
+
+`predictions.probabilities` est un dictionnaire à plat `"période|marché|ligne|sélection" → probabilité` (ex. `"FT|TOTAL|2.5|OVER": 0.53`) ; `predictions.inputs` conserve les explications (facteurs de force, classement, confrontations, buteurs…) affichées dans le rapport.
 
 ### Abonnements et paiements (phase 6)
 
@@ -139,6 +141,7 @@ winner-pronostic/
     ├── app/
     │   ├── page.tsx              accueil sportif (programme multi-sports en phase 2)
     │   ├── coupons/              « code de X » + analyse de coupon
+    │   ├── match/[id]/           rapport d'analyse complet (Premium)
     │   ├── (auth)/ auth/confirm/ connexion, inscription, code SMS, mot de passe
     │   ├── compte/ admin/        compte utilisateur, back-office
     │   ├── direct/ pronostics/   (phases 2 et 4)
@@ -151,7 +154,7 @@ winner-pronostic/
     │   ├── admin/ home/ layout/ ui/ auth/ account/ pwa/ brand/
     ├── lib/
     │   ├── sports/catalog.ts     sports, fournisseur, normalisation des statuts
-    │   ├── predictions/          marchés, libellés, confiance (moteur en phase 4)
+    │   ├── predictions/          marchés, moteurs par sport, forces des équipes, confiance, rapport
     │   ├── coupons/              générateur (optimisation), analyseur, cotes, périodes, actions
     │   ├── auth/ security/ validation/ supabase/ env…
     │   ├── sync/                 synchronisation API-Sports (phase 2)

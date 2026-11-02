@@ -193,6 +193,7 @@ export type Database = {
           coupon_id: string;
           event_id: number;
           pick_id: string | null;
+          period: string;
           market: string;
           line: number | null;
           selection: string;
@@ -205,6 +206,7 @@ export type Database = {
           coupon_id: string;
           event_id: number;
           pick_id?: string | null;
+          period?: string;
           market: string;
           line?: number | null;
           selection: string;
@@ -217,6 +219,7 @@ export type Database = {
           coupon_id?: string;
           event_id?: number;
           pick_id?: string | null;
+          period?: string;
           market?: string;
           line?: number | null;
           selection?: string;
@@ -377,6 +380,7 @@ export type Database = {
           event_id: number;
           bookmaker_id: number;
           bookmaker_name: string;
+          period: string;
           market: string;
           line: number | null;
           selection: string;
@@ -388,6 +392,7 @@ export type Database = {
           event_id: number;
           bookmaker_id: number;
           bookmaker_name: string;
+          period?: string;
           market: string;
           line?: number | null;
           selection: string;
@@ -399,6 +404,7 @@ export type Database = {
           event_id?: number;
           bookmaker_id?: number;
           bookmaker_name?: string;
+          period?: string;
           market?: string;
           line?: number | null;
           selection?: string;
@@ -685,6 +691,7 @@ export type Database = {
           event_id: number;
           competition_id: number;
           sport: string;
+          period: string;
           market: string;
           line: number | null;
           selection: string;
@@ -706,6 +713,7 @@ export type Database = {
           event_id: number;
           competition_id: number;
           sport: string;
+          period?: string;
           market: string;
           line?: number | null;
           selection: string;
@@ -727,6 +735,7 @@ export type Database = {
           event_id?: number;
           competition_id?: number;
           sport?: string;
+          period?: string;
           market?: string;
           line?: number | null;
           selection?: string;
@@ -1203,6 +1212,7 @@ export type Database = {
       is_admin: { Args: never; Returns: boolean };
       is_premium: { Args: never; Returns: boolean };
       is_valid_market: { Args: { p_market: string }; Returns: boolean };
+      is_valid_period: { Args: { p_period: string }; Returns: boolean };
       is_valid_selection: { Args: { p_market: string; p_line: number; p_selection: string }; Returns: boolean };
       prune_rate_limits: { Args: { p_older_than_seconds?: number }; Returns: number };
       rate_limit_hit: { Args: { p_key: string; p_limit: number; p_window_seconds: number }; Returns: boolean };

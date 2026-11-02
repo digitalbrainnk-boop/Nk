@@ -15,9 +15,10 @@ Programme des matchs, scores en direct, statistiques, pronostics calculés, **g�
 |---|---|---|
 | 1 | Structure, base multi-sports, authentification (e-mail + téléphone), PWA, interface sportive | ✅ |
 | 1+ | Générateur « code de X » (optimisation + tests), analyse de coupon, codes de chargement (stockage + affichage) | ✅ |
+| 1++ | Moteurs de probabilités par sport (plus de 400 marchés en football), estimation des forces des équipes, rapport d'analyse complet par match | ✅ |
 | 2 | Synchronisation des matchs tous sports (API-Sports), programme, direct | ⏳ |
 | 3 | Fiche match et statistiques | ⏳ |
-| 4 | Moteur de pronostics par sport (Poisson, Elo, points), tests | ⏳ |
+| 4 | Calcul automatique des pronostics sur les vrais matchs (tâche planifiée), publication des pronostics du jour | ⏳ |
 | 5 | Historique et taux de réussite | ⏳ |
 | 6 | Abonnements Mobile Money | ⏳ |
 | 7 | Notifications, espace admin, finitions, déploiement | ⏳ |
@@ -153,7 +154,26 @@ Ouvrez le site dans **Chrome** → menu ⋮ → **Installer l'application** (ou 
 - **Codes de chargement (1xBet…)** : la table `coupon_booking_codes` stocke le code d'un coupon par bookmaker et par pays ; l'utilisateur le copie en un geste et le charge dans son application de paris. Les codes sont saisis par l'admin (pas d'API officielle connue pour les générer automatiquement — voir `docs/ARCHITECTURE.md`).
 - Gratuit : `free_coupons_per_day` codes par jour (réglage), Premium : illimité.
 
-## 8. Sécurité (résumé)
+## 8. Rapport d'analyse d'un match
+
+Page `/match/[id]` (réservée aux abonnés Premium ; exemple fictif sur `/apercu/rapport` avec `NEXT_PUBLIC_DESIGN_PREVIEW=1`) :
+
+- **Lecture du match** : buts/points attendus, attaque et défense (domicile/extérieur), classement Elo, forme récente, absences, classement, confrontations directes, scores probables, comparaison avec les cotes.
+- **Sélections les plus solides** et **value bets** (quand notre probabilité dépasse celle de la cote).
+- **Tous les marchés**, regroupés comme chez les bookmakers : 1X2, double chance, deux équipes vont marquer, total et total asiatique, Total 1 / Total 2, handicap et handicap asiatique, remboursé si nul, Résultat + Total, 1X2 + chaque équipe marque, double chance + BTTS, score exact, MT-Fin, 1re et 2e mi-temps, spéciaux mi-temps, premier but, but dans l'intervalle de temps, pénalty et expulsion, corners et cartons, buteurs.
+
+Modèles (`src/lib/predictions/`) :
+
+| Sport | Modèle |
+|---|---|
+| Football | Poisson avec correction de Dixon-Coles, mi-temps indépendantes, processus de Poisson pour les intervalles de temps |
+| Hockey, baseball | Poisson, égalités départagées (prolongations, manches supplémentaires) |
+| Basketball, handball, rugby, football américain | Loi normale sur l'écart et le total de points |
+| Volleyball | Probabilité de gagner un set (méthode log5), match en 3 sets gagnants |
+
+Les buts attendus viennent de `strength.ts` : forces offensive/défensive rapportées à la moyenne de la ligue (avec retour vers la moyenne quand il y a peu de matchs), puis ajustements Elo, forme et absences. Pénaltys et expulsions utilisent les moyennes de la ligue et sont signalés comme moins précis.
+
+## 9. Sécurité (résumé)
 
 - **Row Level Security** sur toutes les tables, droits par défaut retirés, tests automatiques des règles.
 - **Validation zod côté serveur** de chaque formulaire, messages d'erreur traduits sans détail technique.
@@ -162,6 +182,6 @@ Ouvrez le site dans **Chrome** → menu ⋮ → **Installer l'application** (ou 
 - **Redirections internes uniquement** (pas de redirection ouverte), **en-têtes de sécurité** (CSP, anti-iframe, HSTS…).
 - **Pronostics publiés immuables** : impossible de réécrire l'historique.
 
-## 9. Jeu responsable
+## 10. Jeu responsable
 
 Bandeau de prévention visible sur toutes les pages, page `/jeu-responsable`, inscription interdite aux mineurs. L'application n'affiche jamais de mention du type « gain garanti » ou « coupon sûr ».
