@@ -107,9 +107,6 @@
     const repondues = etat ? nombreRepondues(etat.a) : 0;
     const fiche = [
       ["Cadre de l'étude", E.cadre],
-      ["Chercheur", E.chercheur],
-      ["Institution", E.institution],
-      ["Directeur de thèse", E.directeur],
       ["Échantillonnage", E.echantillon],
     ];
     afficher(
@@ -179,7 +176,7 @@
     return h(
       "footer",
       { class: "pied" },
-      h("p", { text: `Thèse de doctorat en théologie · ${E.institution}` }),
+      h("p", { text: "Thèse de doctorat en théologie" }),
       h("p", {}, h("a", { href: "#espace", text: "Espace chercheur" })),
     );
   }
@@ -201,7 +198,6 @@
         { class: "entete" },
         h("p", { class: "surtitre", text: "Espace chercheur" }),
         h("h1", { text: E.titre }),
-        h("p", { class: "discret", text: `${E.chercheur} · ${E.institution}` }),
       ),
       h(
         "section",
