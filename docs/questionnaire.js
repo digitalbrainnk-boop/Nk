@@ -55,9 +55,8 @@ window.ENQUETE = {
   titre: "La grâce divine et la liberté humaine",
   surtitre: "Questionnaire d'enquête de terrain",
   cadre: "Ville de Ouagadougou, Burkina Faso",
-  chercheur: "SAWADOGO Bouraïma",
-  institution: "École Missionnaire Génération Joël (EMGJ)",
-  directeur: "Dr Jéhu Blaise Koffi Amoussou",
+  // Par confidentialité, le site n'affiche ni le nom du chercheur, ni celui du
+  // directeur de thèse, ni l'institution.
   echantillon:
     "100 personnes dont 50 participants de la communauté catholique et 50 participants de la communauté protestante.",
 
@@ -76,11 +75,7 @@ window.ENQUETE = {
     "Nous vous remercions sincèrement pour votre participation à cette enquête.",
     "Votre contribution permettra d'enrichir la réflexion théologique sur la grâce divine et la liberté humaine et d'examiner les implications de cette relation dans la vie des communautés chrétiennes.",
   ],
-  signature: [
-    "SAWADOGO Bouraïma",
-    "Doctorant en théologie",
-    "École Missionnaire Génération Joël (EMGJ)",
-  ],
+  signature: ["Le chercheur", "Doctorant en théologie"],
 
   // ---------------------------------------------------------------------------
   // LES SEPT PARTIES

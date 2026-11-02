@@ -1057,9 +1057,6 @@ details > summary {
 /* ---------------------------------------------------------------------------
    Accueil du chercheur
    --------------------------------------------------------------------------- */
-.installation {
-  border-color: var(--ocre);
-}
 .raccourcis {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
@@ -1305,7 +1302,7 @@ details > summary {
   // Barre de navigation des pages du chercheur.
   function navChercheur(actif, racine = "") {
     const liens = [
-      ["accueil", "Accueil", `${racine}index.html#appli`],
+      ["accueil", "Accueil", `${racine}index.html#espace`],
       ["reponses", "Réponses reçues", `${racine}index.html#chercheur`],
       ["documents", "Mes documents", `${racine}documents.html`],
     ].filter(([cle]) => !(ARTEFACT && cle === "documents"));
@@ -1316,119 +1313,9 @@ details > summary {
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Application installée sur le téléphone (écran d'accueil, hors connexion)
-  // ---------------------------------------------------------------------------
+  // Pages gardées sur le téléphone pour les connexions lentes ou coupées.
   if (!ARTEFACT && "serviceWorker" in navigator && /^https?:$/.test(location.protocol)) {
     window.addEventListener("load", () => navigator.serviceWorker.register(new URL("sw.js", ICI)).catch(() => {}));
-  }
-
-  const installation = { invite: null, installee: false, abonnes: new Set() };
-  const prevenir = () => installation.abonnes.forEach((f) => f());
-  window.addEventListener("beforeinstallprompt", (e) => {
-    e.preventDefault();
-    installation.invite = e;
-    prevenir();
-  });
-  window.addEventListener("appinstalled", () => {
-    installation.invite = null;
-    installation.installee = true;
-    prevenir();
-  });
-
-  function estInstallee() {
-    return (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) || window.navigator.standalone === true;
-  }
-
-  function carteInstallation() {
-    const carte = h("section", { class: "bloc installation" });
-    const appareilApple = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-    function dessiner() {
-      if (carte.dataset.affichee && !carte.isConnected) {
-        installation.abonnes.delete(dessiner);
-        return;
-      }
-      carte.dataset.affichee = "1";
-      if (ARTEFACT) {
-        carte.replaceChildren(
-          h("h2", { text: "Garder l'application sur ce téléphone" }),
-          h(
-            "ol",
-            { class: "etapes" },
-            h("li", { text: "Ouvrez ce lien dans Chrome (sur iPhone : Safari)." }),
-            h("li", { text: "Menu ⋮ → « Ajouter à l'écran d'accueil » (sur iPhone : bouton Partager → « Sur l'écran d'accueil »)." }),
-            h("li", { text: "L'icône s'ajoute sur l'écran d'accueil : un geste suffit pour revenir ici." }),
-          ),
-        );
-        return;
-      }
-      if (estInstallee()) {
-        carte.hidden = true;
-        return;
-      }
-      if (installation.installee) {
-        carte.replaceChildren(
-          h("h2", { text: "Application installée" }),
-          h("p", { text: "Vous la retrouvez sur l'écran d'accueil du téléphone : « Enquête grâce »." }),
-        );
-        return;
-      }
-      const titre = h("h2", { text: "Installer l'application sur ce téléphone" });
-      const texte = h("p", {
-        class: "discret",
-        text: "Elle s'ajoute sur l'écran d'accueil, comme les autres applications, et s'ouvre même sans connexion internet.",
-      });
-      if (installation.invite) {
-        carte.replaceChildren(
-          titre,
-          texte,
-          h(
-            "button",
-            {
-              class: "bouton",
-              type: "button",
-              onclick: async () => {
-                const invite = installation.invite;
-                if (!invite) return;
-                invite.prompt();
-                const choix = await invite.userChoice.catch(() => ({}));
-                installation.invite = null;
-                if (choix.outcome === "accepted") installation.installee = true;
-                dessiner();
-              },
-            },
-            icone("telecharger"),
-            "Installer l'application",
-          ),
-        );
-      } else if (appareilApple) {
-        carte.replaceChildren(
-          titre,
-          texte,
-          h(
-            "ol",
-            { class: "etapes" },
-            h("li", { text: "Ouvrez cette page dans Safari." }),
-            h("li", { text: "Touchez le bouton Partager (le carré avec une flèche vers le haut)." }),
-            h("li", { text: "Choisissez « Sur l'écran d'accueil », puis « Ajouter »." }),
-          ),
-        );
-      } else {
-        carte.replaceChildren(
-          titre,
-          texte,
-          h(
-            "ol",
-            { class: "etapes" },
-            h("li", { text: "Si vous avez ouvert ce lien depuis WhatsApp ou Facebook : menu ⋮ → « Ouvrir dans Chrome »." }),
-            h("li", { text: "Dans Chrome : menu ⋮ → « Installer l'application » (ou « Ajouter à l'écran d'accueil »)." }),
-          ),
-        );
-      }
-    }
-    installation.abonnes.add(dessiner);
-    dessiner();
-    return carte;
   }
 
   window.Commun = {
@@ -1446,8 +1333,6 @@ details > summary {
     copier,
     taille,
     navChercheur,
-    carteInstallation,
-    estInstallee,
   };
 })();
 </script>
@@ -1494,12 +1379,12 @@ window.ENQUETE = {
     objectifParConfession: 50,
 
     // « Mes documents » : dépôt GitHub où sont rangés les documents mis en lien.
-    // La branche et le dossier doivent être ceux choisis dans GitHub Pages.
+    // Le site est publié depuis la branche « gh-pages », à la racine (dossier vide).
     depot: {
       proprietaire: "digitalbrainnk-boop",
       nom: "Nk",
-      branche: "claude/theology-survey-app-sqz80q",
-      dossier: "docs",
+      branche: "gh-pages",
+      dossier: "",
     },
   },
 
@@ -1509,9 +1394,8 @@ window.ENQUETE = {
   titre: "La grâce divine et la liberté humaine",
   surtitre: "Questionnaire d'enquête de terrain",
   cadre: "Ville de Ouagadougou, Burkina Faso",
-  chercheur: "SAWADOGO Bouraïma",
-  institution: "École Missionnaire Génération Joël (EMGJ)",
-  directeur: "Dr Jéhu Blaise Koffi Amoussou",
+  // Par confidentialité, le site n'affiche ni le nom du chercheur, ni celui du
+  // directeur de thèse, ni l'institution.
   echantillon:
     "100 personnes dont 50 participants de la communauté catholique et 50 participants de la communauté protestante.",
 
@@ -1530,11 +1414,7 @@ window.ENQUETE = {
     "Nous vous remercions sincèrement pour votre participation à cette enquête.",
     "Votre contribution permettra d'enrichir la réflexion théologique sur la grâce divine et la liberté humaine et d'examiner les implications de cette relation dans la vie des communautés chrétiennes.",
   ],
-  signature: [
-    "SAWADOGO Bouraïma",
-    "Doctorant en théologie",
-    "École Missionnaire Génération Joël (EMGJ)",
-  ],
+  signature: ["Le chercheur", "Doctorant en théologie"],
 
   // ---------------------------------------------------------------------------
   // LES SEPT PARTIES
@@ -2117,10 +1997,8 @@ window.ENQUETE = {
     ajouter(paragraphe(run(enquete.titre, { gras: true, couleur: ENCRE, taille: 18 }), { centre: true, apres: 160 }));
     const infos = [
       ["Cadre de l'étude", enquete.cadre],
-      ["Chercheur", enquete.chercheur],
-      ["Institution", enquete.institution],
-      ["Directeur de thèse", enquete.directeur],
-    ];
+      ["Échantillonnage", enquete.echantillon],
+    ].filter(([, valeur]) => valeur);
     for (const [libelle, valeur] of infos) {
       ajouter(paragraphe([run(`${libelle} : `, { gras: true }), run(valeur)], { apres: 20 }));
     }
@@ -2329,7 +2207,7 @@ window.ENQUETE = {
   const app = document.getElementById("app");
   const barre = document.getElementById("barre");
 
-  const { ARTEFACT, h, icone, lire, ecrire, oublier, notifier, enregistrerFichier, siTelechargement, confirmer, copier, navChercheur, carteInstallation } =
+  const { ARTEFACT, h, icone, lire, ecrire, oublier, notifier, enregistrerFichier, siTelechargement, confirmer, copier, navChercheur } =
     window.Commun;
 
   function adresseBase() {
@@ -2402,7 +2280,7 @@ window.ENQUETE = {
     window.scrollTo(0, 0);
     if (ancre.startsWith("r=")) return vueReponse(ancre.slice(2));
     if (ancre === "chercheur") return espaceChercheur();
-    if (ancre === "appli") return ecranAppli();
+    if (ancre === "espace" || ancre === "appli") return ecranEspace();
     const m = ancre.match(/^partie-(\d+)$/);
     if (m && +m[1] >= 1 && +m[1] <= PARTIES.length) return ecranPartie(+m[1] - 1);
     if (ancre === "fin") return ecranFin();
@@ -2421,9 +2299,6 @@ window.ENQUETE = {
     const repondues = etat ? nombreRepondues(etat.a) : 0;
     const fiche = [
       ["Cadre de l'étude", E.cadre],
-      ["Chercheur", E.chercheur],
-      ["Institution", E.institution],
-      ["Directeur de thèse", E.directeur],
       ["Échantillonnage", E.echantillon],
     ];
     afficher(
@@ -2493,16 +2368,16 @@ window.ENQUETE = {
     return h(
       "footer",
       { class: "pied" },
-      h("p", { text: `Thèse de doctorat en théologie · ${E.institution}` }),
-      h("p", {}, h("a", { href: "#appli", text: "Espace chercheur" })),
+      h("p", { text: "Thèse de doctorat en théologie" }),
+      h("p", {}, h("a", { href: "#espace", text: "Espace chercheur" })),
     );
   }
 
   // ---------------------------------------------------------------------------
-  // Accueil du chercheur (écran d'ouverture de l'application installée)
+  // Accueil de l'espace chercheur
   // ---------------------------------------------------------------------------
-  function ecranAppli() {
-    document.title = `Mon application · ${E.titre}`;
+  function ecranEspace() {
+    document.title = `Espace chercheur · ${E.titre}`;
     const lien = adresseBase();
     const invitation = `Bonjour, dans le cadre de ma thèse de doctorat en théologie, je mène une enquête sur « ${E.titre} ». Pouvez-vous répondre au questionnaire ? C'est anonyme et cela prend environ 15 minutes :\n${lien}`;
     const champ = h("input", { type: "text", readonly: true, value: lien, id: "lien-questionnaire", "aria-label": "Lien du questionnaire" });
@@ -2513,11 +2388,9 @@ window.ENQUETE = {
       h(
         "header",
         { class: "entete" },
-        h("p", { class: "surtitre", text: "Mon application" }),
+        h("p", { class: "surtitre", text: "Espace chercheur" }),
         h("h1", { text: E.titre }),
-        h("p", { class: "discret", text: `${E.chercheur} · ${E.institution}` }),
       ),
-      carteInstallation(),
       h(
         "section",
         { class: "bloc" },
@@ -2809,7 +2682,7 @@ window.ENQUETE = {
     const boutonEmail = ARTEFACT ? null : h("a", { class: "lien-bouton", href: "#", "aria-disabled": "true", text: "Envoyer par e-mail" });
     const boutonPartager =
       !ARTEFACT && typeof navigator.share === "function"
-        ? h("button", { class: "lien-bouton", type: "button", text: "Partager avec une autre application" })
+        ? h("button", { class: "lien-bouton", type: "button", text: "Partager autrement" })
         : null;
     const recap = h("div", { class: "recap", hidden: true }, recapitulatif(etat.a));
 

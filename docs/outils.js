@@ -288,10 +288,8 @@
     ajouter(paragraphe(run(enquete.titre, { gras: true, couleur: ENCRE, taille: 18 }), { centre: true, apres: 160 }));
     const infos = [
       ["Cadre de l'étude", enquete.cadre],
-      ["Chercheur", enquete.chercheur],
-      ["Institution", enquete.institution],
-      ["Directeur de thèse", enquete.directeur],
-    ];
+      ["Échantillonnage", enquete.echantillon],
+    ].filter(([, valeur]) => valeur);
     for (const [libelle, valeur] of infos) {
       ajouter(paragraphe([run(`${libelle} : `, { gras: true }), run(valeur)], { apres: 20 }));
     }

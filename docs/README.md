@@ -1,6 +1,7 @@
 # Questionnaire en ligne : « La grâce divine et la liberté humaine »
 
-Petit site web pour l'enquête de terrain de la thèse de SAWADOGO Bouraïma (EMGJ, Ouagadougou).
+Petit site web pour l'enquête de terrain d'une thèse de doctorat en théologie (Ouagadougou).
+Par confidentialité, le site n'affiche ni le nom du chercheur, ni celui du directeur de thèse, ni l'institution.
 Les participants ouvrent un lien, répondent aux 37 questions sur leur téléphone, puis envoient
 leurs réponses au chercheur. Une deuxième partie, « Mes documents », transforme un livre, un PDF ou
 un fichier Word en lien de lecture.
