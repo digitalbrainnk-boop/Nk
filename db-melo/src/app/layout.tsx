@@ -2,8 +2,9 @@ import type { Metadata, Viewport } from "next";
 import { Manrope, Sora } from "next/font/google";
 import { Footer } from "@/components/layout/Footer";
 import { Header } from "@/components/layout/Header";
-import { InAppBanner, InstallBanner } from "@/components/pwa/InstallPrompt";
+import { AndroidUpdateBanner, InAppBanner, InstallBanner } from "@/components/pwa/InstallPrompt";
 import { ServiceWorkerRegister } from "@/components/pwa/ServiceWorkerRegister";
+import { UpdateWatcher } from "@/components/pwa/UpdateWatcher";
 import { BRAND } from "@/lib/constants";
 import "./globals.css";
 
@@ -40,7 +41,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <main>{children}</main>
         <Footer />
         <InstallBanner />
+        <AndroidUpdateBanner />
         <ServiceWorkerRegister />
+        <UpdateWatcher />
       </body>
     </html>
   );

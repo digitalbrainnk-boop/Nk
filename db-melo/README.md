@@ -181,7 +181,7 @@ Bouton **« Télécharger »** en haut de l'écran sur téléphone, page `dbmelo
 - GitHub le compile **non signé** quand le dossier change, vérifie une signature d'essai avec `apksigner`, et le glisse dans le paquet o2switch.
 - Le serveur le **signe lui-même** (APK Signature Scheme v2, `src/lib/server/apk-sign.ts`) avec une clé créée au premier téléchargement dans `DATA_DIR/android/cle-signature.json` : la clé ne quitte jamais le serveur. **Sauvegardez ce fichier** : Android n'accepte une mise à jour de l'application que signée par la même clé.
 - `/.well-known/assetlinks.json` publie l'empreinte de cette clé : l'application s'ouvre sans barre d'adresse. `dbmelo-cles` (test 9) vérifie les deux.
-- Nouvelle version de l'application Android : augmenter `appVersionCode` dans `android/app/build.gradle` (le site, lui, se met à jour sans rien réinstaller).
+- **Mises à jour** : l'application (Chrome ou Android) affiche le site en direct, donc chaque `dbmelo-maj` y est visible sans rien réinstaller. Une page restée ouverte compare `/api/version` au retour sur l'application et se recharge d'elle-même (pendant la création d'une chanson, une notification « Mettre à jour » attend). Seule l'enveloppe Android (icône, nom) demande une nouvelle version : augmenter `appVersionCode` dans `android/app/build.gradle`. Cette version est ajoutée à l'adresse de lancement (`&app=`), et l'application plus ancienne affiche « Mise à jour disponible » : un toucher, puis « Mettre à jour » dans la fenêtre d'Android (Android impose cette confirmation hors Play Store).
 
 ## Variables d'environnement
 

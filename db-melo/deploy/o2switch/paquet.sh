@@ -14,6 +14,8 @@ cp -r .next/static "$P/.next/static"
 if [ -f android-apk/dbmelo-non-signee.apk ]; then
   mkdir -p "$P/android"
   cp android-apk/dbmelo-non-signee.apk "$P/android/"
+  # Sa version : le site propose la mise à jour aux applications plus anciennes (voir /api/version).
+  sed -n 's/^def appVersionCode = \([0-9]*\).*/\1/p' android/app/build.gradle > "$P/android/version"
 fi
 mkdir -p "$P/o2switch"
 cp deploy/o2switch/app.js scripts/cles-termux.sh .env.example "$P/o2switch/"

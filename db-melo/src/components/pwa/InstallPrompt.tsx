@@ -65,6 +65,23 @@ export function useAndroidApk(enabled: boolean) {
   return enabled ? size : null;
 }
 
+/**
+ * Version de l'application Android qui affiche la page (adresse de lancement « ?source=android&app=3 » ;
+ * 0 pour les premières versions, sans numéro), ou null hors de l'application. Gardée pour l'onglet.
+ */
+function androidAppVersion(): number | null {
+  try {
+    const q = new URLSearchParams(window.location.search);
+    if (q.get("source") === "android") {
+      sessionStorage.setItem("dbmelo-app", "android");
+      sessionStorage.setItem("dbmelo-app-version", q.get("app") ?? "0");
+    }
+    return sessionStorage.getItem("dbmelo-app") === "android" ? Number(sessionStorage.getItem("dbmelo-app-version")) || 0 : null;
+  } catch {
+    return null;
+  }
+}
+
 export function useInstall() {
   const prompt = useSyncExternalStore(subscribe, () => deferred, () => null);
   const justInstalled = useSyncExternalStore(subscribe, () => installedNow, () => false);
@@ -79,13 +96,8 @@ export function useInstall() {
       else viaApp = sessionStorage.getItem("dbmelo-via");
     } catch {}
     setEnv({ ...detected, viaApp: detected.platform === "android" && !detected.inApp ? viaApp : null });
-    // Ouvert depuis l'application Android (adresse de lancement « ?source=android ») : déjà installée.
-    let inAndroidApp = false;
-    try {
-      if (new URLSearchParams(window.location.search).get("source") === "android") sessionStorage.setItem("dbmelo-app", "android");
-      inAndroidApp = sessionStorage.getItem("dbmelo-app") === "android";
-    } catch {}
-    setStandalone(isStandalone() || inAndroidApp);
+    // Ouvert depuis l'application Android : déjà installée.
+    setStandalone(isStandalone() || androidAppVersion() !== null);
   }, []);
   /** Ouvre l'invite native ; renvoie false si le navigateur n'en propose pas. */
   const install = async () => {
@@ -557,6 +569,72 @@ export function InstallBanner() {
             <button type="button" onClick={install} className="btn btn-gold min-h-10 shrink-0 px-4 py-2 text-sm">
               Installer
             </button>
+            <button type="button" onClick={close} aria-label="Plus tard" className="btn-quiet shrink-0 p-1">
+              <X className="size-4" />
+            </button>
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
+
+/* ───────────── Mise à jour de l'application Android ───────────── */
+
+const UPDATE_LATER_KEY = "dbmelo-maj-plus-tard";
+
+/**
+ * Dans l'application Android : le contenu est toujours celui du site, donc toujours à jour. Seule
+ * l'enveloppe (icône, nom) change parfois ; quand une version plus récente existe, une notification
+ * propose de la mettre à jour : un toucher, puis « Mettre à jour » dans la fenêtre d'Android.
+ */
+export function AndroidUpdateBanner() {
+  const pathname = usePathname();
+  const [outdated, setOutdated] = useState(false);
+  const [later, setLater] = useState(true);
+  const [started, setStarted] = useState(false);
+  useEffect(() => {
+    const mine = androidAppVersion();
+    if (mine === null) return;
+    try {
+      setLater(Date.now() - Number(localStorage.getItem(UPDATE_LATER_KEY) || 0) < LATER_MS);
+    } catch {
+      setLater(false);
+    }
+    fetch("/api/version", { cache: "no-store" })
+      .then((r) => r.json() as Promise<{ android: number | null }>)
+      .then((v) => setOutdated(!!v.android && v.android > mine))
+      .catch(() => {});
+  }, []);
+  const close = () => {
+    setLater(true);
+    try {
+      localStorage.setItem(UPDATE_LATER_KEY, String(Date.now()));
+    } catch {}
+  };
+  const show = outdated && !later && !pathname.startsWith("/studio");
+  return (
+    <AnimatePresence>
+      {show && (
+        <motion.div
+          role="dialog"
+          aria-label="Mettre à jour l'application DB.Mélo"
+          className="safe-bottom fixed inset-x-0 bottom-0 z-40 p-3"
+          initial={{ y: 120, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          exit={{ y: 120, opacity: 0 }}
+        >
+          <div className="card flex items-center gap-3 p-3 shadow-2xl shadow-black/60">
+            <img src="/icons/192" alt="" className="size-12 shrink-0 rounded-xl" />
+            <div className="min-w-0 flex-1">
+              <p className="font-display font-bold leading-tight">Mise à jour disponible</p>
+              <p className="text-xs text-muted">
+                {started ? "Ouvrez le fichier téléchargé, puis touchez « Mettre à jour »." : "Vos chansons restent là, rien n'est effacé."}
+              </p>
+            </div>
+            <a href="/dbmelo.apk" download="DBMelo.apk" onClick={() => setStarted(true)} className="btn btn-gold min-h-10 shrink-0 px-3 py-2 text-sm">
+              Mettre à jour
+            </a>
             <button type="button" onClick={close} aria-label="Plus tard" className="btn-quiet shrink-0 p-1">
               <X className="size-4" />
             </button>
