@@ -1,6 +1,7 @@
 /*
  * Page de lecture d'un document mis en lien depuis « Mes documents ».
- * La page du document définit window.DOCUMENT = { titre, fichier, taille, date }.
+ * La page du document contient ses informations dans un bloc JSON
+ * (#document-donnees) : { titre, fichier, taille, date }.
  * PDF, Word (.docx), e-book (.epub), images, texte, audio et vidéo s'affichent
  * directement ; les autres fichiers se téléchargent.
  */
@@ -8,7 +9,14 @@
   "use strict";
 
   const { h, icone, notifier, copier, taille } = window.Commun;
-  const D = window.DOCUMENT || {};
+  function lireDonnees() {
+    try {
+      return JSON.parse(document.getElementById("document-donnees").textContent);
+    } catch {
+      return {};
+    }
+  }
+  const D = window.DOCUMENT || lireDonnees();
   const zone = document.getElementById("lecteur");
   const racine = new URL("./", document.currentScript.src);
   const vendor = (chemin) => new URL(`vendor/${chemin}`, racine).href;
@@ -148,7 +156,7 @@
     await charger(vendor("pdfjs/pdf.min.js"));
     const pdfjs = window.pdfjsLib;
     pdfjs.GlobalWorkerOptions.workerSrc = vendor("pdfjs/pdf.worker.min.js");
-    const tache = pdfjs.getDocument({ url: urlFichier, standardFontDataUrl: vendor("pdfjs/standard_fonts/") });
+    const tache = pdfjs.getDocument({ url: urlFichier, standardFontDataUrl: vendor("pdfjs/standard_fonts/"), isEvalSupported: false });
     tache.onProgress = ({ loaded, total }) => {
       if (total) etat.textContent = `Chargement… ${Math.round((loaded / total) * 100)} %`;
     };

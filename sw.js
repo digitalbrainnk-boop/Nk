@@ -4,7 +4,7 @@
  * met trop de temps à répondre), la copie gardée sur le téléphone.
  * Changer VERSION à chaque modification de la liste COQUILLE.
  */
-const VERSION = "2026-11-01-site";
+const VERSION = "2026-11-02-securite";
 const CACHE = `enquete-${VERSION}`;
 const COQUILLE = [
   "./",

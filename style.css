@@ -1109,3 +1109,34 @@ details > summary {
   min-height: 8rem;
   margin-top: 0;
 }
+
+/* Code secret de l'espace chercheur */
+.coffre {
+  max-width: 28rem;
+}
+.coffre input[type="password"] {
+  width: 100%;
+  font: inherit;
+  color: var(--encre);
+  background: var(--feuille);
+  border: 1px solid var(--filet);
+  border-radius: 8px;
+  padding: 0.7rem 0.8rem;
+  letter-spacing: 0.15em;
+}
+.coffre input[type="password"]:focus {
+  outline: 2px solid var(--indigo);
+  border-color: var(--indigo);
+}
+.coffre .etiquette-refus:empty {
+  display: none;
+}
+.fenetre .coffre {
+  border: 0;
+  padding: 0;
+}
+.onglets .verrouiller {
+  margin-left: auto;
+  font-size: 0.9rem;
+  padding: 0.2rem 0;
+}

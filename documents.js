@@ -8,7 +8,7 @@
 (function () {
   "use strict";
 
-  const { h, icone, lire, ecrire, oublier, notifier, copier, taille, navChercheur } = window.Commun;
+  const { h, icone, notifier, copier, taille, navChercheur, coffre, formulaireCode } = window.Commun;
   const R = window.ENQUETE.reglages;
   const D = R.depot;
   const API = "https://api.github.com";
@@ -22,7 +22,7 @@
 
   const montrer = (...elements) => app.replaceChildren(...elements.filter((x) => x !== null && x !== undefined && x !== false));
 
-  let jeton = lire(CLE_JETON, "");
+  let jeton = "";
   let documents = [];
   let aEnvoyer = [];
   let resultats = [];
@@ -177,8 +177,14 @@
     return String(texte).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
   }
 
+  const CSP_SITE =
+    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' blob: https://fonts.googleapis.com; font-src 'self' data: blob: https://fonts.gstatic.com; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https://api.github.com; worker-src 'self' blob:; frame-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'none'";
+
   const ICONE_SITE =
     "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%231e2a5e'/%3E%3Cpath d='M16 18h13a4 4 0 0 1 4 4v26a3 3 0 0 0-3-3H16zM48 18H35a4 4 0 0 0-4 4v26a3 3 0 0 1 3-3h14z' fill='none' stroke='%23e9b44c' stroke-width='4' stroke-linejoin='round'/%3E%3C/svg%3E";
+
+  // Sécurité des pages de lecture : seuls les scripts du site s'exécutent.
+  const CSP_LECTURE = CSP_SITE.replace(" https://api.github.com", "");
 
   function pageDeLecture(doc) {
     const titre = echapper(doc.titre);
@@ -188,6 +194,8 @@
 <html lang="fr">
   <head>
     <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="${CSP_LECTURE}" />
+    <meta name="referrer" content="no-referrer" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>${titre}</title>
     <meta name="description" content="${description}" />
@@ -203,7 +211,7 @@
     <main id="lecteur" class="page lecteur">
       <noscript><p class="carte"><a href="${echapper(encodeURIComponent(doc.fichier))}">Télécharger le document</a></p></noscript>
     </main>
-    <script>window.DOCUMENT = ${donnees};</script>
+    <script type="application/json" id="document-donnees">${donnees}</script>
     <script src="../../commun.js"></script>
     <script src="../../lecteur.js"></script>
   </body>
@@ -333,7 +341,7 @@
       etat.textContent = "Vérification…";
       try {
         await api(`${DEPOT}/git/ref/heads/${D.branche}`);
-        ecrire(CLE_JETON, jeton);
+        await coffre.ecrire("jeton", jeton);
         await chargerListe();
       } catch (err) {
         jeton = "";
@@ -348,7 +356,7 @@
         { class: "bloc", onsubmit: connecter },
         h("h2", { text: "Connexion à GitHub (une seule fois)" }),
         h("p", {
-          text: `Vos documents sont rangés dans votre dépôt GitHub « ${D.nom} ». Pour que le site puisse les y déposer, il a besoin d'une clé d'accès GitHub. La clé reste sur cet appareil.`,
+          text: `Vos documents sont rangés dans votre dépôt GitHub « ${D.nom} ». Pour que le site puisse les y déposer, il a besoin d'une clé d'accès GitHub. La clé reste sur cet appareil, chiffrée avec votre code secret.`,
         }),
         h(
           "ol",
@@ -384,7 +392,7 @@
 
   function deconnecter() {
     jeton = "";
-    oublier(CLE_JETON);
+    coffre.supprimer("jeton");
     ecranConnexion("Déconnecté.");
   }
 
@@ -562,7 +570,7 @@
     } catch (e) {
       if (e.statut === 401 || e.statut === 404) {
         jeton = "";
-        oublier(CLE_JETON);
+        coffre.supprimer("jeton");
         ecranConnexion(expliquer(e));
       } else {
         montrer(
@@ -575,6 +583,16 @@
     }
   }
 
-  if (jeton) chargerListe();
-  else ecranConnexion();
+  // Le code secret de l'espace chercheur ouvre aussi cette page.
+  async function demarrer() {
+    if (!(await coffre.reprendre())) {
+      montrer(navChercheur("documents"), entete(), formulaireCode(demarrer));
+      return;
+    }
+    await coffre.migrer(CLE_JETON, "jeton");
+    jeton = await coffre.lire("jeton", "");
+    if (jeton) chargerListe();
+    else ecranConnexion();
+  }
+  demarrer();
 })();
