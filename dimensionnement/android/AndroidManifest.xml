@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Application Android : une WebView qui charge l'application web embarquée (assets/www), sans dépendance externe. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.digitalbrainnk.dimensionnement">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- « Utiliser ma position » : coordonnées du site (demandées seulement au premier usage) -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-feature android:name="android.hardware.location" android:required="false" />
+    <uses-feature android:name="android.hardware.location.gps" android:required="false" />
+
+    <application
+        android:label="@string/nom_app"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher"
+        android:theme="@style/Theme.App"
+        android:allowBackup="true"
+        android:supportsRtl="false"
+        android:usesCleartextTraffic="false"
+        android:hardwareAccelerated="true">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- Partage des fichiers exportés (note de calcul, carnet de câbles, projet) avec les autres applications -->
+        <provider
+            android:name=".FichiersProvider"
+            android:authorities="com.digitalbrainnk.dimensionnement.fichiers"
+            android:exported="false"
+            android:grantUriPermissions="true" />
+    </application>
+</manifest>
