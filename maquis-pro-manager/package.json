@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node --env-file-if-exists=.env --disable-warning=ExperimentalWarning src/server.js",
     "dev": "node --env-file-if-exists=.env --disable-warning=ExperimentalWarning --watch src/server.js",
-    "test": "node --disable-warning=ExperimentalWarning --test --test-concurrency=1 test/",
+    "test": "node --disable-warning=ExperimentalWarning --test --test-concurrency=1 test/*.test.js",
     "rapports": "node --env-file-if-exists=.env --disable-warning=ExperimentalWarning scripts/rapports.js",
     "sauvegarde": "node --env-file-if-exists=.env --disable-warning=ExperimentalWarning scripts/sauvegarde.js",
     "restaurer": "node --env-file-if-exists=.env --disable-warning=ExperimentalWarning scripts/restaurer.js"

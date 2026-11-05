@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="112" fill="#0e6b4e"/>
+  <path d="M214 96h84v62l30 46v196a20 20 0 0 1-20 20H204a20 20 0 0 1-20-20V204l30-46z" fill="#fdf0e1"/>
+  <rect x="184" y="250" width="144" height="86" fill="#b45309"/>
+  <path d="M214 96h84v26h-84z" fill="#f0a04b"/>
+  <text x="256" y="306" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-weight="800" font-size="52" fill="#ffffff">MP</text>
+</svg>

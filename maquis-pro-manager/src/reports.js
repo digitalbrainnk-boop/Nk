@@ -11,7 +11,7 @@ import { notify } from "./notify.js";
 import { createDocument } from "./documents.js";
 import { EXIT_KINDS, EXIT_LABELS, LOSS_KINDS } from "./stock.js";
 import { sessionSummary } from "./cash.js";
-import { money, num, pct, variation, cratesLabel, notFound } from "./util.js";
+import { money, num, pct, variation, cratesLabel, notFound, pname } from "./util.js";
 import { backupIfDue } from "./backup.js";
 
 const productInfo = () =>
@@ -230,7 +230,7 @@ function responsibles(start, end) {
 
 function ranking(byProduct) {
   const sold = byProduct.filter((x) => x.sale > 0).sort((a, b) => b.sale - a.sale || b.sale_value - a.sale_value);
-  const pick = (x) => x && { name: `${x.brand} — ${x.name}`, brand: x.brand, qty: x.sale, amount: x.sale_value };
+  const pick = (x) => x && { name: `${pname(x)}`, brand: x.brand, qty: x.sale, amount: x.sale_value };
   return { best: pick(sold[0]), least: pick(sold.length > 1 ? sold[sold.length - 1] : null), top: sold.slice(0, 10).map(pick), flop: sold.slice(-5).reverse().map(pick) };
 }
 
@@ -254,7 +254,7 @@ export function computeDaily(day) {
   const lossCost = byProduct.reduce((s, x) => s + x.loss_cost, 0);
   const offeredValue = all("SELECT COALESCE(-SUM(qty * unit_price), 0) AS v FROM stock_movements WHERE kind = 'offered' AND business_day = ?", day)[0].v;
   const pendingOrders = get("SELECT COUNT(*) AS n, COALESCE(SUM(total), 0) AS v FROM orders WHERE business_day = ? AND status = 'pending'", day);
-  const unsold = stock.filter((s) => s.stock > 0 && !byProduct.some((x) => x.product_id === s.product_id && x.sale > 0)).map((s) => `${s.brand} — ${s.name}`);
+  const unsold = stock.filter((s) => s.stock > 0 && !byProduct.some((x) => x.product_id === s.product_id && x.sale > 0)).map((s) => `${pname(s)}`);
 
   const obs = [];
   if (!sales.count && !agg.total) obs.push("Aucune vente ni sortie de boisson n'a été enregistrée pendant cette journée commerciale.");
@@ -275,9 +275,9 @@ export function computeDaily(day) {
   if (sales.credit_given > 0) obs.push(`Ventes à crédit non encaissées : ${money(sales.credit_given)} (${sales.credit_customers.length} client(s)).`);
   if (pendingOrders.n) obs.push(`${pendingOrders.n} commande(s) de serveurs restée(s) en attente, non encaissée(s) (${money(pendingOrders.v)}).`);
   if (sales.cancelled_count) obs.push(`${sales.cancelled_count} vente(s) annulée(s) (${money(sales.cancelled_amount)}).`);
-  if (gaps.length) obs.push(`Écarts d'inventaire : ${gaps.map((g) => `${g.brand} ${g.name} ${g.qty > 0 ? "+" : ""}${g.qty}`).join(", ")}.`);
+  if (gaps.length) obs.push(`Écarts d'inventaire : ${gaps.map((g) => `${pname(g)} ${g.qty > 0 ? "+" : ""}${g.qty}`).join(", ")}.`);
   const low = stock.filter((s) => s.low && s.min_stock > 0);
-  if (low.length) obs.push(`Stock faible à la clôture : ${low.map((s) => `${s.brand} ${s.name} (${s.stock})`).join(", ")}.`);
+  if (low.length) obs.push(`Stock faible à la clôture : ${low.map((s) => `${pname(s)} (${s.stock})`).join(", ")}.`);
 
   return {
     kind: "daily",
@@ -345,7 +345,7 @@ export function computeWeekly(monday) {
   if (cash.variance_total) obs.push(`Écarts de caisse cumulés : ${money(cash.variance_total)}.`);
   if (sales.credit_given) obs.push(`Ventes à crédit accordées pendant la semaine : ${money(sales.credit_given)}.`);
   const low = stock.filter((s) => s.low && s.min_stock > 0);
-  if (low.length) obs.push(`Stock faible à la clôture : ${low.map((s) => `${s.brand} ${s.name}`).join(", ")}.`);
+  if (low.length) obs.push(`Stock faible à la clôture : ${low.map((s) => `${pname(s)}`).join(", ")}.`);
   const { week } = isoWeekNumber(monday);
 
   return {

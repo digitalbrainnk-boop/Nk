@@ -7,7 +7,7 @@ import { audit } from "./audit.js";
 import { notify, signal } from "./notify.js";
 import { createDocument, newDocNumber, documentsFor } from "./documents.js";
 import { productRow } from "./catalog.js";
-import { bad, notFound, conflict, str, int, oneOf, arr, money, num, cratesLabel } from "./util.js";
+import { bad, notFound, conflict, str, int, oneOf, arr, money, num, cratesLabel, pname } from "./util.js";
 
 export const EXIT_KINDS = ["sale", "offered", "staff", "broken", "lost", "expired", "other"];
 export const EXIT_LABELS = {
@@ -60,7 +60,7 @@ export function checkStock(lines, ctx) {
   for (const [pid, qty] of need) {
     const p = productRow(pid);
     const s = stockOf(pid);
-    if (s < qty) problems.push({ product: `${p.brand} ${p.name}`.trim(), available: s, requested: qty });
+    if (s < qty) problems.push({ product: `${pname(p)}`.trim(), available: s, requested: qty });
   }
   if (problems.length && !ctx.offline) {
     throw conflict(`Stock insuffisant : ${problems.map((x) => `${x.product} (${x.available} disponible${x.available > 1 ? "s" : ""}, ${x.requested} demandé${x.requested > 1 ? "s" : ""})`).join(", ")}.`);
@@ -82,7 +82,7 @@ export function stockAlerts(before) {
   for (const [pid, prev] of before) {
     const p = productRow(pid);
     const s = stockOf(pid);
-    const name = `${p.brand} — ${p.name}`;
+    const name = `${pname(p)}`;
     if (s <= 0 && prev > 0) {
       notify({ roles: ["owner", "manager"], type: "out_of_stock", severity: "danger", title: `Rupture de stock : ${name}`, body: `Il ne reste plus de ${name}.`, link: `#/stock/${pid}` });
     } else if (s <= p.min_stock && prev > p.min_stock && s > 0) {
@@ -104,12 +104,12 @@ function parseCrateLines(lines, { costField = false, label = "Ligne" } = {}) {
   return arr(lines, "Boissons", { min: 1, max: 100 }).map((l, i) => {
     const p = productRow(int(l.product_id, `${label} ${i + 1} : boisson`, { min: 1 }));
     if (!p) throw bad(`${label} ${i + 1} : boisson inconnue.`);
-    if (!p.active) throw bad(`${p.brand} ${p.name} est désactivée.`);
+    if (!p.active) throw bad(`${pname(p)} est désactivée.`);
     const upc = int(l.units_per_crate, `${label} ${i + 1} : bouteilles par casier`, { required: false, def: p.units_per_crate, min: 1, max: 500 });
     const crates = int(l.crates, `${label} ${i + 1} : casiers`, { required: false, def: 0, min: 0, max: 100000 });
     const extra = int(l.extra_units, `${label} ${i + 1} : bouteilles`, { required: false, def: 0, min: 0, max: 1000000 });
     const qty = crates * upc + extra;
-    if (qty <= 0) throw bad(`${label} ${i + 1} (${p.brand} ${p.name}) : quantité nulle.`);
+    if (qty <= 0) throw bad(`${label} ${i + 1} (${pname(p)}) : quantité nulle.`);
     const unit_cost = costField ? int(l.unit_cost, `${label} ${i + 1} : prix d'achat`, { required: false, def: p.purchase_price, min: 0, max: 10_000_000 }) : p.purchase_price;
     return { product: p, product_id: p.id, units_per_crate: upc, crates, extra_units: extra, qty, unit_cost, unit_price: p.sale_price };
   });
@@ -171,7 +171,7 @@ export function createEntry(ctx, body) {
           { label: "Prix achat", align: "right", w: 1.6 },
           { label: "Montant", align: "right", w: 1.8 },
         ],
-        rows: lines.map((l) => [`${l.product.brand} — ${l.product.name}`, num(l.crates), num(l.units_per_crate), num(l.extra_units), num(l.qty), money(l.unit_cost), money(l.qty * l.unit_cost)]),
+        rows: lines.map((l) => [`${pname(l.product)}`, num(l.crates), num(l.units_per_crate), num(l.extra_units), num(l.qty), money(l.unit_cost), money(l.qty * l.unit_cost)]),
         totals: [
           ["Quantité totale reçue", `${num(totalQty)} bouteilles`],
           ["Montant total", money(total), true],
@@ -235,7 +235,7 @@ export function cancelEntry(ctx, id, body) {
   if (e.status !== "valid") throw bad("Cette entrée est déjà annulée.");
   return tx(() => {
     for (const l of e.lines) {
-      if (stockOf(l.product_id) < l.qty) throw conflict(`Impossible d'annuler : une partie de ${l.brand} ${l.name} est déjà sortie du stock. Faites plutôt une sortie ou un inventaire.`);
+      if (stockOf(l.product_id) < l.qty) throw conflict(`Impossible d'annuler : une partie de ${pname(l)} est déjà sortie du stock. Faites plutôt une sortie ou un inventaire.`);
     }
     const t = now();
     run("UPDATE entries SET status = 'cancelled', cancelled_at = ?, cancelled_by = ?, cancel_reason = ? WHERE id = ?", t, ctx.user.id, reason, id);
@@ -246,7 +246,7 @@ export function cancelEntry(ctx, id, body) {
       title: "Annulation d'une entrée de boissons",
       reason,
       columns: [{ label: "Boisson", w: 3 }, { label: "Qté retirée du stock", align: "right", w: 1.5 }, { label: "Montant", align: "right", w: 1.5 }],
-      rows: e.lines.map((l) => [`${l.brand} — ${l.name}`, num(l.qty), money(l.line_total)]),
+      rows: e.lines.map((l) => [`${pname(l)}`, num(l.qty), money(l.line_total)]),
       totals: [["Montant annulé", money(e.total_amount), true]],
     });
     audit(ctx, "entree_annulee", "entry", id, `Entrée ${e.doc_no} annulée : ${reason}`, { rectificatif: doc });
@@ -310,7 +310,7 @@ export function createExit(ctx, body) {
           { label: "Qté totale", align: "right", w: 1.2 },
           { label: "Valeur (achat)", align: "right", w: 1.8 },
         ],
-        rows: lines.map((l) => [`${l.product.brand} — ${l.product.name}`, num(l.crates), num(l.extra_units), num(l.qty), money(l.qty * l.unit_cost)]),
+        rows: lines.map((l) => [`${pname(l.product)}`, num(l.crates), num(l.extra_units), num(l.qty), money(l.qty * l.unit_cost)]),
         totals: [
           ["Quantité totale sortie", `${num(totalQty)} bouteilles`, true],
           ["Valeur au prix d'achat", money(value)],
@@ -328,7 +328,7 @@ export function createExit(ctx, body) {
       type: "exit",
       severity: LOSS_KINDS.includes(reason) ? "warn" : "info",
       title: `Nouvelle sortie : ${EXIT_LABELS[reason].toLowerCase()}`,
-      body: `${ctx.user.full_name} : ${lines.map((l) => `${l.qty} ${l.product.brand} ${l.product.name}`).join(", ")}${observation ? ` — ${observation}` : ""}.`,
+      body: `${ctx.user.full_name} : ${lines.map((l) => `${l.qty} ${pname(l.product)}`).join(", ")}${observation ? ` — ${observation}` : ""}.`,
       link: `#/recus/${doc_no}`,
     });
     stockAlerts(before);
@@ -370,7 +370,7 @@ export function cancelExit(ctx, id, body) {
       reason,
       fields: [["Motif d'origine", x.reason_label]],
       columns: [{ label: "Boisson", w: 3 }, { label: "Qté remise en stock", align: "right", w: 1.5 }],
-      rows: x.lines.map((l) => [`${l.brand} — ${l.name}`, num(l.qty)]),
+      rows: x.lines.map((l) => [`${pname(l)}`, num(l.qty)]),
       totals: [["Bouteilles remises en stock", num(x.lines.reduce((s, l) => s + l.qty, 0)), true]],
     });
     audit(ctx, "sortie_annulee", "exit", id, `Sortie ${x.doc_no} annulée : ${reason}`, { rectificatif: doc });
@@ -491,7 +491,7 @@ export function validateInventory(ctx, id) {
   const counted = inv.lines.filter((l) => l.counted !== null);
   if (!counted.length) throw bad("Aucune quantité comptée.");
   const missing = counted.filter((l) => l.difference !== 0 && !l.justification.trim());
-  if (missing.length) throw bad(`Justifiez chaque écart avant de valider : ${missing.map((l) => `${l.brand} ${l.name}`).join(", ")}.`, { products: missing.map((l) => l.product_id) });
+  if (missing.length) throw bad(`Justifiez chaque écart avant de valider : ${missing.map((l) => `${pname(l)}`).join(", ")}.`, { products: missing.map((l) => l.product_id) });
   return tx(() => {
     const t = now();
     const day = businessDay(t);
@@ -527,7 +527,7 @@ export function validateInventory(ctx, id) {
           { label: "Écart", align: "right", w: 1 },
           { label: "Justification", w: 2.6 },
         ],
-        rows: counted.map((l) => [`${l.brand} — ${l.name}`, num(l.current_stock), num(l.counted), (l.difference > 0 ? "+" : "") + num(l.difference), l.justification || ""]),
+        rows: counted.map((l) => [`${pname(l)}`, num(l.current_stock), num(l.counted), (l.difference > 0 ? "+" : "") + num(l.difference), l.justification || ""]),
         totals: [["Valeur des écarts (prix d'achat)", money(gapValue), true]],
         status: gaps.length ? { label: "ÉCARTS JUSTIFIÉS", tone: "warn" } : { label: "CONFORME", tone: "ok" },
       },
@@ -541,7 +541,7 @@ export function validateInventory(ctx, id) {
         type: "exceptional",
         severity: "warn",
         title: "Écarts d'inventaire",
-        body: `${gaps.length} écart(s) entre le stock informatique et le stock compté (${money(gapValue)}) : ${gaps.slice(0, 5).map((l) => `${l.brand} ${l.name} ${l.difference > 0 ? "+" : ""}${l.difference}`).join(", ")}.`,
+        body: `${gaps.length} écart(s) entre le stock informatique et le stock compté (${money(gapValue)}) : ${gaps.slice(0, 5).map((l) => `${pname(l)} ${l.difference > 0 ? "+" : ""}${l.difference}`).join(", ")}.`,
         link: `#/recus/${doc_no}`,
       });
     signal(["owner", "manager", "cashier", "waiter"], "stock");

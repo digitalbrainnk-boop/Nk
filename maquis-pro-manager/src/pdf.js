@@ -4,10 +4,10 @@ import path from "node:path";
 import PDFDocument from "pdfkit";
 import { getDataDir, allSettings } from "./db.js";
 import { fmtDateTime } from "./time.js";
-import { money, num, pct } from "./util.js";
+import { money, num, pct, pname } from "./util.js";
 import { EXIT_LABELS } from "./stock.js";
 
-const C = { primary: "#065F46", primarySoft: "#ECFDF5", accent: "#B45309", text: "#111827", muted: "#6B7280", line: "#D1D5DB", zebra: "#F3F4F6", ok: "#047857", warn: "#B45309", bad: "#B91C1C" };
+const C = { series: "#2A78D6", primary: "#065F46", primarySoft: "#ECFDF5", accent: "#B45309", text: "#111827", muted: "#6B7280", line: "#D1D5DB", zebra: "#F3F4F6", ok: "#047857", warn: "#B45309", bad: "#B91C1C" };
 
 // Les polices PDF standard utilisent l'encodage WinAnsi : on remplace ce qu'il ne sait pas afficher.
 const WINANSI_EXTRA = "€‚ƒ„…†‡ˆ‰Š‹ŒŽ‘’“”•–—˜™š›œžŸ";
@@ -199,7 +199,7 @@ function kpis(doc, items) {
 }
 
 // Barres horizontales (classements).
-function hbars(doc, items, { valueLabel = (v) => num(v), color = C.primary } = {}) {
+function hbars(doc, items, { valueLabel = (v) => num(v), color = C.series } = {}) {
   if (!items.length) return;
   const max = Math.max(...items.map((i) => i.value), 1);
   const labelW = W(doc) * 0.34;
@@ -228,7 +228,7 @@ function vbars(doc, items, { height = 110, valueLabel = (v) => num(v) } = {}) {
   items.forEach((it, i) => {
     const h = (it.value / max) * (height - 14);
     const x = X(doc) + i * slot + (slot - bw) / 2;
-    if (h > 0) doc.roundedRect(x, y0 + height - h, bw, h, 2).fill(C.primary);
+    if (h > 0) doc.roundedRect(x, y0 + height - h, bw, h, 2).fill(C.series);
     doc.fillColor(C.muted).font("Helvetica").fontSize(6.5).text(clean(valueLabel(it.value)), X(doc) + i * slot, y0 + height - h - 9, { width: slot, align: "center", lineBreak: false });
     doc.fillColor(C.text).fontSize(7).text(clean(it.label), X(doc) + i * slot, y0 + height + 4, { width: slot, align: "center", lineBreak: false });
   });
@@ -296,7 +296,7 @@ function pickMaquis() {
 }
 
 function exitsTable(doc, byProduct) {
-  const rows = byProduct.map((x) => [`${x.brand} — ${x.name}`, ...KIND_COLS.map((k) => (x[k] ? num(x[k]) : "")), num(x.total), x.label]);
+  const rows = byProduct.map((x) => [`${pname(x)}`, ...KIND_COLS.map((k) => (x[k] ? num(x[k]) : "")), num(x.total), x.label]);
   if (rows.length) {
     const t = Object.fromEntries(KIND_COLS.map((k) => [k, byProduct.reduce((s, x) => s + x[k], 0)]));
     rows.push(["TOTAL", ...KIND_COLS.map((k) => num(t[k])), num(byProduct.reduce((s, x) => s + x.total, 0)), ""]);
@@ -336,7 +336,7 @@ function stockTable(doc, stock) {
   table(
     doc,
     [{ label: "Boisson", w: 3 }, { label: "Catégorie", w: 1.8 }, { label: "Stock (btl)", align: "right", w: 1.1 }, { label: "En casiers", w: 2 }, { label: "Valeur achat", align: "right", w: 1.5 }, { label: "Alerte", w: 1 }],
-    stock.map((s) => [`${s.brand} — ${s.name}`, s.category, num(s.stock), s.label, num(s.value), s.stock <= 0 ? "Rupture" : s.low && s.min_stock ? "Faible" : ""]),
+    stock.map((s) => [`${pname(s)}`, s.category, num(s.stock), s.label, num(s.value), s.stock <= 0 ? "Rupture" : s.low && s.min_stock ? "Faible" : ""]),
     { fontSize: 7.2 },
   );
 }
@@ -401,7 +401,7 @@ function renderDaily(doc, r) {
   table(
     doc,
     [{ label: "Reçu", w: 1.6 }, { label: "Nature", w: 1.6 }, { label: "Boisson", w: 2.6 }, { label: "Qté", align: "right", w: 0.7 }, { label: "Valeur achat", align: "right", w: 1.3 }, { label: "Responsable / observation", w: 2.8 }],
-    d.losses.map((l) => [l.doc_no, l.reason_label, `${l.brand} — ${l.name}`, num(l.qty), num(l.cost), [l.responsible_name || l.user_name, l.waiter_name, l.observation].filter(Boolean).join(" — ")]),
+    d.losses.map((l) => [l.doc_no, l.reason_label, `${pname(l)}`, num(l.qty), num(l.cost), [l.responsible_name || l.user_name, l.waiter_name, l.observation].filter(Boolean).join(" — ")]),
     { fontSize: 7.2 },
   );
 
@@ -481,7 +481,7 @@ function renderWeekly(doc, r) {
 
   section(doc, "Ventes par catégorie");
   table(doc, [{ label: "Catégorie", w: 2.4 }, { label: "Bouteilles vendues", align: "right", w: 1.4 }, { label: "Montant", align: "right", w: 1.5 }, { label: "Part du CA", align: "right" }], d.exits.by_category.filter((x) => x.sold).map((x) => [x.category, num(x.sold), money(x.sale_value), `${pct(x.sale_value, s.revenue)} %`]));
-  hbars(doc, d.exits.by_category.filter((x) => x.sale_value > 0).map((x) => ({ label: x.category, value: x.sale_value })), { valueLabel: money, color: C.accent });
+  hbars(doc, d.exits.by_category.filter((x) => x.sale_value > 0).map((x) => ({ label: x.category, value: x.sale_value })), { valueLabel: money });
 
   section(doc, "Ventes par marque");
   table(doc, [{ label: "Catégorie", w: 1.8 }, { label: "Marque", w: 2 }, { label: "Bouteilles vendues", align: "right", w: 1.4 }, { label: "Montant", align: "right", w: 1.5 }], [...d.exits.by_brand].filter((b) => b.sold).sort((a, b) => b.sale_value - a.sale_value).map((b) => [b.category, b.brand, num(b.sold), money(b.sale_value)]));

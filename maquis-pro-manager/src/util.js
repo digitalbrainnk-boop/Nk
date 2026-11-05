@@ -76,3 +76,11 @@ export function variation(current, previous) {
   if (!previous) return null;
   return Math.round(((current - previous) / previous) * 1000) / 10;
 }
+
+// « Brakina — Brakina 65 cl » devient « Brakina 65 cl » ; la marque n'est ajoutée que si le nom ne la contient pas.
+export function pname(p) {
+  const brand = String(p?.brand || "").trim();
+  const name = String(p?.name || "").trim();
+  if (!brand) return name;
+  return name.toLowerCase().includes(brand.toLowerCase()) ? name : `${brand} — ${name}`;
+}

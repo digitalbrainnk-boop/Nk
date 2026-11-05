@@ -6,7 +6,7 @@ import { periodOverview, dailySeries, reportStatus } from "./reports.js";
 import { stockList } from "./stock.js";
 import { sessionSummary } from "./cash.js";
 import { searchDocuments } from "./documents.js";
-import { bad } from "./util.js";
+import { bad, pname } from "./util.js";
 
 export function dashboard(ctx, { from, to } = {}) {
   const today = businessDay(now());
@@ -47,8 +47,8 @@ export function dashboard(ctx, { from, to } = {}) {
       bottles: stock.reduce((s, x) => s + x.stock, 0),
       value: stock.reduce((s, x) => s + x.value, 0),
       sale_value: stock.reduce((s, x) => s + x.sale_value, 0),
-      low: stock.filter((x) => x.low && !x.out).map((x) => ({ id: x.id, name: `${x.brand} — ${x.name}`, stock: x.stock, label: x.label })),
-      out: stock.filter((x) => x.out).map((x) => ({ id: x.id, name: `${x.brand} — ${x.name}` })),
+      low: stock.filter((x) => x.low && !x.out).map((x) => ({ id: x.id, name: `${pname(x)}`, stock: x.stock, label: x.label })),
+      out: stock.filter((x) => x.out).map((x) => ({ id: x.id, name: `${pname(x)}` })),
     },
     cash: { open_sessions: openSessions, balance: openSessions.reduce((s, x) => s + x.theoretical, 0) },
     pending_orders: { count: pending.n, amount: pending.v },

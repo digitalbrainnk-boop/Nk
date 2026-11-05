@@ -5,7 +5,7 @@ import crypto from "node:crypto";
 import { all, get, run, tx, getDataDir } from "./db.js";
 import { now, businessDay } from "./time.js";
 import { audit } from "./audit.js";
-import { bad, notFound, str, int } from "./util.js";
+import { bad, notFound, str, int, pname } from "./util.js";
 
 // ---------- Catégories ----------
 export const listCategories = () => all("SELECT * FROM categories ORDER BY sort, name");
@@ -108,7 +108,7 @@ export function createProduct(ctx, body) {
         t, businessDay(t), id, initial, f.purchase_price, f.sale_price, id, ctx.user.id, "Stock initial", now(),
       );
     }
-    audit(ctx, "produit_cree", "product", id, `Produit créé : ${f.brand} — ${f.name} (stock initial ${initial})`, { ...f, stock_initial: initial });
+    audit(ctx, "produit_cree", "product", id, `Produit créé : ${pname(f)} (stock initial ${initial})`, { ...f, stock_initial: initial });
     return getProduct(id);
   });
 }
@@ -131,7 +131,7 @@ export function updateProduct(ctx, id, body) {
     const changes = {};
     for (const k of Object.keys(f)) if (f[k] !== cur[k]) changes[k] = { avant: cur[k], apres: f[k] };
     if (active !== cur.active) changes.active = { avant: !!cur.active, apres: !!active };
-    audit(ctx, "produit_modifie", "product", id, `Produit modifié : ${f.brand} — ${f.name}`, changes);
+    audit(ctx, "produit_modifie", "product", id, `Produit modifié : ${pname(f)}`, changes);
     return getProduct(id);
   });
 }
@@ -160,7 +160,7 @@ export function setProductPhoto(ctx, id, dataUrl) {
   fs.writeFileSync(path.join(getDataDir(), "uploads", "products", name), buf);
   tx(() => {
     run("UPDATE products SET photo = ?, updated_at = ? WHERE id = ?", name, now(), id);
-    audit(ctx, "produit_photo", "product", id, `Photo de ${cur.brand} — ${cur.name} mise à jour`);
+    audit(ctx, "produit_photo", "product", id, `Photo de ${pname(cur)} mise à jour`);
   });
   return getProduct(id);
 }

@@ -9,7 +9,7 @@ import { createDocument, newDocNumber, documentsFor } from "./documents.js";
 import { productRow } from "./catalog.js";
 import { addMovement, checkStock, reverseMovements, snapshotStock, stockAlerts, touchDay, periodWhere } from "./stock.js";
 import { requireOpenSession, checkMethod, openSessionOf, CASH } from "./cash.js";
-import { bad, forbidden, notFound, str, int, arr, money, num } from "./util.js";
+import { bad, forbidden, notFound, str, int, arr, money, num, pname } from "./util.js";
 
 export const SALE_STATUS = { paid: "Payée", partial: "Paiement partiel", credit: "À crédit", cancelled: "Annulée" };
 export const ORDER_STATUS = { pending: "En attente", served: "Servie / encaissée", cancelled: "Annulée", rejected: "Refusée" };
@@ -24,7 +24,7 @@ function parseQtyLines(lines) {
   return [...merged].map(([pid, qty]) => {
     const p = productRow(pid);
     if (!p) throw bad("Boisson inconnue.");
-    if (!p.active) throw bad(`${p.brand} ${p.name} n'est plus disponible.`);
+    if (!p.active) throw bad(`${pname(p)} n'est plus disponible.`);
     return { product: p, product_id: pid, qty, unit_price: p.sale_price, unit_cost: p.purchase_price };
   });
 }
@@ -171,7 +171,7 @@ export function createSale(ctx, body) {
           { label: "Prix unit.", align: "right", w: 1.5 },
           { label: "Montant", align: "right", w: 1.7 },
         ],
-        rows: lines.map((l) => [`${l.product.brand} — ${l.product.name}`, num(l.qty), money(l.unit_price), money(l.qty * l.unit_price)]),
+        rows: lines.map((l) => [`${pname(l.product)}`, num(l.qty), money(l.unit_price), money(l.qty * l.unit_price)]),
         totals: [
           ["Nombre de bouteilles", num(bottles)],
           ["TOTAL", money(total), true],
@@ -352,7 +352,7 @@ export function cancelSale(ctx, saleId, body) {
       payload: {
         fields: [["Document annulé", s.doc_no], ["Motif de l'annulation", reason], ["Remboursement", refundDocs.length ? refundDocs.join(", ") : "Aucun (rien n'avait été encaissé)"]],
         columns: [{ label: "Boisson", w: 3 }, { label: "Qté remise en stock", align: "right", w: 1.5 }, { label: "Montant", align: "right", w: 1.5 }],
-        rows: lines.map((l) => [`${l.brand} — ${l.name}`, num(l.qty), money(l.line_total)]),
+        rows: lines.map((l) => [`${pname(l)}`, num(l.qty), money(l.line_total)]),
         totals: [["Montant de la vente annulée", money(s.total), true], ["Montant remboursé", money(s.paid)]],
         status: { label: "ANNULÉ", tone: "bad" },
         notes: ["Le reçu de vente d'origine reste conservé tel quel. Ce rectificatif annule ses effets."],
