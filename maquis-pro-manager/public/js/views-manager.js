@@ -790,8 +790,32 @@ export async function viewSale(main, id) {
     ),
     card("Paiements", table([{ label: "Date", get: (p) => datetime(p.at) }, { label: "Mode", get: (p) => p.method }, { label: "Type", get: (p) => (p.kind === "credit" ? "Règlement de crédit" : "À la vente") }, { label: "Montant", r: true, get: (p) => money(p.amount) }, { label: "Reçu", get: (p) => (p.doc_no ? h("a", { href: `#/recus/${p.doc_no}` }, p.doc_no) : "") }], s.payments)),
     docsCard(s.documents),
-    canCancel ? cancelButton(`/api/sales/${id}/cancel`, "Annuler cette vente", "Les bouteilles seront remises en stock. Si de l'argent a été encaissé, un remboursement sera enregistré dans une caisse ouverte. Un document rectificatif sera créé.", () => viewSale(main, id)) : null,
+    canCancel ? cancelSaleButton(s, () => viewSale(main, id)) : null,
   );
+}
+
+function cancelSaleButton(s, done) {
+  return h("div", { class: "mt" }, h("button", { class: "btn danger", on: { click: async () => {
+    const reason = input("reason", { required: true, minlength: 5, placeholder: "Motif de l'annulation (obligatoire)" });
+    const open = S.user.role === "manager" && s.paid > 0 ? (await GET("/api/cash/sessions?status=open").catch(() => [])) : [];
+    const sessionSel = open.length > 1 ? select("refund_session_id", open.map((x) => ({ value: x.id, label: `Caisse de ${x.cashier_name}` })), open[0].id) : null;
+    const body = h(
+      "div",
+      { class: "form" },
+      h("p", { class: "text-2" }, `Les bouteilles seront remises en stock. ${s.paid > 0 ? `${money(s.paid)} déjà encaissés seront remboursés depuis une caisse ouverte (celle de la vente si elle est encore ouverte).` : "Rien n'avait été encaissé."} Un document rectificatif sera créé ; le reçu d'origine reste intact.`),
+      field("Motif", reason),
+      sessionSel ? field("Caisse qui rembourse le client", sessionSel) : null,
+    );
+    const ok = await modal("Annuler cette vente", body, [
+      { label: "Retour", class: "ghost" },
+      { label: "Confirmer l'annulation", class: "danger fill", submit: true, onClick: async () => {
+        const r = await POST(`/api/sales/${s.id}/cancel`, { reason: reason.value.trim(), refund_session_id: sessionSel ? Number(sessionSel.value) : undefined });
+        toast(`Vente annulée (${r.doc_no}).`, "good");
+        return true;
+      } },
+    ]);
+    if (ok) done();
+  } } }, icon("x"), "Annuler cette vente"));
 }
 
 export async function viewOrdersAll(main) {

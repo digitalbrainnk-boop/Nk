@@ -284,9 +284,10 @@ const v = (x) => (x === null || x === undefined ? "—" : `${x >= 0 ? "+" : ""}$
 
 function reportHeader(doc, r, title) {
   const d = r.data;
-  header(doc, { maquis: { ...(d.maquis || {}), ...pickMaquis() }, title, docNo: r.doc_no, at: r.generated_at, subtitle: d.trigger === "reprise" ? "Produit à la reprise du serveur" : d.trigger === "rectification" ? "Bilan rectificatif" : "Généré automatiquement" });
+  header(doc, { maquis: { ...(d.maquis || {}), ...pickMaquis() }, title, docNo: r.doc_no, at: r.generated_at, subtitle: d.trigger === "apercu" ? "APERÇU — non définitif" : d.trigger === "reprise" ? "Produit à la reprise du serveur" : d.trigger === "rectification" ? "Bilan rectificatif" : "Généré automatiquement" });
   doc.font("Helvetica-Bold").fontSize(13).fillColor(C.text).text(clean(d.period.label));
   doc.font("Helvetica").fontSize(8.5).fillColor(C.muted).text(clean(`Période : du ${d.period.start_label} au ${d.period.end_label} (heure du Burkina Faso)`));
+  if (d.trigger === "apercu") doc.font("Helvetica-Bold").fillColor(C.warn).text(clean("APERÇU produit à la demande à partir des opérations déjà enregistrées. Il n'est pas conservé : le bilan définitif est produit automatiquement à la clôture de la période."));
   if (d.version > 1) doc.font("Helvetica-Bold").fillColor(C.bad).text(clean(`Version ${d.version} — rectifie le ${d.rectifies} (des opérations ont été enregistrées ou annulées après la clôture). L'original reste consultable.`));
   doc.moveDown(0.6);
 }

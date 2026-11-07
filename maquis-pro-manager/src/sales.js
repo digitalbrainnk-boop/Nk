@@ -304,13 +304,24 @@ export function cancelSale(ctx, saleId, body) {
   const own = openSessionOf(ctx.user.id);
   if (ctx.user.role === "cashier" && !(own && own.id === s.session_id)) throw forbidden("Un caissier ne peut annuler que les ventes de sa caisse en cours. Demandez au gérant.");
   const payments = all("SELECT * FROM payments WHERE sale_id = ?", s.id);
-  // Caisse qui rembourse : celle de la vente si elle est encore ouverte, sinon celle du caissier qui annule.
+  // Caisse qui rembourse : celle de la vente si elle est encore ouverte ; sinon (gérant) une caisse
+  // ouverte qu'il désigne, ou la seule caisse ouverte. Une caisse fermée n'est jamais modifiée.
   let refundSession = null;
   if (payments.length) {
     const origin = get("SELECT * FROM cash_sessions WHERE id = ? AND status = 'open'", s.session_id);
     refundSession = origin || own;
-    if (!refundSession)
-      throw bad("Cette vente a été encaissée dans une caisse déjà fermée : le remboursement doit passer par une caisse ouverte. Demandez au caissier d'annuler la vente depuis sa caisse.");
+    if (!refundSession) {
+      const open = all("SELECT cs.*, u.full_name AS cashier FROM cash_sessions cs JOIN users u ON u.id = cs.cashier_id WHERE cs.status = 'open'");
+      if (body.refund_session_id) refundSession = open.find((x) => x.id === Number(body.refund_session_id)) || null;
+      else if (open.length === 1) refundSession = open[0];
+      if (!refundSession)
+        throw bad(
+          open.length
+            ? "Cette vente a été encaissée dans une caisse déjà fermée : choisissez la caisse ouverte qui rembourse le client."
+            : "Cette vente a été encaissée dans une caisse déjà fermée : le remboursement doit passer par une caisse ouverte. Demandez au caissier d'ouvrir sa caisse, puis annulez la vente.",
+          { needs_refund_session: open.length > 0, open_sessions: open.map((x) => ({ id: x.id, cashier: x.cashier })) },
+        );
+    }
   }
   return tx(() => {
     const t = now();

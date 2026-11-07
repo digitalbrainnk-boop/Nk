@@ -303,6 +303,38 @@ test("12 et 14. bilan quotidien automatique à 03 h 00 avec les quantités par m
   assert.equal(viaDoc.status, 200);
 });
 
+test("aperçus PDF et Excel des bilans en cours, sans attendre 03 h 00", async () => {
+  const daily = await A.manager.get("/api/reports/preview/pdf?kind=daily");
+  assert.equal(daily.status, 200);
+  assert.equal(daily.data.subarray(0, 5).toString(), "%PDF-");
+  const weekly = await A.owner.get("/api/reports/preview/xlsx?kind=weekly&key=2026-11-04");
+  assert.equal(weekly.status, 200);
+  assert.equal(weekly.data.subarray(0, 2).toString(), "PK");
+  const json = await A.owner.ok("GET", "/api/reports/preview?kind=weekly&key=2026-11-04");
+  assert.equal(json.period_key, "2026-11-02"); // ramené au lundi de la semaine
+  assert.equal(json.data.trigger, "apercu");
+  assert.equal((await A.cashier.get("/api/reports/preview/pdf")).status, 403);
+  // Un aperçu n'est jamais enregistré comme bilan.
+  assert.equal((await A.owner.ok("GET", "/api/reports")).filter((r) => r.kind === "weekly").length, 0);
+});
+
+test("le gérant annule une vente payée d'une caisse fermée : remboursement par une caisse ouverte", async () => {
+  // La vente de 10 Brakina (7 000 FCFA, caisse fermée le 2 novembre).
+  const sale = (await A.manager.ok("GET", "/api/sales?from=2026-11-02&to=2026-11-02")).find((x) => x.doc_no === saleDoc);
+  const openNow = (await A.manager.ok("GET", "/api/cash/sessions?status=open"));
+  assert.equal(openNow.length, 1); // la caisse ouverte le 2 au soir pour l'essai d'annulation
+  const before = (await A.cashier.ok("GET", "/api/cash/current")).session.methods.find((m) => m.method === "Espèces").theoretical;
+  const r = await A.manager.ok("POST", `/api/sales/${sale.id}/cancel`, { reason: "Erreur de caisse constatée le lendemain" });
+  assert.equal(r.refunds.length, 1);
+  const after = (await A.cashier.ok("GET", "/api/cash/current")).session.methods.find((m) => m.method === "Espèces").theoretical;
+  assert.equal(before - after, 7000);
+  // La caisse d'origine, déjà fermée, n'a pas bougé.
+  const closed = (await A.manager.ok("GET", "/api/cash/sessions?status=closed"))[0];
+  assert.equal(closed.totals.theoretical, 15500);
+  // Le bilan du 2 novembre sera rectifié. La vente est refaite (journée du 3) pour garder les totaux de la semaine.
+  await A.cashier.ok("POST", "/api/sales", { waiter_id: (await A.waiter.ok("GET", "/api/me")).user.id, lines: [{ product_id: P.brakina.id, qty: 10 }], payments: [{ method: "Espèces", amount: 7000 }] });
+});
+
 test("16 et 17. hors connexion : synchronisation sans doublon, bilan rectificatif si la journée est close", async () => {
   at("2026-11-03T10:00:00Z");
   await A.waiter.ok("POST", "/api/auth/logout");

@@ -233,7 +233,7 @@ export async function viewReports(main) {
         "div",
         { class: "grid g2 mb" },
         h("div", { class: "card" }, h("div", { class: "flex between" }, h("div", null, h("h3", null, "Bilan quotidien"), h("p", { class: "small muted" }, "Tous les jours à 03 h 00 (heure du Burkina Faso)")), chip("Automatique", "good")), h("p", null, "Prochain : ", h("b", null, datetime(st.next_daily))), h("div", { class: "btnrow" }, h("a", { class: "btn sm", href: `#/rapports/apercu/daily/${st.business_day}` }, "Voir la journée en cours"))),
-        h("div", { class: "card" }, h("div", { class: "flex between" }, h("div", null, h("h3", null, "Bilan hebdomadaire"), h("p", { class: "small muted" }, "Chaque lundi à 03 h 00 (heure du Burkina Faso)")), chip("Automatique", "good")), h("p", null, "Prochain : ", h("b", null, datetime(st.next_weekly)))),
+        h("div", { class: "card" }, h("div", { class: "flex between" }, h("div", null, h("h3", null, "Bilan hebdomadaire"), h("p", { class: "small muted" }, "Chaque lundi à 03 h 00 (heure du Burkina Faso)")), chip("Automatique", "good")), h("p", null, "Prochain : ", h("b", null, datetime(st.next_weekly))), h("div", { class: "btnrow" }, h("a", { class: "btn sm", href: `#/rapports/apercu/weekly/${st.current_week}` }, "Voir la semaine en cours"))),
       ),
       st.pending_rectifications ? h("div", { class: "banner warn" }, icon("alert"), `${st.pending_rectifications} bilan(s) rectificatif(s) en cours de préparation (opérations arrivées après la clôture).`) : null,
     );
@@ -249,8 +249,12 @@ export async function viewReport(main, id, preview = null) {
   main.replaceChildren(loader());
   const r = preview ? await GET(`/api/reports/preview?kind=${preview.kind}&key=${preview.key}`) : await GET(`/api/reports/${id}`);
   const d = r.data;
+  const pq = preview ? `kind=${preview.kind}&key=${r.period_key}` : "";
   const actions = preview
-    ? []
+    ? [
+        h("button", { class: "btn primary", on: { click: () => downloadUrl(`/api/reports/preview/pdf?${pq}`) } }, icon("download"), "PDF de l'aperçu"),
+        h("button", { class: "btn", on: { click: () => downloadUrl(`/api/reports/preview/xlsx?${pq}`) } }, icon("download"), "Excel"),
+      ]
     : [
         h("button", { class: "btn primary", on: { click: () => downloadUrl(`/api/reports/${r.id}/pdf`) } }, icon("download"), "PDF"),
         h("button", { class: "btn", on: { click: () => downloadUrl(`/api/reports/${r.id}/xlsx`) } }, icon("download"), "Excel"),
@@ -268,7 +272,7 @@ export async function viewReport(main, id, preview = null) {
       "div",
       null,
       preview
-        ? `Aperçu en direct de la période en cours (${d.period.start_label} → maintenant). Le bilan définitif sera produit automatiquement à la clôture.`
+        ? `Aperçu en direct (${d.period.start_label} → ${d.period.end > Date.now() ? "maintenant" : d.period.end_label}), calculé à partir des opérations déjà enregistrées. Il n'est pas conservé : le bilan définitif est produit automatiquement à la clôture.`
         : `${r.doc_no} — produit le ${datetime(r.generated_at)} (${{ automatique: "automatiquement à l'heure prévue", reprise: "à la reprise du serveur", rectification: "bilan rectificatif" }[r.trigger] || r.trigger}). Période : ${d.period.start_label} → ${d.period.end_label}.`,
       !preview && d.version > 1 ? h("div", null, `Rectifie ${d.rectifies} : des opérations ont été enregistrées ou annulées après la clôture. L'original reste consultable ci-dessous.`) : null,
     ),

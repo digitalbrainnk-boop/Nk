@@ -558,6 +558,7 @@ export function reportStatus() {
   const today = businessDay(t);
   return {
     business_day: today,
+    current_week: weekStart(today),
     next_daily: dayBounds(today).end,
     next_weekly: weekBounds(weekStart(today)).end,
     last_check: getSetting("last_report_check") || null,

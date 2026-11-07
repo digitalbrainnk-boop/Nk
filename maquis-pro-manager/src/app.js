@@ -5,7 +5,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { openDb, all, get, run, tx, allSettings, setSetting, getDataDir } from "./db.js";
-import { now, businessDay, isDay, dayBounds, fmtDateTime } from "./time.js";
+import { now, businessDay, isDay, dayBounds, weekStart, fmtDateTime } from "./time.js";
 import { AppError, bad, forbidden, notFound, str, int, money } from "./util.js";
 import * as auth from "./auth.js";
 import { audit, verifyAuditChain } from "./audit.js";
@@ -413,16 +413,44 @@ export function createApp() {
   api.get("/reports", need("owner", "manager"), h((req) => reports.listReports(req.query)));
   api.get("/reports/status", need("owner", "manager"), h(() => reports.reportStatus()));
   api.post("/reports/run", need("owner", "manager"), h(() => ({ generated: reports.runDueReports() })));
-  api.get(
-    "/reports/preview",
-    need("owner", "manager"),
-    h((req) => {
-      const kind = req.query.kind === "weekly" ? "weekly" : "daily";
-      const key = isDay(req.query.key) ? req.query.key : businessDay();
-      const data = kind === "daily" ? reports.computeDaily(key) : reports.computeWeekly(key);
-      return { kind, period_key: key, preview: true, data: { ...data, generated_label: fmtDateTime(now()), version: 0 } };
-    }),
-  );
+  // Aperçu en direct d'une période (en cours ou passée) : sert à vérifier un bilan sans attendre 03 h 00.
+  // Il n'est jamais enregistré : seul le bilan automatique fait foi.
+  const previewReport = (req) => {
+    const kind = req.query.kind === "weekly" ? "weekly" : "daily";
+    const today = businessDay();
+    let key = isDay(req.query.key) ? req.query.key : today;
+    if (key > today) key = today;
+    if (kind === "weekly") key = weekStart(key);
+    const t = now();
+    const data = kind === "daily" ? reports.computeDaily(key) : reports.computeWeekly(key);
+    return {
+      id: 0,
+      kind,
+      period_key: key,
+      preview: true,
+      doc_no: `APERCU-${kind === "daily" ? "BJ" : "BH"}-${key}`,
+      generated_at: t,
+      trigger: "apercu",
+      data: { ...data, version: 0, generated_at: t, generated_label: fmtDateTime(t), trigger: "apercu", maquis: { name: allSettings().maquis_name } },
+    };
+  };
+  api.get("/reports/preview", need("owner", "manager"), h((req) => previewReport(req)));
+  api.get("/reports/preview/pdf", need("owner", "manager"), async (req, res, next) => {
+    try {
+      const r = previewReport(req);
+      sendFile(res, await renderReportPdf(r), "application/pdf", `${r.doc_no}.pdf`, req.query.inline === "1");
+    } catch (e) {
+      next(e);
+    }
+  });
+  api.get("/reports/preview/xlsx", need("owner", "manager"), (req, res, next) => {
+    try {
+      const r = previewReport(req);
+      sendFile(res, reportToXlsx(r), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", `${r.doc_no}.xlsx`);
+    } catch (e) {
+      next(e);
+    }
+  });
   api.get("/reports/:id", need("owner", "manager"), h((req) => reports.getReport(id(req))));
   api.get("/reports/:id/pdf", need("owner", "manager"), async (req, res, next) => {
     try {

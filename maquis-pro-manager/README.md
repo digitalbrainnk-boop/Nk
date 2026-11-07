@@ -25,6 +25,16 @@ Application de gestion d'un maquis : stocks, entrées et sorties de boissons, co
 | Fournisseurs, dettes, paiements, consignes et casiers | ✅ |
 | Fonctionnement hors connexion avec synchronisation sans doublon | ✅ Testé dans un vrai navigateur |
 
+## Tester avant la mise en ligne
+
+Sans hébergeur : l'application tourne sur un téléphone Android (Termux) ou un ordinateur Windows, avec un lien https temporaire et gratuit pour les autres téléphones de test. Dans Termux :
+
+```
+curl -fsSL https://raw.githubusercontent.com/digitalbrainnk-boop/Nk/ccr-98ef2a93-v667hk/maquis-pro-manager/installer-android.sh | bash
+```
+
+Sur Windows : double-cliquez sur `DEMARRER-TEST.bat`. La marche à suivre et la liste complète des tests sont dans [docs/TESTER-AVANT-MISE-EN-LIGNE.md](docs/TESTER-AVANT-MISE-EN-LIGNE.md).
+
 ## Démarrage rapide (ordinateur ou serveur)
 
 Il faut **Node.js 22.16 ou plus récent**.
@@ -45,10 +55,11 @@ Mise en ligne (o2switch, serveur Docker) et tâche planifiée de 03 h 00 : voir 
 npm test
 ```
 
-24 tests automatiques sur un vrai serveur et une vraie base. Ils couvrent les 18 tests obligatoires du cahier des charges (scénario d'une semaine dans un maquis : entrées, ventes, casses, crédits, caisse, reçus, permissions, bilans de 03 h 00 et du lundi, hors connexion, sauvegarde et restauration), ainsi que la sécurité. Le détail est dans [docs/DOCUMENTATION-TECHNIQUE.md](docs/DOCUMENTATION-TECHNIQUE.md#tests).
+26 tests automatiques sur un vrai serveur et une vraie base. Ils couvrent les 18 tests obligatoires du cahier des charges (scénario d'une semaine dans un maquis : entrées, ventes, casses, crédits, caisse, reçus, permissions, bilans de 03 h 00 et du lundi, hors connexion, sauvegarde et restauration), ainsi que la sécurité. Le détail est dans [docs/DOCUMENTATION-TECHNIQUE.md](docs/DOCUMENTATION-TECHNIQUE.md#tests).
 
 ## Documentation
 
+- [Tester avant la mise en ligne](docs/TESTER-AVANT-MISE-EN-LIGNE.md) : installation de test et liste de vérifications.
 - [Guide d'utilisation](docs/GUIDE-UTILISATION.md) : propriétaire, gérant, caissier, serveur.
 - [Installation et mise en ligne](docs/INSTALLATION.md).
 - [Documentation technique](docs/DOCUMENTATION-TECHNIQUE.md) : architecture, règles de calcul, sécurité, API.
