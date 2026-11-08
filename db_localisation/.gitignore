@@ -31,3 +31,9 @@ ios/Runner/GoogleService-Info.plist
 .env
 *.keystore
 key.properties
+
+# Exception : keystore de DEBUG (non sensible, mot de passe standard « android »).
+# Versionné exprès pour que tous les APK de test aient la MÊME signature
+# (mises à jour installables sans désinstaller). NE JAMAIS signer la version de
+# production avec celui-ci : un vrai keystore privé sera créé pour le Store.
+!android-signing/debug.keystore

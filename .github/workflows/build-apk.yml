@@ -49,6 +49,13 @@ jobs:
       - name: Restaurer notre AndroidManifest (permissions + queries)
         run: git checkout -- android/app/src/main/AndroidManifest.xml
 
+      - name: Utiliser le keystore de debug stable (signature constante)
+        run: |
+          # Tous les APK partagent ainsi la même signature : les mises à jour
+          # s'installent par-dessus, sans avoir à désinstaller l'app.
+          mkdir -p ~/.android
+          cp android-signing/debug.keystore ~/.android/debug.keystore
+
       - name: Récupérer les dépendances
         run: flutter pub get
 

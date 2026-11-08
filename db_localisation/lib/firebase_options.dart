@@ -1,12 +1,9 @@
-// Valeurs d'EXEMPLE : régénérez ce fichier avec `flutterfire configure`.
-// Voir docs/01-configurer-firebase.md. Le projet compile avec ces placeholders.
-// Ce fichier est normalement généré par la commande :
-//   flutterfire configure
-// qui crée `lib/firebase_options.dart` avec les vraies clés de VOTRE projet
-// Firebase. Copiez ce gabarit en `firebase_options.dart` seulement si vous
-// voulez remplir les valeurs à la main (déconseillé : préférez flutterfire).
+// Configuration Firebase du projet « db-localisation-9cd9c ».
 //
-// Voir docs/01-configurer-firebase.md.
+// Valeurs ANDROID réelles (issues de google-services.json). Les entrées web et
+// iOS reprennent les mêmes identifiants de projet pour que le build soit propre ;
+// pour une vraie version web/iOS en production, enregistrez une app web/iOS
+// dédiée dans la console Firebase et remplacez leur `appId`.
 
 import 'package:firebase_core/firebase_core.dart' show FirebaseOptions;
 import 'package:flutter/foundation.dart'
@@ -25,30 +22,32 @@ class DefaultFirebaseOptions {
     }
   }
 
-  // Remplacez TOUTES les valeurs "VOTRE_..." par celles de votre projet.
-  static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'VOTRE_WEB_API_KEY',
-    appId: 'VOTRE_WEB_APP_ID',
-    messagingSenderId: 'VOTRE_SENDER_ID',
-    projectId: 'VOTRE_PROJECT_ID',
-    authDomain: 'VOTRE_PROJECT_ID.firebaseapp.com',
-    storageBucket: 'VOTRE_PROJECT_ID.appspot.com',
-  );
-
+  // --- ANDROID : valeurs réelles du projet (APK de test) ---
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'VOTRE_ANDROID_API_KEY',
-    appId: 'VOTRE_ANDROID_APP_ID',
-    messagingSenderId: 'VOTRE_SENDER_ID',
-    projectId: 'VOTRE_PROJECT_ID',
-    storageBucket: 'VOTRE_PROJECT_ID.appspot.com',
+    apiKey: 'AIzaSyDEnyQGswuRUQc6CRRxV87m2Nc51GEBw5Y',
+    appId: '1:460440111201:android:d1acaf32f56125206f0220',
+    messagingSenderId: '460440111201',
+    projectId: 'db-localisation-9cd9c',
+    storageBucket: 'db-localisation-9cd9c.firebasestorage.app',
   );
 
+  // --- WEB : reprend le projet (appId à remplacer par une vraie app web) ---
+  static const FirebaseOptions web = FirebaseOptions(
+    apiKey: 'AIzaSyDEnyQGswuRUQc6CRRxV87m2Nc51GEBw5Y',
+    appId: '1:460440111201:android:d1acaf32f56125206f0220',
+    messagingSenderId: '460440111201',
+    projectId: 'db-localisation-9cd9c',
+    authDomain: 'db-localisation-9cd9c.firebaseapp.com',
+    storageBucket: 'db-localisation-9cd9c.firebasestorage.app',
+  );
+
+  // --- iOS : reprend le projet (appId à remplacer par une vraie app iOS) ---
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'VOTRE_IOS_API_KEY',
-    appId: 'VOTRE_IOS_APP_ID',
-    messagingSenderId: 'VOTRE_SENDER_ID',
-    projectId: 'VOTRE_PROJECT_ID',
-    storageBucket: 'VOTRE_PROJECT_ID.appspot.com',
+    apiKey: 'AIzaSyDEnyQGswuRUQc6CRRxV87m2Nc51GEBw5Y',
+    appId: '1:460440111201:android:d1acaf32f56125206f0220',
+    messagingSenderId: '460440111201',
+    projectId: 'db-localisation-9cd9c',
+    storageBucket: 'db-localisation-9cd9c.firebasestorage.app',
     iosBundleId: 'com.dblocalisation.app',
   );
 }
