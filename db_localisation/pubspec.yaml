@@ -50,7 +50,8 @@ dependencies:
   latlong2: ^0.10.1
 
   # --- Commandes à distance (étape 4) ---
-  audioplayers: ^6.8.1   # Faire sonner (son d'alarme embarqué, canal alarme).
+  audioplayers: ^6.8.1       # Faire sonner (son d'alarme embarqué).
+  volume_controller: ^3.7.1  # Forcer/verrouiller le volume pendant l'alarme.
 
   # --- Suivi persistant (étape 2bis) ---
   flutter_background_service: ^5.1.0   # Service qui repart au redémarrage.

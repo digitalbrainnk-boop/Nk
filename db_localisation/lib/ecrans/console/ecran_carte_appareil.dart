@@ -253,6 +253,14 @@ class _EcranCarteAppareilState extends State<EcranCarteAppareil> {
                 ),
               ],
             ),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: () => _envoyerCommande(TypesCommande.arreterAlarme),
+                icon: const Icon(Icons.volume_off, size: 18),
+                label: const Text('Arrêter l\'alarme'),
+              ),
+            ),
           ],
         ),
       ),

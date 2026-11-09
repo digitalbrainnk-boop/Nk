@@ -10,6 +10,7 @@ import 'dart:async';
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
+import 'package:volume_controller/volume_controller.dart';
 
 import '../core/constantes.dart';
 import '../modeles/commande.dart';
@@ -22,7 +23,6 @@ class ServiceCommandes {
   final ServiceFirestore _firestore = ServiceFirestore();
   final AudioPlayer _lecteur = AudioPlayer();
   StreamSubscription<List<Commande>>? _sub;
-  Timer? _timerAlarme; // Sécurité : arrête l'alarme même si l'écran est fermé.
   String? _uid;
   String? _deviceId;
 
@@ -60,6 +60,9 @@ class ServiceCommandes {
       case TypesCommande.alarme:
         await _jouerAlarme();
         break;
+      case TypesCommande.arreterAlarme:
+        await arreterAlarme(); // Coupure à distance depuis la console.
+        break;
       case TypesCommande.verrouiller:
         messageVerrou.value = (c.payload['message'] as String?) ??
             'Téléphone perdu. Merci de contacter son propriétaire.';
@@ -84,12 +87,13 @@ class ServiceCommandes {
 
   Future<void> _jouerAlarme() async {
     try {
-      // Canal ALARME d'Android : fort, et sonne même en mode silencieux.
+      // On joue sur le canal MÉDIA (non coupé par le mode silencieux) pour que
+      // le verrouillage du volume agisse sur le même canal que les boutons.
       await _lecteur.setAudioContext(
         AudioContext(
           android: const AudioContextAndroid(
-            contentType: AndroidContentType.sonification,
-            usageType: AndroidUsageType.alarm,
+            contentType: AndroidContentType.music,
+            usageType: AndroidUsageType.media,
             audioFocus: AndroidAudioFocus.gain,
           ),
           iOS: AudioContextIOS(
@@ -98,22 +102,34 @@ class ServiceCommandes {
           ),
         ),
       );
-      await _lecteur.setReleaseMode(ReleaseMode.loop); // En boucle.
+      await _lecteur.setReleaseMode(ReleaseMode.loop); // Sonne SANS FIN.
       await _lecteur.setVolume(1.0);
+
+      // Verrouille le volume au maximum : toute tentative de le baisser est
+      // immédiatement annulée, et on masque le curseur système.
+      VolumeController.instance.showSystemUI = false;
+      await VolumeController.instance.setVolume(1.0);
+      await VolumeController.instance.removeListener();
+      VolumeController.instance.addListener((v) {
+        if (v < 0.999) VolumeController.instance.setVolume(1.0);
+      }, fetchInitialVolume: false);
+
       await _lecteur.play(AssetSource('alarme.wav'));
       alarmeActive.value = true;
-      // Sécurité : l'alarme s'arrête seule après 2 min (évite qu'elle sonne
-      // sans fin si le bouton « Arrêter » n'est pas accessible).
-      _timerAlarme?.cancel();
-      _timerAlarme = Timer(const Duration(minutes: 2), arreterAlarme);
+      // PAS d'arrêt automatique : l'alarme sonne jusqu'à ce que l'utilisateur
+      // la coupe (bouton local, ou commande « arrêter » depuis la console).
     } catch (_) {
       // Plateforme sans audio (ou erreur) : on ignore proprement.
     }
   }
 
-  /// Arrête l'alarme (bouton local sur l'appareil protégé, ou minuterie).
+  /// Arrête l'alarme et redonne la main sur le volume. Déclenché par le bouton
+  /// local sur l'appareil, ou par la commande ARRETER_ALARME depuis la console.
   Future<void> arreterAlarme() async {
-    _timerAlarme?.cancel();
+    try {
+      await VolumeController.instance.removeListener();
+      VolumeController.instance.showSystemUI = true;
+    } catch (_) {}
     try {
       await _lecteur.stop();
     } catch (_) {}

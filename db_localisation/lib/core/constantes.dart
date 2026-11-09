@@ -43,6 +43,7 @@ class RolesAppareil {
 class TypesCommande {
   static const String localiserMaintenant = 'LOCALISER_MAINTENANT';
   static const String alarme = 'ALARME';
+  static const String arreterAlarme = 'ARRETER_ALARME'; // Couper l'alarme à distance.
   static const String verrouiller = 'VERROUILLER';
   static const String effacer = 'EFFACER'; // Optionnel, avec confirmation.
 }
