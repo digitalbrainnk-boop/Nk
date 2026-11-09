@@ -22,6 +22,7 @@ class ServiceCommandes {
   final ServiceFirestore _firestore = ServiceFirestore();
   final AudioPlayer _lecteur = AudioPlayer();
   StreamSubscription<List<Commande>>? _sub;
+  Timer? _timerAlarme; // Sécurité : arrête l'alarme même si l'écran est fermé.
   String? _uid;
   String? _deviceId;
 
@@ -101,13 +102,18 @@ class ServiceCommandes {
       await _lecteur.setVolume(1.0);
       await _lecteur.play(AssetSource('alarme.wav'));
       alarmeActive.value = true;
+      // Sécurité : l'alarme s'arrête seule après 2 min (évite qu'elle sonne
+      // sans fin si le bouton « Arrêter » n'est pas accessible).
+      _timerAlarme?.cancel();
+      _timerAlarme = Timer(const Duration(minutes: 2), arreterAlarme);
     } catch (_) {
       // Plateforme sans audio (ou erreur) : on ignore proprement.
     }
   }
 
-  /// Arrête l'alarme (bouton local sur l'appareil protégé).
+  /// Arrête l'alarme (bouton local sur l'appareil protégé, ou minuterie).
   Future<void> arreterAlarme() async {
+    _timerAlarme?.cancel();
     try {
       await _lecteur.stop();
     } catch (_) {}
