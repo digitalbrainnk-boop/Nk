@@ -20,6 +20,15 @@ class ClesStockage {
   /// L'utilisateur a vu et accepté l'avertissement de localisation (exigé
   /// par Google Play avant de demander la permission de localisation).
   static const String divulgationLocalisation = 'db_divulgation_localisation';
+
+  /// Identifiant du compte connecté (sauvegardé pour le service d'arrière-plan,
+  /// qui tourne dans un isolat séparé sans accès direct à l'écran).
+  static const String uidCompte = 'db_uid_compte';
+
+  /// Le suivi doit-il être actif ? Lu par le service d'arrière-plan, y compris
+  /// au redémarrage du téléphone (ne relance le suivi que si l'utilisateur
+  /// l'avait activé).
+  static const String suiviActif = 'db_suivi_actif';
 }
 
 /// Rôles possibles d'un appareil dans l'application.

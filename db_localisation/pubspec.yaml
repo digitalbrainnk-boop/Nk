@@ -52,6 +52,9 @@ dependencies:
   # --- Commandes à distance (étape 4) ---
   audioplayers: ^6.8.1   # Faire sonner (son d'alarme embarqué, canal alarme).
 
+  # --- Suivi persistant (étape 2bis) ---
+  flutter_background_service: ^5.1.0   # Service qui repart au redémarrage.
+
 dev_dependencies:
   flutter_lints: ^4.0.0
   flutter_test:
