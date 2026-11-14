@@ -181,6 +181,8 @@ Les chansons sont les MP3 du dossier `DATA_DIR/vitrine` (`~/dbmelo-donnees/vitri
 - **`dbmelo-cles` → e) Vitrine → a)** : choisir parmi les dernières chansons payées du site (titre, styles et pochette repris de la chanson) ;
 - **cPanel → Gestionnaire de fichiers → dbmelo-donnees/vitrine → Téléverser** : n'importe quel MP3 ; titre lu dans l'étiquette ID3 (les MP3 téléchargés depuis DB.Mélo l'ont, avec la pochette) ou tiré du nom du fichier ; une image `.jpg` du même nom sert de pochette ; un `.json` du même nom (`{"title": "…", "subtitle": "…"}`) fixe le titre et le sous-titre.
 
+Les premières chansons (dossier `vitrine/` du dépôt, glissé dans le paquet) sont copiées **une seule fois** dans `DATA_DIR/vitrine` par `installer.sh` (repère `.premieres-chansons`) : une chanson retirée ensuite ne revient pas à la mise à jour suivante.
+
 Visibles par tous les visiteurs : n'y mettre que ses propres chansons, ou celles de clients d'accord. Pas de vitrine si le dossier est vide.
 
 ### Application Android à télécharger

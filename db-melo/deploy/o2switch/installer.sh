@@ -79,6 +79,15 @@ case "$SITE" in
   *) echo "ℹ️  Redirection https : renseigne d'abord l'adresse du site (dbmelo-cles, choix s)." ;;
 esac
 
+# Vitrine : premières chansons fournies avec DB.Mélo, copiées une seule fois dans les données ;
+# ensuite « dbmelo-cles » (choix e) pour en ajouter ou en retirer, sans qu'elles reviennent.
+if [ -d "$VERSION/vitrine" ] && [ ! -e "$DONNEES/vitrine/.premieres-chansons" ]; then
+  mkdir -p "$DONNEES/vitrine"
+  cp -n "$VERSION"/vitrine/* "$DONNEES/vitrine/" 2>/dev/null
+  touch "$DONNEES/vitrine/.premieres-chansons"
+  echo "Vitrine : $(ls "$VERSION"/vitrine/*.mp3 2>/dev/null | wc -l) chansons ajoutées à l'accueil."
+fi
+
 # Bascule sur la nouvelle version, puis redémarrage.
 ln -sfn "$VERSION" "$APP/actuelle"
 touch "$APP/tmp/restart.txt"
