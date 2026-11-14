@@ -5,6 +5,7 @@ import { Header } from "@/components/layout/Header";
 import { AndroidUpdateBanner, InAppBanner, InstallBanner } from "@/components/pwa/InstallPrompt";
 import { ServiceWorkerRegister } from "@/components/pwa/ServiceWorkerRegister";
 import { UpdateWatcher } from "@/components/pwa/UpdateWatcher";
+import { ShowcaseProvider } from "@/components/showcase/Showcase";
 import { BRAND } from "@/lib/constants";
 import "./globals.css";
 
@@ -38,7 +39,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="studio-glow min-h-dvh antialiased">
         <Header />
         <InAppBanner />
-        <main>{children}</main>
+        <ShowcaseProvider>
+          <main>{children}</main>
+        </ShowcaseProvider>
         <Footer />
         <InstallBanner />
         <AndroidUpdateBanner />

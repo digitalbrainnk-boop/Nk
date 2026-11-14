@@ -101,3 +101,62 @@ export function imageMime(data: Uint8Array): "image/jpeg" | "image/png" | null {
   if (data[0] === 0x89 && data[1] === 0x50 && data[2] === 0x4e && data[3] === 0x47) return "image/png";
   return null;
 }
+
+/* ───────────── Lecture (titre et pochette) ───────────── */
+
+function decodeText(enc: number, b: Uint8Array): string {
+  if (enc === 1 || enc === 2) {
+    let le = enc === 1;
+    let start = 0;
+    if (enc === 1 && b.length >= 2) {
+      if (b[0] === 0xfe && b[1] === 0xff) le = false;
+      if ((b[0] === 0xff && b[1] === 0xfe) || (b[0] === 0xfe && b[1] === 0xff)) start = 2;
+    }
+    let s = "";
+    for (let i = start; i + 1 < b.length; i += 2) {
+      const code = le ? b[i] | (b[i + 1] << 8) : (b[i] << 8) | b[i + 1];
+      if (code === 0) break;
+      s += String.fromCharCode(code);
+    }
+    return s;
+  }
+  const end = b.indexOf(0);
+  const bytes = end >= 0 ? b.subarray(0, end) : b;
+  return enc === 3 ? new TextDecoder().decode(bytes) : String.fromCharCode(...bytes);
+}
+
+/** Fin d'une chaîne terminée par zéro (un ou deux octets selon l'encodage). */
+function skipTerminated(b: Uint8Array, from: number, wide: boolean): number {
+  if (!wide) {
+    const i = b.indexOf(0, from);
+    return i < 0 ? b.length : i + 1;
+  }
+  for (let i = from; i + 1 < b.length; i += 2) if (b[i] === 0 && b[i + 1] === 0) return i + 2;
+  return b.length;
+}
+
+/** Titre (TIT2) et pochette (APIC) d'un MP3 étiqueté ID3v2.3 ou v2.4, s'ils existent. */
+export function readId3(mp3: Uint8Array): { title?: string; cover?: { data: Uint8Array; mime: string } } {
+  if (mp3.length < 10 || mp3[0] !== 0x49 || mp3[1] !== 0x44 || mp3[2] !== 0x33) return {};
+  const version = mp3[3];
+  const end = Math.min(mp3.length, 10 + readSynchsafe(mp3, 6));
+  const out: { title?: string; cover?: { data: Uint8Array; mime: string } } = {};
+  let p = 10;
+  while (p + 10 <= end) {
+    const id = String.fromCharCode(mp3[p], mp3[p + 1], mp3[p + 2], mp3[p + 3]);
+    if (!/^[A-Z0-9]{4}$/.test(id)) break;
+    const size = version >= 4 ? readSynchsafe(mp3, p + 4) : ((mp3[p + 4] << 24) | (mp3[p + 5] << 16) | (mp3[p + 6] << 8) | mp3[p + 7]) >>> 0;
+    const body = mp3.subarray(p + 10, Math.min(end, p + 10 + size));
+    if (id === "TIT2" && body.length > 1) out.title = decodeText(body[0], body.subarray(1)).trim();
+    if (id === "APIC" && body.length > 4) {
+      const enc = body[0];
+      const mimeEnd = body.indexOf(0, 1);
+      const mime = String.fromCharCode(...body.subarray(1, mimeEnd));
+      const data = body.subarray(skipTerminated(body, mimeEnd + 2, enc === 1 || enc === 2));
+      const kind = imageMime(data);
+      if (kind) out.cover = { data, mime: kind || mime };
+    }
+    p += 10 + size;
+  }
+  return out;
+}

@@ -2,6 +2,7 @@ import { Check, Gift, Headphones, PenLine, Smartphone, Sparkles, Wand2 } from "l
 import Link from "next/link";
 import { HeroVisual } from "@/components/landing/HeroVisual";
 import { Reveal } from "@/components/landing/Reveal";
+import { ShowcaseSection } from "@/components/showcase/Showcase";
 import { ACTIVE_PLANS, OPERATORS, SONG_PRICES, STYLES, VOICES } from "@/lib/constants";
 import { formatPrice } from "@/lib/pricing";
 
@@ -54,6 +55,8 @@ export default function Home() {
           <HeroVisual />
         </Reveal>
       </section>
+
+      <ShowcaseSection />
 
       <section className="border-y border-line/60 bg-studio/40 py-5">
         <div className="no-scrollbar mx-auto flex max-w-6xl gap-3 overflow-x-auto px-4">

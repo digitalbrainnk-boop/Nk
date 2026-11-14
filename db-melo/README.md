@@ -173,6 +173,16 @@ Limite des navigateurs : sur iPhone, un site ne peut pas ajouter un fichier dire
 
 `manifest.webmanifest` (icônes 192/512 et maskable générées au build), icône Apple, `display: standalone`, raccourcis, service worker (coquille hors ligne, jamais de cache pour l'API). Bouton **« Installer l'app »** sur Android / Chrome / Edge, et instructions « Partager → Sur l'écran d'accueil » sur iPhone et iPad. Depuis un navigateur intégré (Facebook, TikTok, Phoenix, application Google…) ou une fenêtre ouverte par une autre application (Gmail, Telegram… : reconnue au référent `android-app://`), le site explique comment rouvrir la page dans Chrome ou Safari ; `dbmelo-cles` (test 9) vérifie que le manifeste, le service worker et les icônes répondent.
 
+### Vitrine : des chansons qui jouent dès l'arrivée
+
+Pour rassurer et donner envie, quelques chansons jouent dès l'arrivée sur l'accueil, avec un petit lecteur en bas de l'écran (pause, suivante, fermer) qui suit la navigation, et une section « Écoutez des chansons créées avec DB.Mélo ». Les navigateurs interdisant le son automatique sans geste, la musique démarre sinon au premier toucher (pas sur un lien vers le studio) ; dans l'application installée, elle démarre tout de suite. Elle se tait dans le studio, sur les pages de chanson et de cadeau, dès qu'un autre son démarre, et ne revient pas après « Pause » ou « Fermer » pendant la visite.
+
+Les chansons sont les MP3 du dossier `DATA_DIR/vitrine` (`~/dbmelo-donnees/vitrine` chez o2switch), jouées dans l'ordre des noms de fichiers (`01-…`, `02-…`) :
+- **`dbmelo-cles` → e) Vitrine → a)** : choisir parmi les dernières chansons payées du site (titre et styles repris de la chanson) ;
+- **cPanel → Gestionnaire de fichiers → dbmelo-donnees/vitrine → Téléverser** : n'importe quel MP3 ; titre lu dans l'étiquette ID3 (les MP3 téléchargés depuis DB.Mélo l'ont, avec la pochette) ou tiré du nom du fichier ; une image `.jpg` du même nom sert de pochette ; un `.json` du même nom (`{"title": "…", "subtitle": "…"}`) fixe le titre et le sous-titre.
+
+Visibles par tous les visiteurs : n'y mettre que ses propres chansons, ou celles de clients d'accord. Pas de vitrine si le dossier est vide.
+
 ### Application Android à télécharger
 
 Bouton **« Télécharger »** en haut de l'écran sur téléphone, page `dbmelo.com/telecharger` (→ `/installer`). Sur Android, un toucher ouvre la fenêtre d'installation de Chrome (`beforeinstallprompt`) : « Installer », et l'application s'installe toute seule (WebAPK). Dès que Chrome le permet (environ 30 secondes sur le site et un toucher, règle de Chrome), une **notification** le propose en bas de l'écran (sauf dans le studio ; « Plus tard » la masque 3 jours). Avant cela, la fenêtre d'aide affiche « Préparation de l'installation… » puis s'allume d'elle-même, avec le menu ⋮ en secours. Le fichier `DBMelo.apk` reste proposé, replié, pour les navigateurs qui n'installent pas. Sur iPhone, Apple n'autorisant que l'App Store, le site guide l'ajout à l'écran d'accueil.

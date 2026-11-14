@@ -261,6 +261,108 @@ tester() {
   read -r _ || true
 }
 
+# Vitrine : chansons qui jouent dès l'arrivée sur le site (dossier vitrine des données).
+donnees() { local d; d=$(lire DATA_DIR); echo "${d:-$DONNEES}"; }
+
+vitrine_titre() {
+  local j="${1%.mp3}.json" t="" song
+  if [ -f "$j" ]; then
+    t=$(json title < "$j")
+    song=$(json song < "$j")
+    [ -z "$t" ] && [ -n "$song" ] && t=$(json config.title < "$(donnees)/db/songs/$song.json" 2>/dev/null)
+  fi
+  [ -n "$t" ] && echo "$t" || basename "$1" .mp3
+}
+
+vitrine_ajouter() {
+  local vit="$1" site f id t who i=0 nums k out pos code
+  local -a liste
+  site=$(lire PUBLIC_BASE_URL)
+  if [ -z "$site" ]; then echo "Renseigne d'abord l'adresse du site (choix s)."; sleep 2; return; fi
+  mkdir -p "$vit"
+  echo
+  echo "⚠️  Les chansons de la vitrine sont écoutables par tous les visiteurs :"
+  echo "   ajoute les tiennes, ou celles de clients qui sont d'accord."
+  echo
+  for f in $(ls -t "$(donnees)"/db/songs/*.json 2>/dev/null); do
+    [ "$(json payment.status < "$f")" = "paid" ] && [ "$(json demo < "$f")" != "true" ] || continue
+    i=$((i + 1))
+    liste[$i]="$f"
+    t=$(json config.title < "$f")
+    who=$(json config.recipientName < "$f")
+    echo " $i) ${t:-Sans titre}${who:+ (pour $who)}"
+    [ "$i" -ge 15 ] && break
+  done
+  if [ "$i" = 0 ]; then
+    echo "Aucune chanson payée sur le site pour l'instant."
+    printf "Entrée pour revenir… "
+    read -r _ || true
+    return
+  fi
+  printf "Numéro(s) à ajouter (ex. 1 3) : "
+  read -r nums || return
+  for k in $nums; do
+    f="${liste[$k]:-}"
+    [ -n "$f" ] || continue
+    id=$(basename "$f" .json)
+    t=$(json config.title < "$f")
+    pos=$(printf '%02d' $(($(ls "$vit"/*.mp3 2>/dev/null | wc -l) + 1)))
+    out="$vit/$pos-$id.mp3"
+    code=$(curl -s -m 180 -o "$out.tmp" -w "%{http_code} %{content_type}" "$site/api/songs/$id/audio?quality=hd&variant=A") || code="000"
+    case "$code" in
+      200\ audio/mpeg*) mv "$out.tmp" "$out" && printf '{"song":"%s"}\n' "$id" > "${out%.mp3}.json" && echo "✅ Ajoutée : $t" ;;
+      *) rm -f "$out.tmp"; echo "❌ $t : réponse ${code%% *} (chanson pas encore prête ?)" ;;
+    esac
+  done
+  printf "Entrée pour revenir… "
+  read -r _ || true
+}
+
+vitrine() {
+  local vit n f c k
+  vit="$(donnees)/vitrine"
+  mkdir -p "$vit"
+  while true; do
+    clear 2>/dev/null || printf '\033[2J\033[H'
+    echo "=== Vitrine : chansons qui jouent à l'accueil ==="
+    n=0
+    for f in "$vit"/*.mp3; do
+      [ -e "$f" ] || continue
+      n=$((n + 1))
+      echo " $n) $(vitrine_titre "$f")"
+    done
+    [ "$n" = 0 ] && echo " (vide : ajoute 2 ou 3 chansons qui donnent envie)"
+    echo
+    echo " a) Ajouter une chanson composée sur le site"
+    [ "$n" -gt 0 ] && echo " r) Retirer une chanson"
+    echo " Entrée) Revenir au menu"
+    echo
+    echo "Un MP3 de ton téléphone : cPanel > Gestionnaire de fichiers"
+    echo "> dbmelo-donnees > vitrine > Téléverser (une image .jpg du"
+    echo "même nom sert de pochette). Visible sur le site en 1 minute."
+    printf "Ton choix : "
+    read -r c || return
+    case "$c" in
+      a | A) vitrine_ajouter "$vit" ;;
+      r | R)
+        printf "Numéro à retirer : "
+        read -r k || continue
+        n=0
+        for f in "$vit"/*.mp3; do
+          [ -e "$f" ] || continue
+          n=$((n + 1))
+          if [ "$n" = "$k" ]; then
+            rm -f "$f" "${f%.mp3}.json" "${f%.mp3}.jpg" "${f%.mp3}.jpeg" "${f%.mp3}.png"
+            echo "Retirée."
+            sleep 1
+          fi
+        done
+        ;;
+      *) return ;;
+    esac
+  done
+}
+
 # Une ligne du menu, alignée pour tenir sur l'écran étroit d'un téléphone
 # (bash compte les caractères accentués comme un seul avec ${#}, pas printf).
 ligne() {
@@ -285,6 +387,7 @@ menu() {
   ligne v "Versions" "$([ "$(lire VERSIONS_MODE)" = "styles" ] && echo "rythmée+acoustique" || echo "économiques")"
   ligne m "Modèle Suno" "$(modele)"
   ligne a "Alerte crédit Kie" "$([ "$(seuil)" = 0 ] && echo "désactivée" || echo "sous $(seuil)")"
+  ligne e "Vitrine (accueil)" "$(n=$(ls "$(donnees)"/vitrine/*.mp3 2>/dev/null | wc -l); [ "$n" = 0 ] && echo "vide" || echo "$n chanson(s)")"
   [ -n "$SERVEUR" ] && ligne s "Adresse du site" "$(u=$(lire PUBLIC_BASE_URL); echo "${u:-❌ à remplir}")"
   echo " 9) Tester mes clés"
   echo " 0) Enregistrer et relancer DB.Mélo"
@@ -396,6 +499,7 @@ while true; do
       printf "Entrée pour revenir au menu… "
       read -r _ || true
       ;;
+    e | E) vitrine ;;
     9) tester ;;
     s | S) [ -n "$SERVEUR" ] && demander PUBLIC_BASE_URL "Adresse de ton site, ex. https://dbmelo.com :" texte ;;
     0)

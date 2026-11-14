@@ -555,6 +555,7 @@ export function InstallBanner() {
         <motion.div
           role="dialog"
           aria-label="Installer l'application DB.Mélo"
+          style={{ bottom: "var(--vitrine-h, 0px)" }}
           className="safe-bottom fixed inset-x-0 bottom-0 z-40 p-3 sm:right-4 sm:bottom-4 sm:left-auto sm:w-96"
           initial={{ y: 120, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
@@ -619,6 +620,7 @@ export function AndroidUpdateBanner() {
         <motion.div
           role="dialog"
           aria-label="Mettre à jour l'application DB.Mélo"
+          style={{ bottom: "var(--vitrine-h, 0px)" }}
           className="safe-bottom fixed inset-x-0 bottom-0 z-40 p-3"
           initial={{ y: 120, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
