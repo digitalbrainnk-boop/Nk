@@ -175,10 +175,10 @@ Limite des navigateurs : sur iPhone, un site ne peut pas ajouter un fichier dire
 
 ### Vitrine : des chansons qui jouent dès l'arrivée
 
-Pour rassurer et donner envie, quelques chansons jouent dès l'arrivée sur l'accueil, avec un petit lecteur en bas de l'écran (pause, suivante, fermer) qui suit la navigation, et une section « Écoutez des chansons créées avec DB.Mélo ». Les navigateurs interdisant le son automatique sans geste, la musique démarre sinon au premier toucher (pas sur un lien vers le studio) ; dans l'application installée, elle démarre tout de suite. Elle se tait dans le studio, sur les pages de chanson et de cadeau, dès qu'un autre son démarre, et ne revient pas après « Pause » ou « Fermer » pendant la visite.
+Pour rassurer et donner envie, une petite barre en bas de l'écran présente les chansons de la vitrine (4 tiennent côte à côte sur un téléphone ; au-delà, elle défile) : un toucher joue une chanson, un autre la met en pause, la croix la ferme. Elles jouent dès l'arrivée sur l'accueil et la musique suit la navigation. Les navigateurs interdisant le son automatique sans geste, la musique démarre sinon au premier toucher (pas sur un lien vers le studio) ; dans l'application installée, elle démarre tout de suite. Elle se tait dans le studio, sur les pages de chanson et de cadeau, dès qu'un autre son démarre, et ne revient pas après « Pause » ou « Fermer » pendant la visite.
 
 Les chansons sont les MP3 du dossier `DATA_DIR/vitrine` (`~/dbmelo-donnees/vitrine` chez o2switch), jouées dans l'ordre des noms de fichiers (`01-…`, `02-…`) :
-- **`dbmelo-cles` → e) Vitrine → a)** : choisir parmi les dernières chansons payées du site (titre et styles repris de la chanson) ;
+- **`dbmelo-cles` → e) Vitrine → a)** : choisir parmi les dernières chansons payées du site (titre, styles et pochette repris de la chanson) ;
 - **cPanel → Gestionnaire de fichiers → dbmelo-donnees/vitrine → Téléverser** : n'importe quel MP3 ; titre lu dans l'étiquette ID3 (les MP3 téléchargés depuis DB.Mélo l'ont, avec la pochette) ou tiré du nom du fichier ; une image `.jpg` du même nom sert de pochette ; un `.json` du même nom (`{"title": "…", "subtitle": "…"}`) fixe le titre et le sous-titre.
 
 Visibles par tous les visiteurs : n'y mettre que ses propres chansons, ou celles de clients d'accord. Pas de vitrine si le dossier est vide.

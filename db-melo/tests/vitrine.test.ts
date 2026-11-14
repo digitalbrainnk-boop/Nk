@@ -20,7 +20,13 @@ beforeAll(async () => {
   fs.mkdirSync(dir);
   // 1. Chanson composée sur le site : titre et styles viennent de son dossier.
   const store = await import("@/lib/server/store");
-  await store.songs.put({ id: "abc", config: { title: "Maman Awa", styles: ["afropop", "zouk"] } } as unknown as SongRecord);
+  await store.songs.put({
+    id: "abc",
+    createdAt: Date.now(),
+    config: { title: "Maman Awa", recipientName: "Awa", styles: ["afropop", "zouk"] },
+    variants: { A: { tracks: [] }, B: { tracks: [] } },
+    aiCover: null,
+  } as unknown as SongRecord);
   fs.writeFileSync(path.join(dir, "01-abc.mp3"), mp3(5000));
   fs.writeFileSync(path.join(dir, "01-abc.json"), JSON.stringify({ song: "abc" }));
   // 2. MP3 téléchargé depuis DB.Mélo : titre et pochette dans l'étiquette.
@@ -46,17 +52,18 @@ describe("vitrine", () => {
   it("liste les MP3 dans l'ordre des fichiers, avec titre et style", async () => {
     const list = await showcase.listShowcase();
     expect(list.map((s) => [s.title, s.subtitle, s.cover])).toEqual([
-      ["Maman Awa", "Afro-pop · Zouk", false],
+      ["Maman Awa", "Afro-pop · Zouk", true],
       ["Joyeux anniversaire Koffi", "Créée avec DB.Mélo", true],
       ["Pour toi zouk", "Créée avec DB.Mélo", false],
     ]);
     expect(list.every((s) => /^[0-9a-f]{12}$/.test(s.id))).toBe(true);
   });
 
-  it("pochette tirée de l'étiquette, ou absente", async () => {
-    const [a, b] = await showcase.listShowcase();
-    expect(await showcase.showcaseCover(a.id)).toBeNull();
+  it("pochette tirée de l'étiquette, de la chanson du site, ou absente", async () => {
+    const [a, b, c] = await showcase.listShowcase();
+    expect((await showcase.showcaseCover(a.id))?.mime).toBe("image/png");
     expect((await showcase.showcaseCover(b.id))?.mime).toBe("image/jpeg");
+    expect(await showcase.showcaseCover(c.id)).toBeNull();
     expect(await showcase.showcaseCover("000000000000")).toBeNull();
   });
 

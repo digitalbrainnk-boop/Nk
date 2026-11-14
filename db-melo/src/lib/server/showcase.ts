@@ -8,6 +8,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { imageMime, readId3 } from "../audio/id3";
 import { STYLES } from "../constants";
+import { loadCover } from "./cover";
 import { config } from "./env";
 import { songs } from "./store";
 
@@ -21,6 +22,8 @@ export interface ShowcaseItem {
 
 interface Entry extends ShowcaseItem {
   file: string;
+  /** Chanson du site d'où vient le MP3 (sa pochette sert à la vitrine). */
+  song?: string;
 }
 
 const MAX_ITEMS = 12;
@@ -33,7 +36,7 @@ function titleFromFile(file: string): string {
   return base ? base[0].toUpperCase() + base.slice(1) : "Chanson DB.Mélo";
 }
 
-async function sidecar(file: string): Promise<{ title?: string; subtitle?: string }> {
+async function sidecar(file: string): Promise<{ title?: string; subtitle?: string; song?: string }> {
   let data: { song?: unknown; title?: unknown; subtitle?: unknown };
   try {
     data = JSON.parse(await fs.readFile(path.join(dir(), file.replace(/\.mp3$/i, ".json")), "utf8"));
@@ -45,7 +48,7 @@ async function sidecar(file: string): Promise<{ title?: string; subtitle?: strin
   const song = typeof data.song === "string" ? await songs.get(data.song).catch(() => null) : null;
   if (!song) return own;
   const styles = song.config.styles.map((id) => STYLES.find((s) => s.id === id)?.label).filter(Boolean);
-  return { title: own.title || song.config.title, subtitle: own.subtitle || styles.join(" · ") || undefined };
+  return { title: own.title || song.config.title, subtitle: own.subtitle || styles.join(" · ") || undefined, song: song.id };
 }
 
 /** Début du fichier seulement : l'étiquette ID3 (titre, pochette) est en tête. */
@@ -90,7 +93,8 @@ async function entries(): Promise<Entry[]> {
       file,
       title: extra.title || tags.title || titleFromFile(file),
       subtitle: extra.subtitle || "Créée avec DB.Mélo",
-      cover: !!tags.cover || !!(await imageFor(file)),
+      cover: !!extra.song || !!tags.cover || !!(await imageFor(file)),
+      song: extra.song,
     });
   }
   memo = { at: Date.now(), entries: list };
@@ -98,7 +102,7 @@ async function entries(): Promise<Entry[]> {
 }
 
 export async function listShowcase(): Promise<ShowcaseItem[]> {
-  return (await entries()).map(({ file: _file, ...item }) => item);
+  return (await entries()).map(({ file: _file, song: _song, ...item }) => item);
 }
 
 async function find(id: string): Promise<Entry | null> {
@@ -122,7 +126,11 @@ export async function showcaseCover(id: string): Promise<{ data: Uint8Array; mim
     const data = new Uint8Array(await fs.readFile(path.join(dir(), image)));
     return { data, mime: imageMime(data) ?? "image/jpeg" };
   }
-  return readId3(await head(entry.file)).cover ?? null;
+  const tagged = readId3(await head(entry.file)).cover;
+  if (tagged) return tagged;
+  // Chanson composée sur le site : sa pochette (photo, IA ou pochette DB.Mélo), en petit.
+  const song = entry.song ? await songs.get(entry.song).catch(() => null) : null;
+  return song ? await loadCover(song, undefined, 200).catch(() => null) : null;
 }
 
 /** Pour les tests : relire le dossier tout de suite. */

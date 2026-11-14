@@ -1,13 +1,12 @@
 "use client";
 
-// Vitrine musicale : des chansons créées avec DB.Mélo jouent dès l'arrivée sur l'accueil, avec un petit
-// lecteur en bas de l'écran (pause, suivante, fermer) qui suit la navigation. Les navigateurs interdisant
+// Vitrine musicale : une petite barre en bas de l'écran présente les chansons créées avec DB.Mélo ; elles
+// jouent dès l'arrivée sur l'accueil, et la musique suit la navigation. Les navigateurs interdisant
 // le son automatique sans geste, la musique démarre sinon au premier toucher sur la page. Elle se tait
 // pendant la création, sur les pages de chanson et de cadeau, et dès qu'un autre son est lancé.
 
 import { AnimatePresence, motion } from "framer-motion";
-import { Pause, Play, SkipForward, X } from "lucide-react";
-import Link from "next/link";
+import { Pause, Play, X } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { LogoMark } from "@/components/brand/Logo";
@@ -118,7 +117,6 @@ export function ShowcaseProvider({ children }: { children: ReactNode }) {
     audio.current?.pause();
     remember("pause");
   }, []);
-  const next = useCallback(() => void start(indexRef.current + 1), [start]);
   const close = () => {
     audio.current?.pause();
     remember("ferme");
@@ -179,56 +177,69 @@ export function ShowcaseProvider({ children }: { children: ReactNode }) {
     if (QUIET.test(pathname)) audio.current?.pause();
   }, [pathname]);
 
-  const show = songs.length > 0 && !closed && !QUIET.test(pathname) && (started || pathname === "/");
-  const song = songs[index];
+  // Une petite barre en bas de l'écran, sur toutes les pages sauf celles où la vitrine se tait.
+  const show = songs.length > 0 && !closed && !QUIET.test(pathname);
+  // Hauteur réelle de la barre (zone du bas de l'iPhone comprise) : place réservée en bas de page et
+  // pour les notifications d'installation, qui s'affichent juste au-dessus.
+  const barRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
-    document.documentElement.style.setProperty("--vitrine-h", show ? "84px" : "0px");
+    const root = document.documentElement.style;
+    const el = barRef.current;
+    if (!show || !el) {
+      root.setProperty("--vitrine-h", "0px");
+      return;
+    }
+    const measure = () => root.setProperty("--vitrine-h", `${el.offsetHeight}px`);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
   }, [show]);
 
   return (
     <ShowcaseContext.Provider value={{ songs, index, playing, play, pause }}>
       {children}
       <AnimatePresence>
-        {show && song && (
+        {show && (
           <motion.div
+            ref={barRef}
             data-vitrine
             role="region"
             aria-label="Vitrine musicale DB.Mélo"
-            className="fixed inset-x-0 bottom-0 z-30 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:right-4 sm:left-auto sm:w-96"
-            initial={{ y: 100, opacity: 0 }}
+            className="fixed inset-x-0 bottom-0 z-30 border-gold/20 border-t bg-ink/90 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl"
+            initial={{ y: 80, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
-            exit={{ y: 100, opacity: 0 }}
+            exit={{ y: 80, opacity: 0 }}
           >
-            <div className="card flex items-center gap-3 p-2.5 pr-3 shadow-2xl shadow-black/60">
-              {song.cover ? (
-                <img
-                  src={coverUrl(song)}
-                  alt=""
-                  className={`size-12 shrink-0 object-cover ${playing ? "animate-[spin_12s_linear_infinite] rounded-full" : "rounded-xl"}`}
-                />
-              ) : (
-                <span className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-studio">
-                  <LogoMark size={40} />
-                </span>
-              )}
-              <div className="min-w-0 flex-1">
-                <p className="truncate font-display text-sm font-bold">{started ? song.title : "Écoutez nos chansons"}</p>
-                <p className="truncate text-xs text-muted">{started ? song.subtitle : "Créées pour de vraies personnes"}</p>
+            <div className="mx-auto flex max-w-xl items-center gap-1 py-1.5 pr-1 pl-2">
+              <div className="flex min-w-0 flex-1 gap-1 overflow-x-auto [scrollbar-width:none]">
+                {songs.map((s, i) => {
+                  const current = i === index && playing;
+                  return (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => (current ? pause() : play(i))}
+                      aria-label={`${current ? "Pause" : "Écouter"} : ${s.title}`}
+                      aria-pressed={current}
+                      className="flex w-[23.5%] min-w-[4.6rem] shrink-0 flex-col items-center gap-1 rounded-xl px-1 py-0.5 text-[10.5px] leading-tight"
+                    >
+                      <span
+                        className={`relative flex size-8 items-center justify-center overflow-hidden rounded-full bg-studio ring-2 ${
+                          current ? "ring-gold" : !started && i === 0 ? "animate-pulse ring-gold/70" : "ring-line"
+                        }`}
+                      >
+                        {s.cover ? <img src={coverUrl(s)} alt="" loading="lazy" className="size-full object-cover" /> : <LogoMark size={32} />}
+                        <span className="absolute inset-0 flex items-center justify-center bg-black/40 text-cream">
+                          {current ? <Pause className="size-3.5" /> : <Play className="size-3.5 translate-x-px" />}
+                        </span>
+                      </span>
+                      <span className={`w-full truncate text-center font-semibold ${current ? "text-gold-soft" : "text-cream/80"}`}>{s.title}</span>
+                    </button>
+                  );
+                })}
               </div>
-              <button
-                type="button"
-                onClick={() => (playing ? pause() : play())}
-                aria-label={playing ? "Pause" : "Écouter"}
-                className={`btn btn-gold size-11 shrink-0 rounded-full p-0 ${!started ? "animate-pulse" : ""}`}
-              >
-                {playing ? <Pause className="size-5" /> : <Play className="size-5 translate-x-px" />}
-              </button>
-              {songs.length > 1 && (
-                <button type="button" onClick={next} aria-label="Chanson suivante" className="btn-quiet shrink-0 p-1.5">
-                  <SkipForward className="size-5" />
-                </button>
-              )}
-              <button type="button" onClick={close} aria-label="Fermer le lecteur" className="btn-quiet shrink-0 p-1">
+              <button type="button" onClick={close} aria-label="Fermer la barre des chansons" className="btn-quiet shrink-0 self-start p-1">
                 <X className="size-4" />
               </button>
             </div>
@@ -236,52 +247,5 @@ export function ShowcaseProvider({ children }: { children: ReactNode }) {
         )}
       </AnimatePresence>
     </ShowcaseContext.Provider>
-  );
-}
-
-/** Section de l'accueil : les chansons de la vitrine, à écouter avant de créer la sienne. */
-export function ShowcaseSection() {
-  const showcase = useShowcase();
-  if (!showcase?.songs.length) return null;
-  const { songs, index, playing, play, pause } = showcase;
-  return (
-    <section className="mx-auto max-w-6xl px-4 pb-16" aria-labelledby="vitrine-titre">
-      <p className="eyebrow">Chansons déjà offertes</p>
-      <h2 id="vitrine-titre" className="mt-2 font-display text-3xl font-bold">
-        Écoutez des chansons créées avec DB.Mélo
-      </h2>
-      <div className="-mx-4 mt-6 flex snap-x gap-4 overflow-x-auto px-4 pb-2 [scrollbar-width:none]">
-        {songs.map((s, i) => {
-          const current = i === index && playing;
-          return (
-            <button
-              key={s.id}
-              type="button"
-              data-vitrine
-              onClick={() => (current ? pause() : play(i))}
-              className={`card group w-44 shrink-0 snap-start p-3 text-left transition ${current ? "border-gold/60" : ""}`}
-            >
-              <span className="relative block aspect-square overflow-hidden rounded-xl bg-studio">
-                {s.cover ? (
-                  <img src={coverUrl(s)} alt="" loading="lazy" className="size-full object-cover" />
-                ) : (
-                  <span className="flex size-full items-center justify-center">
-                    <LogoMark size={96} />
-                  </span>
-                )}
-                <span className="absolute right-2 bottom-2 flex size-10 items-center justify-center rounded-full bg-gold text-ink shadow-lg">
-                  {current ? <Pause className="size-5" /> : <Play className="size-5 translate-x-px" />}
-                </span>
-              </span>
-              <span className="mt-3 block truncate font-display font-bold">{s.title}</span>
-              <span className="block truncate text-xs text-muted">{s.subtitle}</span>
-            </button>
-          );
-        })}
-      </div>
-      <Link href="/studio" className="btn btn-gold mt-6">
-        Créer la mienne
-      </Link>
-    </section>
   );
 }
