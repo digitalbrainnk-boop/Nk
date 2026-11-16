@@ -1,0 +1,158 @@
+# Configuration de NK Trader.
+# Ajouter un instrument = ajouter un bloc [[instruments]]. Ajouter un fournisseur de
+# données = écrire une classe dans app/data/providers/ (voir README).
+
+[app]
+host = "127.0.0.1"
+port = 8000
+# Fournisseur utilisé par les instruments qui n'en précisent pas :
+# "simulator" (hors ligne), "deriv" (temps réel, indices synthétiques + forex),
+# "mt5" (MetaTrader 5, Windows) ou "tradingview" (webhooks).
+default_provider = "simulator"
+# Nombre de bougies chargées par unité de temps au démarrage.
+history_bars = 600
+# Nombre maximum de bougies conservées en mémoire par unité de temps.
+max_bars = 1500
+timeframes = ["M1", "M5", "M15", "M30", "H1", "H4", "D1"]
+
+[providers.simulator]
+# 1 = temps réel ; 60 = une minute simulée par seconde (pratique pour une démo).
+speed = 1.0
+seed = 7
+
+[providers.deriv]
+url = "wss://ws.derivws.com/websockets/v3"
+# app_id public de démonstration Deriv ; créez le vôtre sur https://api.deriv.com
+app_id = "1089"
+
+[providers.mt5]
+# Laisser vide pour utiliser le terminal MetaTrader 5 déjà ouvert et connecté.
+path = ""
+login = 0
+password = ""
+server = ""
+poll_interval = 0.5
+
+[providers.tradingview]
+# Secret à mettre dans le message d'alerte TradingView ("secret": "...").
+# Peut aussi être fourni par la variable d'environnement TV_WEBHOOK_SECRET.
+secret = ""
+
+[analysis]
+# ZigZag : retournement minimal = zigzag_atr x ATR(14).
+zigzag_atr = 1.6
+# Ramer-Douglas-Peucker : tolérance verticale = rdp_atr x ATR (structure majeure).
+rdp_atr = 3.0
+# Tolérance d'égalité de deux sommets/creux (double top…) en ATR.
+equal_tolerance_atr = 0.8
+# Nombre de supports/résistances affichés par unité de temps.
+max_levels = 8
+# Utiliser TA-Lib (si installé) en plus des figures natives de chandeliers.
+use_talib = true
+
+[mtf]
+# Poids des unités de temps supérieures dans l'évaluation du risque.
+[mtf.weights]
+M5 = 0.5
+M15 = 0.8
+M30 = 0.8
+H1 = 1.5
+H4 = 1.2
+D1 = 1.5
+
+[alerts]
+enabled = true
+# Score minimal (0-100) pour déclencher une alerte sonore.
+min_score = 70
+# Délai minimal entre deux alertes identiques (secondes).
+cooldown_seconds = 300
+types = ["reversal", "breakout", "rejection", "pattern"]
+timeframes = ["M1", "M5", "M15", "M30", "H1", "H4", "D1"]
+# Ne pas alerter si le risque multi-temporel dépasse ce niveau : "faible" | "modere" | "eleve".
+max_risk = "eleve"
+
+# --------------------------------------------------------------------------
+# Instruments
+# aliases = nom du symbole chez chaque fournisseur.
+# sim = paramètres du simulateur (model : volatility | boom | crash | step | jump | forex).
+# --------------------------------------------------------------------------
+
+[[instruments]]
+symbol = "R_75"
+name = "Volatility 75 Index"
+category = "synthetic"
+digits = 4
+aliases = { deriv = "R_75" }
+sim = { model = "volatility", start = 38000.0, vol = 0.75 }
+
+[[instruments]]
+symbol = "R_100"
+name = "Volatility 100 Index"
+category = "synthetic"
+digits = 2
+aliases = { deriv = "R_100" }
+sim = { model = "volatility", start = 1300.0, vol = 1.0 }
+
+[[instruments]]
+symbol = "1HZ10V"
+name = "Volatility 10 (1s) Index"
+category = "synthetic"
+digits = 2
+aliases = { deriv = "1HZ10V" }
+sim = { model = "volatility", start = 9400.0, vol = 0.10 }
+
+[[instruments]]
+symbol = "BOOM1000"
+name = "Boom 1000 Index"
+category = "synthetic"
+digits = 4
+aliases = { deriv = "BOOM1000" }
+sim = { model = "boom", start = 12500.0, vol = 0.25, spike_every = 1000 }
+
+[[instruments]]
+symbol = "CRASH1000"
+name = "Crash 1000 Index"
+category = "synthetic"
+digits = 4
+aliases = { deriv = "CRASH1000" }
+sim = { model = "crash", start = 7300.0, vol = 0.25, spike_every = 1000 }
+
+[[instruments]]
+symbol = "STPRNG"
+name = "Step Index"
+category = "synthetic"
+digits = 1
+aliases = { deriv = "stpRNG" }
+sim = { model = "step", start = 8200.0, step = 0.1 }
+
+[[instruments]]
+symbol = "EURUSD"
+name = "Euro / Dollar US"
+category = "forex"
+digits = 5
+aliases = { deriv = "frxEURUSD", mt5 = "EURUSD", tradingview = "EURUSD" }
+sim = { model = "forex", start = 1.0850, vol = 0.07 }
+
+[[instruments]]
+symbol = "GBPUSD"
+name = "Livre sterling / Dollar US"
+category = "forex"
+digits = 5
+aliases = { deriv = "frxGBPUSD", mt5 = "GBPUSD", tradingview = "GBPUSD" }
+sim = { model = "forex", start = 1.2700, vol = 0.08 }
+
+[[instruments]]
+symbol = "USDJPY"
+name = "Dollar US / Yen"
+category = "forex"
+digits = 3
+aliases = { deriv = "frxUSDJPY", mt5 = "USDJPY", tradingview = "USDJPY" }
+sim = { model = "forex", start = 151.50, vol = 0.09 }
+
+[[instruments]]
+symbol = "XAUUSD"
+name = "Or / Dollar US"
+category = "forex"
+digits = 2
+aliases = { deriv = "frxXAUUSD", mt5 = "XAUUSD", tradingview = "XAUUSD" }
+sim = { model = "forex", start = 2650.0, vol = 0.16 }

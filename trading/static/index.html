@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="fr" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>NK Trader</title>
+  <meta name="description" content="Scalping et analyse technique multi-temporelle en temps réel — indices synthétiques et Forex">
+  <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/css/app.css">
+  <script src="/static/vendor/lightweight-charts.standalone.production.js"></script>
+  <script type="module" src="/static/js/main.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M3 17l5-6 4 4 7-9" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span>NK Trader</span>
+    </div>
+    <select id="symbol-select" class="symbol-select" aria-label="Instrument"></select>
+    <div class="sym-head">
+      <b id="cur-symbol">—</b>
+      <span id="cur-name" class="muted"></span>
+      <b id="cur-price" class="cur-price">—</b>
+      <span id="cur-change"></span>
+    </div>
+    <div class="tf-group" id="tf-group" role="tablist" aria-label="Unité de temps"></div>
+    <div class="spacer"></div>
+    <div id="providers" class="providers"></div>
+    <button id="sound-btn" class="btn sound-btn off" title="Les navigateurs exigent un clic avant de jouer un son">🔇 Activer le son</button>
+    <button id="legend-btn" class="icon-btn" title="Code couleur" aria-label="Code couleur">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6V14"/><circle cx="12" cy="17" r=".6" fill="currentColor"/></svg>
+    </button>
+    <button id="theme-btn" class="icon-btn" title="Thème clair / sombre" aria-label="Thème clair / sombre">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor"/></svg>
+    </button>
+    <button id="settings-btn" class="icon-btn" title="Réglages des alertes" aria-label="Réglages des alertes">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>
+    </button>
+  </header>
+
+  <main class="layout">
+    <aside class="panel watch-panel">
+      <div class="panel-title">Marchés</div>
+      <div id="watchlist" class="watchlist"></div>
+    </aside>
+
+    <section class="center">
+      <div class="panel chart-panel">
+        <div class="chart-toolbar" id="toolbar">
+          <label><input type="checkbox" data-opt="patterns" checked> Figures</label>
+          <label><input type="checkbox" data-opt="levels" checked> Supports/résistances</label>
+          <label><input type="checkbox" data-opt="htf" checked> Niveaux UT sup.</label>
+          <label><input type="checkbox" data-opt="candles" checked> Chandeliers</label>
+          <label><input type="checkbox" data-opt="neutral"> Indécision</label>
+          <label><input type="checkbox" data-opt="ema" checked> EMA</label>
+          <label><input type="checkbox" data-opt="zigzag"> ZigZag</label>
+          <label><input type="checkbox" data-opt="failed"> Échouées</label>
+        </div>
+        <div class="chart-area">
+          <div id="chart" class="chart"></div>
+          <div id="legend" class="chart-legend"></div>
+          <div id="chart-loading" class="chart-loading">Chargement des données…</div>
+        </div>
+      </div>
+      <div class="panel feed-panel">
+        <div class="tabs" role="tablist">
+          <button data-tab="alerts" class="active">Alertes <span id="alert-count" class="count"></span></button>
+          <button data-tab="signals">Scanner — tous les marchés</button>
+          <button data-tab="candles">Chandeliers japonais</button>
+        </div>
+        <div id="feed-alerts" class="feed-body"></div>
+        <div id="feed-signals" class="feed-body hidden"></div>
+        <div id="feed-candles" class="feed-body hidden"></div>
+      </div>
+    </section>
+
+    <aside class="side">
+      <div class="panel">
+        <div class="panel-title">Analyse multi-temporelle</div>
+        <div id="mtf"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-title">Risque avant entrée
+          <span class="risk-actions">
+            <button class="btn buy" id="risk-buy">▲ Achat</button>
+            <button class="btn sell" id="risk-sell">▼ Vente</button>
+          </span>
+        </div>
+        <div id="risk"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-title">Figures chartistes</div>
+        <div id="patterns" class="list"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-title">Supports &amp; résistances</div>
+        <div id="levels" class="list"></div>
+      </div>
+    </aside>
+  </main>
+
+  <div id="toasts" class="toasts" aria-live="polite"></div>
+
+  <dialog id="settings-dialog">
+    <form method="dialog" id="settings-form">
+      <h2>Réglages des alertes</h2>
+      <fieldset>
+        <legend>Déclenchement (serveur)</legend>
+        <label class="row"><input type="checkbox" name="enabled"> Alertes activées</label>
+        <label class="row">Score minimal <input type="range" name="min_score" min="40" max="100" step="1"> <output id="min-score-out"></output></label>
+        <div class="row wrap" id="types-box">
+          <label><input type="checkbox" name="type" value="reversal"> Retournements</label>
+          <label><input type="checkbox" name="type" value="breakout"> Cassures de niveaux</label>
+          <label><input type="checkbox" name="type" value="rejection"> Rejets de niveaux</label>
+          <label><input type="checkbox" name="type" value="pattern"> Figures confirmées</label>
+        </div>
+        <div class="row wrap" id="tfs-box"></div>
+        <label class="row">Risque maximal accepté
+          <select name="max_risk">
+            <option value="faible">Faible uniquement</option>
+            <option value="modere">Jusqu'à modéré</option>
+            <option value="eleve">Tous</option>
+          </select>
+        </label>
+        <label class="row">Délai entre deux alertes identiques <input type="number" name="cooldown_seconds" min="0" step="30" style="width:6em"> s</label>
+      </fieldset>
+      <fieldset>
+        <legend>Son et notifications (ce navigateur)</legend>
+        <label class="row">Volume <input type="range" name="volume" min="0" max="1" step="0.05"></label>
+        <div class="row wrap">
+          <button type="button" class="btn" data-test="bullish">▲ Retournement haussier</button>
+          <button type="button" class="btn" data-test="bearish">▼ Retournement baissier</button>
+          <button type="button" class="btn" data-test="breakout">Cassure</button>
+          <button type="button" class="btn" data-test="pattern">Figure confirmée</button>
+        </div>
+        <label class="row"><input type="checkbox" name="desktop"> Notifications du système quand l'onglet est en arrière-plan</label>
+      </fieldset>
+      <fieldset>
+        <legend>Affichage</legend>
+        <label class="row">Chandeliers affichés
+          <select name="min_reliability">
+            <option value="1">Toutes les figures</option>
+            <option value="2">Fiabilité moyenne et forte</option>
+            <option value="3">Fiabilité forte uniquement</option>
+          </select>
+        </label>
+      </fieldset>
+      <div class="dialog-actions">
+        <button value="cancel" class="btn">Annuler</button>
+        <button value="save" class="btn primary" id="settings-save">Enregistrer</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="legend-dialog">
+    <form method="dialog">
+      <h2>Code couleur</h2>
+      <div id="legend-content" class="legend-grid"></div>
+      <div class="dialog-actions"><button class="btn primary">Fermer</button></div>
+    </form>
+  </dialog>
+</body>
+</html>

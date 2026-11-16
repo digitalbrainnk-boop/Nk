@@ -1,0 +1,16 @@
+# NK Trader — dépendances (Python 3.11 ou plus récent)
+fastapi>=0.110
+uvicorn[standard]>=0.29
+websockets>=12.0
+numpy>=1.26
+pandas>=2.1
+
+# Tests
+pytest>=8.0
+httpx>=0.27            # client de test (Starlette récent : httpx2 également accepté)
+
+# --- Optionnel -------------------------------------------------------------
+# TA-Lib (61 figures de chandeliers supplémentaires) : nécessite la bibliothèque C.
+#   pip install TA-Lib
+# MetaTrader 5 (Windows uniquement, terminal MT5 installé et connecté) :
+#   pip install MetaTrader5
