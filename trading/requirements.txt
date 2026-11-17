@@ -4,6 +4,7 @@ uvicorn[standard]>=0.29
 websockets>=12.0
 numpy>=1.26
 pandas>=2.1
+segno>=1.5              # QR code pour ouvrir l'application sur le téléphone
 
 # Tests
 pytest>=8.0

@@ -60,6 +60,8 @@ class AnalysisSettings:
 class Settings:
     host: str = "127.0.0.1"
     port: int = 8000
+    #: accès depuis un téléphone sur le même Wi-Fi (écoute réseau + code d'accès)
+    phone: bool = False
     default_provider: str = "simulator"
     history_bars: int = 600
     max_bars: int = 1500

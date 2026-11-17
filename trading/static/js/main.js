@@ -48,7 +48,30 @@ const alerts = new AlertCenter($('#toasts'), (a) => openChart(a.symbol, a.tf, a.
 alerts.sound.volume = state.prefs.volume;
 alerts.sound.muted = state.prefs.muted;
 alerts.desktop = state.prefs.desktop && 'Notification' in window && Notification.permission === 'granted';
-const socket = new MarketSocket(onMessage, (s) => { state.socket = s; renderProviders($('#providers'), state.providers, s); });
+const socket = new MarketSocket(onMessage, (s) => { state.socket = s; renderStatus(); });
+
+// Bandeau d'état : visible seulement en cas de problème de connexion ou de source de données.
+const PROVIDER_NAMES = { simulator: 'Simulateur', deriv: 'Deriv', mt5: 'MetaTrader 5', tradingview: 'TradingView' };
+function renderStatus() {
+  renderProviders($('#providers'), state.providers, state.socket);
+  const banner = $('#banner');
+  let text = '';
+  let err = false;
+  if (state.socket === 'closed') {
+    text = 'Connexion à NK Trader perdue — reconnexion automatique… (la fenêtre noire est-elle toujours ouverte sur l\'ordinateur ?)';
+    err = true;
+  } else {
+    const bad = (state.providers || []).filter((p) => p.state === 'error' || p.state === 'connecting');
+    if (bad.length) {
+      text = bad.map((p) => `${PROVIDER_NAMES[p.name] || p.name} : ${p.state === 'connecting' ? 'connexion en cours' : 'problème'} — ${p.message}`).join(' · ');
+      err = bad.some((p) => p.state === 'error');
+    }
+  }
+  banner.textContent = text;
+  banner.classList.toggle('hidden', !text);
+  banner.classList.toggle('err', err);
+  document.documentElement.style.setProperty('--banner-h', text ? `${banner.offsetHeight}px` : '0px');
+}
 
 // Options d'affichage du graphique (cases à cocher).
 for (const input of document.querySelectorAll('#toolbar input[data-opt]')) {
@@ -81,7 +104,7 @@ function onMessage(msg) {
       setDigits(Object.fromEntries(msg.instruments.map((i) => [i.symbol, i.digits])));
       buildTimeframes();
       buildSymbolSelect();
-      renderProviders($('#providers'), state.providers, state.socket);
+      renderStatus();
       renderAllFeeds();
       const known = state.instruments.some((i) => i.symbol === state.prefs.symbol);
       openChart(known ? state.prefs.symbol : state.instruments[0]?.symbol,
@@ -121,7 +144,7 @@ function onMessage(msg) {
       break;
     case 'status':
       state.providers = msg.providers;
-      renderProviders($('#providers'), state.providers, state.socket);
+      renderStatus();
       break;
     case 'ready':
       if (msg.symbol === state.symbol) socket.subscribe(state.symbol, state.tf);
@@ -386,5 +409,25 @@ $('#legend-btn').addEventListener('click', () => {
     ${sw(RISK_COLORS.eleve, 'Élevé : contre-tendance, obstacle proche ou volatilité extrême')}`;
   $('#legend-dialog').showModal();
 });
+
+// ---------------------------------------------------------------- téléphone
+async function setupPhone() {
+  try {
+    const info = await (await fetch('/api/phone')).json();
+    if (!info.enabled || !info.local) return;          // bouton visible seulement sur l'ordinateur
+    const btn = $('#phone-btn');
+    btn.classList.remove('hidden');
+    btn.addEventListener('click', () => {
+      $('#phone-qr').src = `/api/phone/qr.svg?t=${Date.now()}`;
+      $('#phone-url').textContent = (info.urls && info.urls[0]) || 'Aucune adresse Wi-Fi trouvée : vérifiez que l\'ordinateur est connecté au Wi-Fi.';
+      $('#phone-code').textContent = info.code;
+      const others = (info.urls || []).slice(1);
+      $('#phone-other').textContent = others.length ? `Si cette adresse ne marche pas, essayez : ${others.join('  ou  ')}` : '';
+      $('#phone-other').classList.toggle('hidden', !others.length);
+      $('#phone-dialog').showModal();
+    });
+  } catch { /* serveur ancien ou hors ligne */ }
+}
+setupPhone();
 
 socket.connect();

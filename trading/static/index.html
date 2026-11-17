@@ -6,6 +6,12 @@
   <title>NK Trader</title>
   <meta name="description" content="Scalping et analyse technique multi-temporelle en temps réel — indices synthétiques et Forex">
   <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+  <meta name="theme-color" content="#0b1220">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="NK Trader">
   <link rel="stylesheet" href="/static/css/app.css">
   <script src="/static/vendor/lightweight-charts.standalone.production.js"></script>
   <script type="module" src="/static/js/main.js"></script>
@@ -26,6 +32,7 @@
     <div class="tf-group" id="tf-group" role="tablist" aria-label="Unité de temps"></div>
     <div class="spacer"></div>
     <div id="providers" class="providers"></div>
+    <button id="phone-btn" class="btn phone-btn hidden" title="Ouvrir NK Trader sur votre téléphone">📱 Téléphone</button>
     <button id="sound-btn" class="btn sound-btn off" title="Les navigateurs exigent un clic avant de jouer un son">🔇 Activer le son</button>
     <button id="legend-btn" class="icon-btn" title="Code couleur" aria-label="Code couleur">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6V14"/><circle cx="12" cy="17" r=".6" fill="currentColor"/></svg>
@@ -37,6 +44,7 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>
     </button>
   </header>
+  <div id="banner" class="banner hidden" role="status"></div>
 
   <main class="layout">
     <aside class="panel watch-panel">
@@ -149,6 +157,27 @@
         <button value="cancel" class="btn">Annuler</button>
         <button value="save" class="btn primary" id="settings-save">Enregistrer</button>
       </div>
+    </form>
+  </dialog>
+
+  <dialog id="phone-dialog">
+    <form method="dialog">
+      <h2>Ouvrir NK Trader sur votre téléphone</h2>
+      <div class="phone-box">
+        <img id="phone-qr" alt="QR code à scanner avec le téléphone" width="220" height="220">
+        <ol class="phone-steps">
+          <li>Le téléphone doit être connecté au <b>même Wi-Fi</b> que cet ordinateur.</li>
+          <li>Ouvrez l'<b>appareil photo</b> du téléphone et visez ce QR code, puis touchez le lien qui apparaît.</li>
+          <li>Dans le navigateur du téléphone : menu <b>⋮</b> (Android) ou <b>Partager</b> (iPhone) →
+            <b>Ajouter à l'écran d'accueil</b>. Vous aurez une icône NK Trader comme une application.</li>
+          <li>À chaque ouverture, touchez <b>« Activer le son »</b> pour entendre les alarmes.</li>
+        </ol>
+      </div>
+      <p class="muted small">Sans appareil photo, tapez cette adresse dans le navigateur du téléphone :</p>
+      <p><code id="phone-url" class="phone-url"></code></p>
+      <p id="phone-other" class="muted small hidden"></p>
+      <p class="muted small">Code d'accès : <b id="phone-code"></b> — l'ordinateur doit rester allumé avec la fenêtre noire ouverte.</p>
+      <div class="dialog-actions"><button class="btn primary">Fermer</button></div>
     </form>
   </dialog>
 

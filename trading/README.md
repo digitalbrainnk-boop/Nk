@@ -20,6 +20,9 @@ Application de trading **d'analyse** (elle ne passe pas d'ordres) pour les **ind
 
 ## Démarrage rapide
 
+> **Sur Windows, sans connaissances techniques ?** Suivez le **[guide pas à pas](GUIDE-INSTALLATION.md)**
+> (installation, lancement, et ouverture sur le téléphone).
+
 Il faut **Python 3.11 ou plus récent**.
 
 ```bash
@@ -28,8 +31,9 @@ pip install -r requirements.txt
 python run.py --open                  # simulateur hors ligne, ouvre le navigateur
 ```
 
-Ou double-clic sur `DEMARRER.bat` (Windows) / `./demarrer.sh` (macOS, Linux) : un environnement Python
-est créé automatiquement au premier lancement.
+Ou double-clic sur `DEMARRER.bat` (Windows : menu Deriv / simulateur / MT5) ou `./demarrer.sh`
+(macOS, Linux) : un environnement Python est créé automatiquement au premier lancement, et l'accès
+depuis le téléphone est activé.
 
 L'interface est sur **http://localhost:8000**. Cliquez sur **« Activer le son »** (les navigateurs exigent
 un clic avant de jouer un son).
@@ -42,7 +46,15 @@ un clic avant de jouer un son).
 | `python run.py --provider mt5` | **MetaTrader 5** (Windows, terminal ouvert et connecté) |
 | `python run.py --provider tradingview` | **Webhooks TradingView** |
 
-Options : `--port 8080`, `--host 0.0.0.0`, `--config autre.toml`, `--debug`.
+Options : `--phone` (accès depuis le téléphone, voir ci-dessous), `--port 8080`, `--config autre.toml`, `--debug`.
+
+### Sur le téléphone (même Wi-Fi)
+
+`python run.py --phone` écoute sur le réseau local. Sur l'ordinateur, le bouton **📱 Téléphone** affiche un
+**QR code** : le scanner avec le téléphone ouvre NK Trader, qu'on peut ensuite **ajouter à l'écran d'accueil**
+comme une application. L'accès est protégé par un code d'accès (inclus dans le QR code, enregistré dans
+`data/code_telephone.txt`) ; l'ordinateur lui-même n'en a pas besoin. Les alarmes sonnent sur le téléphone
+tant que la page est affichée.
 
 ---
 
@@ -166,10 +178,13 @@ les signaux courts disposent toujours du contexte à jour. Une analyse complète
 ```
 trading/
 ├── run.py                     lancement (CLI)
+├── DEMARRER.bat               lancement Windows (menu, installation automatique)
+├── GUIDE-INSTALLATION.md      guide pas à pas Windows + téléphone
 ├── config.toml                instruments, fournisseurs, paramètres d'analyse et d'alertes
 ├── app/
 │   ├── main.py                FastAPI : API REST, WebSocket /ws, fichiers de l'interface
 │   ├── config.py              lecture de config.toml + variables d'environnement
+│   ├── phone.py               accès téléphone : code d'accès, adresses Wi-Fi, QR code
 │   ├── core/                  modèles (Candle, Signal, ChartPattern…), unités de temps
 │   ├── data/
 │   │   ├── store.py           bougies en mémoire, agrégation ticks → M1…D1, détection des clôtures
@@ -211,6 +226,7 @@ trading/
 | GET | `/api/signals`, `/api/alerts` | derniers signaux / alertes |
 | GET/PUT | `/api/settings/alerts` | règles d'alerte (enregistrées dans `data/alert_rules.json`) |
 | GET | `/api/status`, `/api/catalog` | état des fournisseurs, liste des figures reconnues |
+| GET | `/api/phone`, `/api/phone/qr.svg` | adresse et QR code pour le téléphone (depuis l'ordinateur uniquement) |
 | POST | `/api/webhook/tradingview` | réception des alertes TradingView |
 | WS | `/ws` | `subscribe` → `snapshot`, puis `candle`, `analysis`, `mtf`, `ticker`, `signals`, `alert`, `status` |
 

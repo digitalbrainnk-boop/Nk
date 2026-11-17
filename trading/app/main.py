@@ -11,13 +11,14 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from .analysis import candlesticks, chart_patterns
 from .config import ROOT, Settings, load_settings
 from .core.timeframes import Timeframe
 from .data.providers.tradingview import TradingViewProvider
+from .phone import PhoneAccessMiddleware, is_local, load_or_create_code, phone_urls, qr_svg
 from .services.market import MarketHub
 
 log = logging.getLogger(__name__)
@@ -38,6 +39,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             await hub.stop()
 
     app = FastAPI(title="NK Trader", version="1.0.0", lifespan=lifespan)
+    phone_code = load_or_create_code(settings.data_dir) if settings.phone else None
+    if phone_code:
+        app.add_middleware(PhoneAccessMiddleware, code=phone_code)
 
     def hub_of(request_or_ws) -> MarketHub:
         return request_or_ws.app.state.hub
@@ -146,6 +150,41 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return provider.ingest(payload)
         except (ValueError, KeyError, TypeError) as exc:
             raise HTTPException(400, str(exc)) from exc
+
+    # ------------------------------------------------------------ téléphone
+    @app.get("/api/phone")
+    async def phone_info(request: Request):
+        local = is_local(request.scope)
+        info: dict[str, Any] = {"enabled": bool(phone_code), "local": local}
+        if phone_code and local:
+            info.update(code=phone_code, urls=phone_urls(settings.port, phone_code))
+        return info
+
+    @app.get("/api/phone/qr.svg")
+    async def phone_qr(request: Request, i: int = 0):
+        if not phone_code or not is_local(request.scope):
+            raise HTTPException(404, "accès téléphone non activé")
+        urls = phone_urls(settings.port, phone_code)
+        if not urls:
+            raise HTTPException(404, "aucune adresse Wi-Fi trouvée sur cet ordinateur")
+        svg = qr_svg(urls[min(max(i, 0), len(urls) - 1)])
+        return Response(svg, media_type="image/svg+xml", headers={"Cache-Control": "no-store"})
+
+    @app.get("/manifest.webmanifest")
+    async def manifest(request: Request):
+        # L'adresse de départ garde le code : l'icône de l'écran d'accueil reste connectée.
+        start = f"/?code={phone_code}" if phone_code else "/"
+        data = {
+            "name": "NK Trader", "short_name": "NK Trader", "lang": "fr", "start_url": start,
+            "display": "standalone", "background_color": "#070b14", "theme_color": "#0b1220",
+            "description": "Scalping et analyse multi-temporelle en temps réel",
+            "icons": [
+                {"src": "/static/icon-192.png", "sizes": "192x192", "type": "image/png"},
+                {"src": "/static/icon-512.png", "sizes": "512x512", "type": "image/png"},
+                {"src": "/static/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"},
+            ],
+        }
+        return JSONResponse(data, media_type="application/manifest+json")
 
     # ------------------------------------------------------------- WebSocket
     @app.websocket("/ws")

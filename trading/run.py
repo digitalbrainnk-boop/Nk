@@ -34,6 +34,8 @@ def main() -> None:
     parser.add_argument("--host", help="adresse d'écoute (défaut 127.0.0.1)")
     parser.add_argument("--port", type=int, help="port (défaut 8000)")
     parser.add_argument("--open", action="store_true", help="ouvre le navigateur au démarrage")
+    parser.add_argument("--phone", "--telephone", action="store_true",
+                        help="accès depuis un téléphone sur le même Wi-Fi (protégé par un code)")
     parser.add_argument("--debug", action="store_true")
     args = parser.parse_args()
 
@@ -42,12 +44,38 @@ def main() -> None:
     settings = load_settings(args.config, provider_override=args.provider)
     if args.speed:
         settings.providers.setdefault("simulator", {})["speed"] = args.speed
-    host = args.host or settings.host
+    settings.phone = args.phone or settings.phone
+    host = args.host or ("0.0.0.0" if settings.phone else settings.host)
     port = args.port or settings.port
+    settings.host, settings.port = host, port
+    app = create_app(settings)
+    banner(settings)
     if args.open:
-        webbrowser.open(f"http://{'localhost' if host in ('0.0.0.0', '127.0.0.1') else host}:{port}")
-    uvicorn.run(create_app(settings), host=host, port=port, log_level="warning",
-                ws_ping_interval=20, ws_ping_timeout=20)
+        webbrowser.open(f"http://localhost:{port}")
+    uvicorn.run(app, host=host, port=port, log_level="warning", ws_ping_interval=20, ws_ping_timeout=20)
+
+
+def banner(settings) -> None:
+    """Message d'accueil clair dans la fenêtre de commande."""
+    from app.phone import load_or_create_code, phone_urls
+
+    names = {"simulator": "Simulateur (démonstration)", "deriv": "Deriv (temps réel)",
+             "mt5": "MetaTrader 5", "tradingview": "Webhooks TradingView"}
+    sources = sorted({names.get(i.provider, i.provider) for i in settings.instruments})
+    line = "=" * 66
+    print(line)
+    print("  NK Trader démarre…  Source des données : " + ", ".join(sources))
+    print(f"  Sur cet ordinateur : http://localhost:{settings.port}")
+    if settings.phone:
+        code = load_or_create_code(settings.data_dir)
+        urls = phone_urls(settings.port, code)
+        print("  Sur le téléphone (même Wi-Fi) : bouton « Téléphone » en haut de la page,")
+        print("  puis scannez le QR code. Ou tapez dans le navigateur du téléphone :")
+        for url in urls[:2] or ["(aucune adresse Wi-Fi trouvée : l'ordinateur est-il connecté ?)"]:
+            print(f"      {url}")
+        print(f"  Code d'accès : {code}")
+    print("  Pour arrêter NK Trader : fermez cette fenêtre.")
+    print(line, flush=True)
 
 
 if __name__ == "__main__":

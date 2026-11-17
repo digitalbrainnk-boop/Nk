@@ -22,7 +22,9 @@ export class MarketSocket {
     this.ws.onmessage = (ev) => {
       try { this.onMessage(JSON.parse(ev.data)); } catch (err) { console.error(err); }
     };
-    this.ws.onclose = () => {
+    this.ws.onclose = (ev) => {
+      // 4401 : code d'accès téléphone manquant ou changé → la page d'accès s'affiche.
+      if (ev.code === 4401) { location.reload(); return; }
       this.onState('closed');
       if (this.closedByUser) return;
       setTimeout(() => this.connect(), this.delay);
