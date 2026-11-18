@@ -90,22 +90,39 @@ class MarketHub:
                 await p.stop()
         self._executor.shutdown(wait=False, cancel_futures=True)
 
+    RETRY_DELAY = 15.0
+
     async def _bootstrap(self, provider: DataProvider, insts) -> None:
-        """Historique de chaque UT (de D1 vers M1), analyse initiale, puis flux temps réel."""
-        for inst in insts:
-            try:
-                for tf in sorted(self.settings.timeframes, key=lambda t: -t.seconds):
-                    candles = await provider.load_history(inst.symbol, tf, self.settings.history_bars)
-                    self.store.load(inst.symbol, tf, candles)
-                await provider.subscribe(inst.symbol)
-            except Exception as exc:
-                log.exception("chargement %s : %s", inst.symbol, exc)
-                provider.set_status("error", f"{inst.symbol} : {exc}")
-                continue
-            self._pending[inst.symbol].update(self.settings.timeframes)
-            await self._analysis_worker(inst.symbol, initial=True)
-            self.ready[inst.symbol] = True
-            self.clients.broadcast({"type": "ready", "symbol": inst.symbol})
+        """Historique de chaque UT (de D1 vers M1), analyse initiale, puis flux temps réel.
+
+        Un instrument qui échoue (réseau coupé, source pas encore connectée, marché
+        indisponible) est réessayé toutes les ``RETRY_DELAY`` secondes jusqu'au succès.
+        """
+        pending = list(insts)
+        while pending:
+            failed = []
+            for inst in pending:
+                try:
+                    for tf in sorted(self.settings.timeframes, key=lambda t: -t.seconds):
+                        candles = await provider.load_history(inst.symbol, tf, self.settings.history_bars)
+                        self.store.load(inst.symbol, tf, candles)
+                    await provider.subscribe(inst.symbol)
+                except Exception as exc:
+                    log.warning("chargement %s impossible (%s) : nouvel essai dans %.0f s",
+                                inst.symbol, exc or type(exc).__name__, self.RETRY_DELAY)
+                    failed.append(inst)
+                    continue
+                self._pending[inst.symbol].update(self.settings.timeframes)
+                await self._analysis_worker(inst.symbol, initial=True)
+                self.ready[inst.symbol] = True
+                self.clients.broadcast({"type": "ready", "symbol": inst.symbol})
+            pending = failed
+            if pending:
+                provider.set_status("error", f"{len(pending)} marché(s) en attente de données — "
+                                             f"nouvel essai dans {self.RETRY_DELAY:.0f} s")
+                await asyncio.sleep(self.RETRY_DELAY)
+            elif provider.state == "error":
+                provider.set_status("connected", "données reçues")
 
     # ------------------------------------------------------------ MarketSink
     def on_tick(self, symbol: str, tick: Tick) -> None:
