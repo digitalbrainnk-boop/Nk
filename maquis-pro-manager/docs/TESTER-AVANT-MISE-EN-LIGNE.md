@@ -104,10 +104,10 @@ Cochez au fur et à mesure. Notez tout ce qui ne va pas (voir 4.).
 | 21 | Propriétaire : tableau de bord *Ce mois* | Rentabilité par boisson : marge, bénéfice net après pertes ; *Point des serveurs* |
 | 22 | Gérant : se connecter | Il arrive sur *Accueil du gérant* ; il n'a ni tableau de bord du propriétaire, ni administration (même en tapant l'adresse) |
 | 23 | Gérant : *Ma caisse* → ouvrir, encaisser une commande de serveur, fermer | Tout fonctionne comme pour un caissier ; ses reçus portent son nom |
+| 24 | Propriétaire : menu *Gérant* (espace du gérant) | Mêmes informations que le gérant, bandeau « lecture seule », aucun bouton pour encaisser, ajouter ou annuler ; la caisse du gérant apparaît dans *Caisses* |
 | 25 | Gérant : ouvrir une entrée enregistrée | Pas de bouton *Annuler* ; *Signaler une erreur au propriétaire* envoie une notification au propriétaire |
 | 26 | Propriétaire : ouvrir cette entrée → *Corriger* | Formulaire pré-rempli ; après correction, l'ancienne entrée est « annulée », la nouvelle la remplace, le stock est juste, le gérant est prévenu |
 | 27 | Serveur : envoyer une commande pendant que le gérant a l'application ouverte | La tablette du gérant sonne et affiche « Nouvelle commande — Table … » |
-| 24 | Propriétaire : menu *Gérant* (espace du gérant) | Mêmes informations que le gérant, bandeau « lecture seule », aucun bouton pour encaisser, ajouter ou annuler ; la caisse du gérant apparaît dans *Caisses* |
 
 ### C. Sans internet
 
