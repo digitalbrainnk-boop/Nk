@@ -64,6 +64,16 @@ cd maquis-pro-manager && npm install && npm start
 ```
 Ouvrez http://localhost:3000. Pour un vrai usage, préférez un serveur en ligne : un ordinateur éteint la nuit ne produit pas le bilan à 03 h 00. Le bilan sera produit au redémarrage (reprise), mais avec du retard.
 
+## Identifiant ou mot de passe du propriétaire oublié
+
+Sur le serveur (Terminal de cPanel, ou là où tourne l'application) :
+```bash
+cd ~/maquis-pro-manager
+npm run acces              # liste les comptes et leurs identifiants
+npm run acces -- patron    # mot de passe provisoire pour le compte « patron »
+```
+Le mot de passe provisoire doit être changé à la connexion ; les anciennes sessions de ce compte sont déconnectées et l'opération est inscrite au journal d'audit. Seule une personne ayant accès au serveur peut le faire.
+
 ## Sauvegardes et restauration
 
 - Une sauvegarde complète et vérifiée est faite **chaque jour** après le bilan de 03 h 00, dans `DATA_DIR/sauvegardes` (les 30 dernières sont gardées).

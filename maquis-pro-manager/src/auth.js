@@ -35,14 +35,23 @@ export function checkPasswordStrength(pw, role) {
 }
 
 // ---------- Anti-devinette ----------
-const failures = new Map(); // clé ip|identifiant -> { count, until }
-export function loginBlockedFor(key) {
+const failures = new Map(); // clé ip|identifiant -> { count, until, since }
+// Une réinitialisation d'accès faite sur le serveur (npm run acces) lève les blocages en cours.
+function current(key) {
   const f = failures.get(key);
+  if (f && f.since < (Number(getSetting("login_reset_at")) || 0)) {
+    failures.delete(key);
+    return null;
+  }
+  return f;
+}
+export function loginBlockedFor(key) {
+  const f = current(key);
   if (!f || f.until <= Date.now()) return 0;
   return Math.ceil((f.until - Date.now()) / 1000);
 }
 function recordFailure(key) {
-  const f = failures.get(key) || { count: 0, until: 0 };
+  const f = current(key) || { count: 0, until: 0, since: now() };
   f.count++;
   if (f.count >= 5) f.until = Date.now() + Math.min(3600, 30 * 2 ** (f.count - 5)) * 1000;
   failures.set(key, f);

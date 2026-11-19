@@ -22,6 +22,8 @@ But : vérifier vous-même chaque fonction dans les conditions réelles (vrais t
 | `maquis` | démarre l'application et le lien pour les autres téléphones |
 | `maquis lien` | réaffiche le lien (il **change à chaque démarrage**) |
 | `maquis code` | réaffiche le code d'installation |
+| `maquis acces` | **identifiant ou mot de passe oublié** : affiche la liste des comptes |
+| `maquis acces patron` | donne un mot de passe provisoire au compte « patron » (à changer à la connexion) |
 | `maquis maj` | installe la dernière version corrigée (les données de test sont gardées) |
 | `maquis arret` | arrête l'application |
 
@@ -34,6 +36,17 @@ Pour que le test dure toute la nuit :
 1. Installez Node.js (version LTS) : https://nodejs.org/fr/download
 2. Pour le lien des téléphones, installez cloudflared : dans *Invite de commandes*, tapez `winget install Cloudflare.cloudflared`.
 3. Téléchargez le projet (*Code → Download ZIP* sur GitHub, branche `ccr-98ef2a93-v667hk`), décompressez-le, ouvrez le dossier `maquis-pro-manager` et double-cliquez sur **DEMARRER-TEST**.
+
+### Première connexion : il n'y a pas de compte par défaut
+
+À la toute première ouverture, l'écran **« Bienvenue — Créez votre compte de propriétaire »** apparaît. C'est vous qui y **choisissez** votre identifiant (par exemple `patron`) et votre mot de passe, après avoir saisi le code d'installation (`maquis code`).
+
+Si l'écran de **connexion** apparaît à la place, un compte propriétaire existe déjà (créé lors d'un premier essai). Pour retrouver l'accès :
+1. dans Termux, tapez `maquis acces` : la liste des identifiants s'affiche ;
+2. tapez `maquis acces patron` (avec votre identifiant) : un **mot de passe provisoire** s'affiche ;
+3. connectez-vous avec : l'application vous demande aussitôt de choisir votre propre mot de passe.
+
+Sur Windows, double-cliquez sur `IDENTIFIANTS-OUBLIES.bat`. Pour tout recommencer à zéro (en effaçant les données de test) : `maquis arret`, `rm -rf ~/maquis-donnees`, puis `maquis`.
 
 ### À savoir sur ce mode test
 

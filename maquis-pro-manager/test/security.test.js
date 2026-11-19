@@ -74,3 +74,32 @@ test("en-têtes de sécurité et mots de passe jamais renvoyés", async () => {
   const audit = JSON.stringify(await A.owner.ok("GET", "/api/audit"));
   assert.ok(!audit.includes("scrypt$"));
 });
+
+test("identifiants oubliés : « npm run acces » liste les comptes et donne un mot de passe provisoire", async () => {
+  const { spawnSync } = await import("node:child_process");
+  const { DATA_DIR } = await import("./helpers.js");
+  const runScript = (...args) =>
+    spawnSync(process.execPath, ["--disable-warning=ExperimentalWarning", "scripts/acces.js", ...args], { env: { ...process.env, DATA_DIR }, encoding: "utf8" });
+  const list = runScript();
+  assert.equal(list.status, 0);
+  assert.match(list.stdout, /patron\s+Moussa Ouédraogo — Propriétaire/);
+  assert.match(list.stdout, /serveur1/);
+  assert.equal(runScript("inconnu").status, 1);
+  // Le propriétaire a oublié son mot de passe et s'est fait bloquer à force d'essais.
+  const c = client();
+  for (let i = 0; i < 6; i++) await c.post("/api/auth/login", { username: "patron", password: "jesaisplus" });
+  assert.equal((await c.post("/api/auth/login", { username: "patron", password: "jesaisplus" })).status, 429);
+  const reset = runScript("PATRON");
+  assert.equal(reset.status, 0);
+  const pw = reset.stdout.match(/Mot de passe provisoire : (\S+)/)[1];
+  assert.equal(pw.length, 10);
+  // L'ancien mot de passe ne marche plus, le blocage est levé, le provisoire doit être changé.
+  assert.equal((await client().post("/api/auth/login", { username: "patron", password: "Patron2026!" })).status, 401);
+  const owner = client();
+  await owner.ok("POST", "/api/auth/login", { username: "patron", password: pw });
+  assert.equal((await owner.get("/api/dashboard")).status, 403); // changement obligatoire d'abord
+  await owner.ok("POST", "/api/me/password", { current: pw, password: "NouveauPatron2026" });
+  assert.equal((await owner.get("/api/dashboard")).status, 200);
+  const audit = await owner.ok("GET", "/api/audit?q=provisoire");
+  assert.ok(audit.some((a) => a.action === "acces_reinitialise"));
+});

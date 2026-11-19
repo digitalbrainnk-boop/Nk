@@ -41,6 +41,13 @@ export function viewLogin(root, { onDone }) {
     field("Mot de passe", input("password", { type: "password", autocomplete: "current-password", required: true })),
     h("button", { class: "btn primary lg block", type: "submit" }, "Se connecter"),
     h("p", { class: "small muted center" }, "Chaque membre du personnel a son propre identifiant. Ne partagez jamais le vôtre."),
+    h(
+      "details",
+      { class: "small text-2" },
+      h("summary", null, "Identifiant ou mot de passe oublié ?"),
+      h("p", null, "Serveur, caissier ou gérant : demandez au propriétaire (ou au gérant) de vous donner un nouveau mot de passe depuis « Comptes »."),
+      h("p", null, "Propriétaire : sur le téléphone ou l'ordinateur qui fait tourner l'application, tapez « maquis acces » dans Termux (ou « npm run acces » sur un ordinateur). La liste des identifiants s'affiche ; « maquis acces votre-identifiant » donne un mot de passe provisoire."),
+    ),
   );
   root.replaceChildren(h("div", { class: "auth" }, h("div", { class: "box" }, h("div", { class: "logo" }, "MP"), h("h1", null, "MAQUIS PRO MANAGER"), h("p", { class: "tag" }, "Stocks, ventes, caisse et bilans de votre maquis"), form)));
 }
@@ -64,7 +71,17 @@ export function viewSetup(root, { onDone }) {
         err.classList.remove("hidden");
       }
     } } },
-    h("div", { class: "banner info" }, icon("shield"), h("div", null, "Première installation : créez le compte du propriétaire. Le code d'installation est affiché par le serveur (fichier CODE-INSTALLATION.txt dans le dossier des données).")),
+    h(
+      "div",
+      { class: "banner info" },
+      icon("shield"),
+      h(
+        "div",
+        null,
+        h("b", null, "Il n'y a pas de compte par défaut : c'est ici que vous CHOISISSEZ votre identifiant et votre mot de passe de propriétaire."),
+        h("div", null, "Le code d'installation est affiché au démarrage de l'application (dans Termux : tapez « maquis code »)."),
+      ),
+    ),
     err,
     field("Code d'installation", input("setup_code", { required: true, inputmode: "numeric", autocomplete: "one-time-code" })),
     field("Nom du maquis", input("maquis_name", { required: true, placeholder: "Ex. Maquis Le Baobab" })),
@@ -75,7 +92,7 @@ export function viewSetup(root, { onDone }) {
     field("Confirmer le mot de passe", input("password2", { type: "password", required: true, minlength: 8, autocomplete: "new-password" })),
     h("button", { class: "btn primary lg block", type: "submit" }, "Créer le compte propriétaire"),
   );
-  root.replaceChildren(h("div", { class: "auth" }, h("div", { class: "box" }, h("div", { class: "logo" }, "MP"), h("h1", null, "Bienvenue"), h("p", { class: "tag" }, "Installation de MAQUIS PRO MANAGER"), form)));
+  root.replaceChildren(h("div", { class: "auth" }, h("div", { class: "box" }, h("div", { class: "logo" }, "MP"), h("h1", null, "Bienvenue"), h("p", { class: "tag" }, "Créez votre compte de propriétaire"), form)));
 }
 
 export function viewChangePassword(main, { forced = false } = {}) {

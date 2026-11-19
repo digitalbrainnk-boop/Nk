@@ -4,6 +4,10 @@ Chaque personne a **son propre compte**. Ne prêtez jamais votre identifiant : c
 
 À la première connexion d'un employé, l'application lui demande de remplacer le mot de passe provisoire par le sien.
 
+**Mot de passe oublié** :
+- un serveur, un caissier ou le gérant demande au propriétaire (ou au gérant pour les serveurs et caissiers) un nouveau mot de passe dans *Comptes* ;
+- le propriétaire retrouve l'accès sur l'appareil qui fait tourner l'application : `maquis acces` dans Termux, ou `npm run acces` sur un ordinateur ou un serveur. La commande liste les identifiants ; avec un identifiant (`maquis acces patron`), elle donne un mot de passe provisoire, à changer dès la connexion. L'opération est inscrite au journal d'audit.
+
 La **journée commerciale** va de 03 h 00 à 02 h 59 le lendemain : une vente faite à 01 h 30 compte pour la journée de la veille.
 
 ---

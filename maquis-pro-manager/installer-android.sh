@@ -45,6 +45,7 @@ cat > "$PREFIX/bin/maquis" <<'EOS'
 # maquis          démarre l'application (et le lien pour les autres téléphones)
 # maquis lien     affiche le lien à ouvrir sur les autres téléphones
 # maquis code     affiche le code d'installation (création du compte propriétaire)
+# maquis acces    identifiants oubliés : liste les comptes ; « maquis acces patron » donne un mot de passe provisoire
 # maquis maj      installe la dernière version (les données sont conservées)
 # maquis arret    arrête l'application
 APP="$HOME/maquis-source/maquis-pro-manager"
@@ -53,7 +54,8 @@ PORT=3100
 lien() { grep -o 'https://[-a-z0-9]*\.trycloudflare\.com' "$DONNEES/tunnel.log" 2>/dev/null | head -1; }
 case "$1" in
   lien) L=$(lien); if [ -n "$L" ]; then echo "$L"; else echo "Pas de lien pour le moment : tapez « maquis » pour démarrer."; fi; exit ;;
-  code) cat "$DONNEES/CODE-INSTALLATION.txt" 2>/dev/null || echo "Le compte propriétaire est déjà créé (ou l'application n'a jamais démarré)."; exit ;;
+  code) cat "$DONNEES/CODE-INSTALLATION.txt" 2>/dev/null || echo "Le compte propriétaire est déjà créé : tapez « maquis acces » si vous avez oublié l'identifiant ou le mot de passe."; exit ;;
+  acces) cd "$APP" && node --disable-warning=ExperimentalWarning --env-file-if-exists=.env scripts/acces.js "$2"; exit ;;
   arret) pkill -f "maquis-pro-manager/serveur.js"; pkill -f "cloudflared tunnel --url http://localhost:$PORT"; echo "Arrêté."; exit ;;
   maj)
     pkill -f "maquis-pro-manager/serveur.js"; pkill -f "cloudflared tunnel --url http://localhost:$PORT"
@@ -91,7 +93,15 @@ if [ -n "$L" ]; then
 else
   echo " Pas de lien pour les autres téléphones (internet ou cloudflared indisponible)."
 fi
-[ -f "$DONNEES/CODE-INSTALLATION.txt" ] && echo && echo " $(head -1 "$DONNEES/CODE-INSTALLATION.txt")"
+if [ -f "$DONNEES/CODE-INSTALLATION.txt" ]; then
+  echo
+  echo " PREMIÈRE OUVERTURE : il n'y a pas de compte par défaut. L'écran « Bienvenue »"
+  echo " vous fait CHOISIR votre identifiant et votre mot de passe."
+  echo " $(head -1 "$DONNEES/CODE-INSTALLATION.txt")"
+else
+  echo
+  echo " Identifiant ou mot de passe oublié ? Tapez :  maquis acces"
+fi
 echo
 echo " Laissez Termux ouvert et le téléphone en charge. CTRL + C pour arrêter."
 echo "==========================================================="

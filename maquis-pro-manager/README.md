@@ -50,7 +50,7 @@ npm install
 npm start
 ```
 
-Ouvrez http://localhost:3000. Au premier démarrage, le serveur affiche un **code d'installation**, également écrit dans `data/CODE-INSTALLATION.txt`. Saisissez-le pour créer le compte du propriétaire.
+Ouvrez http://localhost:3000. **Il n'y a pas de compte par défaut** : au premier démarrage, le serveur affiche un **code d'installation** (aussi écrit dans `data/CODE-INSTALLATION.txt`) et l'écran « Bienvenue » vous fait choisir l'identifiant et le mot de passe du propriétaire. Identifiants oubliés : `npm run acces` (ou `maquis acces` dans Termux).
 
 Mise en ligne (o2switch, serveur Docker) et tâche planifiée de 03 h 00 : voir [docs/INSTALLATION.md](docs/INSTALLATION.md).
 
@@ -60,7 +60,7 @@ Mise en ligne (o2switch, serveur Docker) et tâche planifiée de 03 h 00 : voir 
 npm test
 ```
 
-36 tests automatiques sur un vrai serveur et une vraie base. Ils couvrent les 18 tests obligatoires du cahier des charges (scénario d'une semaine dans un maquis : entrées, ventes, casses, crédits, caisse, reçus, permissions, bilans de 03 h 00 et du lundi, hors connexion, sauvegarde et restauration), ainsi que la sécurité. Le détail est dans [docs/DOCUMENTATION-TECHNIQUE.md](docs/DOCUMENTATION-TECHNIQUE.md#tests).
+37 tests automatiques sur un vrai serveur et une vraie base. Ils couvrent les 18 tests obligatoires du cahier des charges (scénario d'une semaine dans un maquis : entrées, ventes, casses, crédits, caisse, reçus, permissions, bilans de 03 h 00 et du lundi, hors connexion, sauvegarde et restauration), ainsi que la sécurité. Le détail est dans [docs/DOCUMENTATION-TECHNIQUE.md](docs/DOCUMENTATION-TECHNIQUE.md#tests).
 
 ## Documentation
 
