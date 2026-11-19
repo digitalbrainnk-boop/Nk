@@ -26,6 +26,7 @@ But : vérifier vous-même chaque fonction dans les conditions réelles (vrais t
 | `maquis acces patron` | donne un mot de passe provisoire au compte « patron » (à changer à la connexion) |
 | `maquis maj` | installe la dernière version corrigée (les données de test sont gardées) |
 | `maquis arret` | arrête l'application |
+| `maquis zero` | recommence le test à zéro (anciennes données mises de côté, pas effacées) |
 
 Pour que le test dure toute la nuit :
 - laissez Termux ouvert, le téléphone **branché** ;
@@ -46,7 +47,7 @@ Si l'écran de **connexion** apparaît à la place, un compte propriétaire exis
 2. tapez `maquis acces patron` (avec votre identifiant) : un **mot de passe provisoire** s'affiche ;
 3. connectez-vous avec : l'application vous demande aussitôt de choisir votre propre mot de passe.
 
-Sur Windows, double-cliquez sur `IDENTIFIANTS-OUBLIES.bat`. Pour tout recommencer à zéro (en effaçant les données de test) : `maquis arret`, `rm -rf ~/maquis-donnees`, puis `maquis`.
+Sur Windows, double-cliquez sur `IDENTIFIANTS-OUBLIES.bat`. Pour tout recommencer à zéro, tapez `maquis zero` : les anciennes données sont mises de côté dans un dossier daté, puis l'écran « Bienvenue » réapparaît.
 
 ### À savoir sur ce mode test
 
@@ -139,9 +140,4 @@ Je corrige, puis vous tapez `maquis maj` pour récupérer la correction sans per
 
 ## 5. Après le test
 
-Les données de test **ne vont pas** en ligne : l'installation sur l'hébergeur définitif part d'une base vide (voir [INSTALLATION.md](INSTALLATION.md)). Pour recommencer un test à zéro sur le téléphone :
-```
-maquis arret
-rm -rf ~/maquis-donnees
-maquis
-```
+Les données de test **ne vont pas** en ligne : l'installation sur l'hébergeur définitif part d'une base vide (voir [INSTALLATION.md](INSTALLATION.md)). Pour recommencer un test à zéro sur le téléphone, tapez `maquis zero` (confirmez avec `OUI`) : les anciennes données sont mises de côté dans un dossier daté, rien n'est effacé.

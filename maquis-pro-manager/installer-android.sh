@@ -48,6 +48,7 @@ cat > "$PREFIX/bin/maquis" <<'EOS'
 # maquis acces    identifiants oubliés : liste les comptes ; « maquis acces patron » donne un mot de passe provisoire
 # maquis maj      installe la dernière version (les données sont conservées)
 # maquis arret    arrête l'application
+# maquis zero     recommence le test à zéro (les anciennes données sont mises de côté, pas effacées)
 APP="$HOME/maquis-source/maquis-pro-manager"
 DONNEES="$HOME/maquis-donnees"
 PORT=3100
@@ -57,12 +58,27 @@ case "$1" in
   code) cat "$DONNEES/CODE-INSTALLATION.txt" 2>/dev/null || echo "Le compte propriétaire est déjà créé : tapez « maquis acces » si vous avez oublié l'identifiant ou le mot de passe."; exit ;;
   acces) cd "$APP" && node --disable-warning=ExperimentalWarning --env-file-if-exists=.env scripts/acces.js "$2"; exit ;;
   arret) pkill -f "maquis-pro-manager/serveur.js"; pkill -f "cloudflared tunnel --url http://localhost:$PORT"; echo "Arrêté."; exit ;;
+  zero)
+    echo "Recommencer le test à zéro ? Les données actuelles seront mises de côté dans un dossier daté (rien n'est effacé)."
+    printf "Tapez OUI puis Entrée pour confirmer : "
+    read -r REP < /dev/tty
+    [ "$REP" = "OUI" ] || { echo "Rien n'a été changé."; exit; }
+    pkill -f "maquis-pro-manager/serveur.js"; pkill -f "cloudflared tunnel --url http://localhost:$PORT"
+    sleep 1
+    if [ -d "$DONNEES" ]; then
+      ANCIEN="$DONNEES-ancien-$(date +%Y%m%d-%H%M%S)"
+      mv "$DONNEES" "$ANCIEN" && echo "Anciennes données mises de côté dans : $ANCIEN"
+    fi
+    mkdir -p "$DONNEES"
+    exec bash "$0" ;;
   maj)
     pkill -f "maquis-pro-manager/serveur.js"; pkill -f "cloudflared tunnel --url http://localhost:$PORT"
     curl -fsSL "https://raw.githubusercontent.com/digitalbrainnk-boop/Nk/${MAQUIS_BRANCHE:-ccr-98ef2a93-v667hk}/maquis-pro-manager/installer-android.sh" | bash
     exit ;;
 esac
 cd "$APP" || exit 1
+# Le dossier des données peut avoir été supprimé : on le recrée avant d'y écrire le journal.
+mkdir -p "$DONNEES"
 termux-wake-lock 2>/dev/null || true
 pkill -f "maquis-pro-manager/serveur.js" 2>/dev/null
 pkill -f "cloudflared tunnel --url http://localhost:$PORT" 2>/dev/null
@@ -72,7 +88,7 @@ SERVEUR=$!
 trap 'kill $SERVEUR $TUNNEL 2>/dev/null; termux-wake-unlock 2>/dev/null; echo; echo "MAQUIS PRO MANAGER arrêté."' EXIT
 for i in $(seq 1 30); do curl -fs "http://localhost:$PORT/health" >/dev/null 2>&1 && break; sleep 1; done
 if ! curl -fs "http://localhost:$PORT/health" >/dev/null 2>&1; then
-  echo "❌ L'application n'a pas démarré. Dernières lignes du journal :"; tail -20 "$DONNEES/serveur.log"; exit 1
+  echo "❌ L'application n'a pas démarré. Dernières lignes du journal :"; tail -20 "$DONNEES/serveur.log" 2>/dev/null || echo "(journal vide)"; exit 1
 fi
 L=""
 if command -v cloudflared >/dev/null 2>&1; then
