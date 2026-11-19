@@ -293,6 +293,7 @@ export function createSale(ctx, body) {
     touchDay(day, "vente tardive");
     notify({
       roles: ["owner", "manager"],
+      exceptUserId: ctx.user.id,
       type: "sale",
       title: `Nouvelle vente : ${money(total)}`,
       body: `${lines.map((l) => `${l.qty} ${l.product.brand}`).join(", ")}${waiter ? ` — serveur ${waiter}` : ""} — ${SALE_STATUS[status].toLowerCase()}.`,

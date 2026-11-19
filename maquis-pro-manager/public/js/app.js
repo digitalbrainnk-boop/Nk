@@ -20,19 +20,40 @@ if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").cat
 const NAV = {
   owner: {
     home: "#/tableau",
-    bottom: [["#/tableau", "home", "Tableau"], ["#/stock", "box", "Stock"], ["#/rapports", "chart", "Rapports"], ["#/recus", "doc", "Reçus"], ["#/plus", "more", "Plus"]],
+    bottom: [["#/tableau", "home", "Tableau"], ["#/gerant", "users", "Gérant"], ["#/rapports", "chart", "Rapports"], ["#/recus", "doc", "Reçus"], ["#/plus", "more", "Plus"]],
     groups: [
-      ["Suivi", [["#/tableau", "home", "Tableau de bord"], ["#/rapports", "chart", "Rapports"], ["#/recus", "doc", "Reçus"], ["#/notifications", "bell", "Notifications"]]],
-      ["Activité", [["#/stock", "box", "Stock"], ["#/fiche-stock", "list", "Fiche de stock"], ["#/mouvements", "list", "Mouvements"], ["#/ventes", "cart", "Ventes"], ["#/commandes", "clip", "Commandes"], ["#/point-serveurs", "users", "Point des serveurs"], ["#/caisses", "cash", "Caisses"], ["#/depenses", "out", "Dépenses"], ["#/credits", "credit", "Crédits clients"], ["#/entrees", "in", "Entrées"], ["#/sorties", "out", "Sorties"], ["#/achats", "truck", "Commandes fournisseurs"], ["#/inventaires", "clip", "Inventaires"], ["#/fournisseurs", "truck", "Fournisseurs"], ["#/produits", "bottle", "Catalogue"]]],
+      ["Propriétaire", [["#/tableau", "home", "Tableau de bord"], ["#/rapports", "chart", "Rapports"], ["#/recus", "doc", "Reçus"], ["#/notifications", "bell", "Notifications"]]],
+      [
+        "Espace du gérant (lecture seule)",
+        [
+          ["#/gerant", "users", "Accueil du gérant"],
+          ["#/caisses", "cash", "Caisses"],
+          ["#/commandes", "clip", "Commandes"],
+          ["#/ventes", "cart", "Ventes"],
+          ["#/credits", "credit", "Crédits clients"],
+          ["#/depenses", "out", "Dépenses"],
+          ["#/point-serveurs", "users", "Point des serveurs"],
+          ["#/stock", "box", "Stock"],
+          ["#/fiche-stock", "list", "Fiche de stock"],
+          ["#/entrees", "in", "Entrées"],
+          ["#/sorties", "out", "Sorties"],
+          ["#/mouvements", "list", "Mouvements"],
+          ["#/inventaires", "clip", "Inventaires"],
+          ["#/achats", "truck", "Commandes fournisseurs"],
+          ["#/fournisseurs", "truck", "Fournisseurs"],
+          ["#/produits", "bottle", "Catalogue"],
+        ],
+      ],
       ["Administration", [["#/admin/comptes", "users", "Comptes"], ["#/admin/appareils", "shield", "Appareils connectés"], ["#/admin/connexions", "user", "Connexions"], ["#/admin/audit", "list", "Journal d'audit"], ["#/admin/parametres", "settings", "Paramètres"], ["#/admin/sauvegardes", "download", "Sauvegardes"], ["#/compte", "user", "Mon compte"]]],
     ],
   },
   manager: {
-    home: "#/tableau",
-    bottom: [["#/tableau", "home", "Accueil"], ["#/stock", "box", "Stock"], ["#/entrees/nouvelle", "in", "Entrée"], ["#/sorties/nouvelle", "out", "Sortie"], ["#/plus", "more", "Plus"]],
+    home: "#/gerant",
+    bottom: [["#/gerant", "home", "Accueil"], ["#/caisse", "cash", "Caisse"], ["#/commandes", "list", "Commandes"], ["#/stock", "box", "Stock"], ["#/plus", "more", "Plus"]],
     groups: [
-      ["Opérations", [["#/tableau", "home", "Tableau de bord"], ["#/stock", "box", "Stock"], ["#/fiche-stock", "list", "Fiche de stock"], ["#/entrees", "in", "Entrées"], ["#/sorties", "out", "Sorties"], ["#/inventaires", "clip", "Inventaires"], ["#/produits", "bottle", "Catalogue des boissons"], ["#/mouvements", "list", "Mouvements"]]],
-      ["Ventes et caisse", [["#/commandes", "clip", "Commandes"], ["#/ventes", "cart", "Ventes"], ["#/point-serveurs", "users", "Point des serveurs"], ["#/caisses", "cash", "Caisses"], ["#/depenses", "out", "Dépenses"], ["#/credits", "credit", "Crédits clients"]]],
+      ["Caisse", [["#/gerant", "home", "Accueil du gérant"], ["#/caisse", "cash", "Ma caisse"], ["#/commandes", "list", "Commandes à encaisser"], ["#/vente", "cart", "Vente directe"], ["#/credits", "credit", "Crédits clients"], ["#/depenses", "out", "Dépenses"]]],
+      ["Stock", [["#/stock", "box", "Stock"], ["#/fiche-stock", "list", "Fiche de stock"], ["#/entrees", "in", "Entrées"], ["#/sorties", "out", "Sorties"], ["#/inventaires", "clip", "Inventaires"], ["#/produits", "bottle", "Catalogue des boissons"], ["#/mouvements", "list", "Mouvements"]]],
+      ["Ventes", [["#/commandes/toutes", "clip", "Commandes du jour"], ["#/ventes", "cart", "Ventes"], ["#/point-serveurs", "users", "Point des serveurs"], ["#/caisses", "cash", "Toutes les caisses"]]],
       ["Fournisseurs", [["#/achats", "truck", "Commandes fournisseurs"], ["#/fournisseurs", "truck", "Fournisseurs"], ["#/consignes", "box", "Consignes"]]],
       ["Suivi", [["#/rapports", "chart", "Rapports"], ["#/recus", "doc", "Reçus"], ["#/notifications", "bell", "Notifications"], ["#/admin/comptes", "users", "Personnel"], ["#/admin/appareils", "shield", "Appareils"], ["#/compte", "user", "Mon compte"]]],
     ],
@@ -55,11 +76,15 @@ const NAV = {
   },
 };
 
+// Écrans du gérant que le propriétaire consulte en lecture seule.
+const MANAGER_SPACE = new Set(["gerant", "caisses", "commandes", "ventes", "credits", "depenses", "point-serveurs", "stock", "fiche-stock", "entrees", "sorties", "mouvements", "inventaires", "achats", "fournisseurs", "consignes", "produits"]);
+
 // ---------- Routes (le serveur vérifie de toute façon chaque droit) ----------
 const ALL = ["owner", "manager", "cashier", "waiter"];
 const OM = ["owner", "manager"];
 const ROUTES = {
-  tableau: [OM, (m) => viewDashboard(m)],
+  tableau: [["owner"], (m) => viewDashboard(m)],
+  gerant: [OM, (m) => X.viewManagerHome(m)],
   stock: [OM, (m, id) => (id ? M.viewProduct(m, id) : M.viewStock(m))],
   produits: [OM, (m) => M.viewProducts(m)],
   mouvements: [OM, (m) => M.viewMovements(m)],
@@ -74,9 +99,9 @@ const ROUTES = {
   depenses: [["owner", "manager", "cashier"], (m) => M.viewExpenses(m)],
   caisses: [["owner", "manager", "cashier"], (m, id) => (id ? M.viewCashSession(m, id) : M.viewCashSessions(m))],
   ventes: [ALL, (m, id) => (id ? M.viewSale(m, id) : S.user.role === "waiter" ? go("#/mes-ventes") : M.viewSales(m))],
-  commandes: [["owner", "manager", "cashier"], (m) => (S.user.role === "cashier" ? T.viewPending(m) : M.viewOrdersAll(m))],
-  caisse: [["cashier"], (m) => T.viewCash(m)],
-  vente: [["cashier"], (m) => T.viewDirectSale(m)],
+  commandes: [["owner", "manager", "cashier"], (m, x) => (S.user.role === "owner" || x === "toutes" ? M.viewOrdersAll(m) : T.viewPending(m))],
+  caisse: [["cashier", "manager"], (m) => T.viewCash(m)],
+  vente: [["cashier", "manager"], (m) => T.viewDirectSale(m)],
   credits: [["owner", "manager", "cashier"], (m) => T.viewCredits(m)],
   commander: [["waiter"], (m) => T.viewOrder(m)],
   "mes-commandes": [["waiter"], (m) => T.viewMyOrders(m)],
@@ -131,7 +156,7 @@ function renderChrome() {
   );
   const cur = location.hash || NAV[S.user.role].home;
   const isOn = (href) => cur === href || (href !== "#/plus" && cur.startsWith(href + "/") && !NAV[S.user.role].bottom.some(([x]) => x !== href && cur.startsWith(x)));
-  const badge = (href) => (href === "#/commandes" && S.user.role === "cashier" && pendingOrders ? h("span", { class: "dot-badge" }, pendingOrders) : href === "#/notifications" && S.unread ? h("span", { class: "dot-badge" }, S.unread) : null);
+  const badge = (href) => (href === "#/commandes" && (S.user.role === "cashier" || S.user.role === "manager") && pendingOrders ? h("span", { class: "dot-badge" }, pendingOrders) : href === "#/notifications" && S.unread ? h("span", { class: "dot-badge" }, S.unread) : null);
   bottom.replaceChildren(...NAV[S.user.role].bottom.map(([href, ic, label]) => h("a", { href, class: isOn(href) ? "on" : "" }, icon(ic), h("span", null, label), badge(href))));
   side.replaceChildren(...NAV[S.user.role].groups.flatMap(([g, items]) => [h("div", { class: "group" }, g), ...items.map(([href, ic, label]) => h("a", { href, class: isOn(href) ? "on" : "" }, icon(ic), label, badge(href)))]));
 }
@@ -149,6 +174,9 @@ async function route() {
   main.replaceChildren(loader());
   try {
     await r[1](main, ...args);
+    // Le propriétaire voit les écrans du gérant tels quels, mais sans pouvoir rien modifier.
+    if (S.user.role === "owner" && MANAGER_SPACE.has(name))
+      main.prepend(h("div", { class: "banner info" }, icon("shield"), h("div", null, h("b", null, "Espace du gérant — lecture seule. "), "Vous voyez tout ce que le gérant enregistre ; vous ne pouvez rien modifier ni valider à sa place.")));
   } catch (e) {
     if (e instanceof ApiError && e.status === 401) return;
     main.replaceChildren(card(null, empty(e.message || "Erreur d'affichage.", "alert"), h("div", { class: "center" }, h("button", { class: "btn", on: { click: route } }, icon("refresh"), "Réessayer"))));
@@ -184,7 +212,7 @@ function refreshBootSoon() {
   }, 1500);
 }
 async function updatePending() {
-  if (S.user?.role !== "cashier") return;
+  if (S.user?.role !== "cashier" && S.user?.role !== "manager") return;
   try {
     const n = (await GET("/api/orders?status=pending")).length;
     // Si le temps réel est coupé par l'hébergeur, l'interrogation régulière rafraîchit quand même la liste.

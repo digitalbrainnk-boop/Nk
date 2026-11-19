@@ -248,3 +248,83 @@ export async function viewWaiterSummary(main) {
   );
   load().catch(fail);
 }
+
+// ---------- Accueil du gérant ----------
+// Le travail de la journée : caisse, commandes à encaisser, alertes de stock, entrées et sorties.
+// Le propriétaire voit le même écran en lecture seule (sans boutons d'action).
+export async function viewManagerHome(main) {
+  main.replaceChildren(loader());
+  const d = await GET("/api/manager/home");
+  const mgr = isManager();
+  const exitLabels = S.boot.exit_labels || {};
+  const quick = mgr
+    ? h(
+        "div",
+        { class: "grid g3 mb" },
+        h("a", { class: "btn lg primary", href: "#/commandes" }, icon("list"), `Encaisser les commandes (${d.pending_orders.count})`),
+        h("a", { class: "btn lg", href: "#/vente" }, icon("cart"), "Vente directe"),
+        h("a", { class: "btn lg", href: "#/entrees/nouvelle" }, icon("in"), "Nouvelle entrée"),
+        h("a", { class: "btn lg", href: "#/sorties/nouvelle" }, icon("out"), "Nouvelle sortie"),
+        h("a", { class: "btn lg", href: "#/achats/nouvelle" }, icon("truck"), "Commande fournisseur"),
+        h("a", { class: "btn lg", href: d.inventory_draft ? `#/inventaires/${d.inventory_draft}` : "#/inventaires" }, icon("clip"), d.inventory_draft ? "Continuer l'inventaire" : "Inventaire"),
+      )
+    : null;
+  const myCash = mgr
+    ? d.cash.mine
+      ? h("a", { class: "banner info", href: "#/caisse" }, icon("cash"), h("div", null, h("b", null, `Votre caisse est ouverte : ${money(d.cash.mine.theoretical)} attendus`), h("div", null, `${num(d.cash.mine.sales)} vente(s) · encaissé ${money(d.cash.mine.collected)} — touchez pour la gérer ou la fermer.`)))
+      : h("a", { class: "banner warn", href: "#/caisse" }, icon("cash"), h("div", null, h("b", null, "Vous tenez la caisse aujourd'hui ?"), h("div", null, "Ouvrez votre caisse pour encaisser les commandes des serveurs et les ventes au comptoir.")))
+    : null;
+  main.replaceChildren(
+    pageHead(mgr ? `Bonjour ${S.user.full_name.split(" ")[0]}` : "Accueil du gérant", `Journée commerciale du ${dayShort(d.today)} (de 03 h 00 à 03 h 00)`),
+    myCash,
+    quick,
+    h(
+      "div",
+      { class: "stats" },
+      stat("Ventes du jour", money(d.sales.amount), `${num(d.sales.count)} vente(s) · ${num(d.sales.bottles)} btl`, "hero"),
+      stat("Encaissé aujourd'hui", money(d.sales.collected)),
+      stat("Commandes en attente", num(d.pending_orders.count), money(d.pending_orders.amount)),
+      stat("Crédits clients", money(d.credits.amount), `${num(d.credits.count)} vente(s)`),
+    ),
+    d.stock.out.length ? h("div", { class: "banner bad mt" }, icon("alert"), h("div", null, h("b", null, "Rupture : "), d.stock.out.map((x) => x.name).join(", "))) : null,
+    d.stock.low.length ? h("div", { class: "banner warn mt" }, icon("alert"), h("div", null, h("b", null, "Stock faible : "), d.stock.low.map((x) => `${x.name} (${x.label})`).join(", "), mgr ? h("div", null, h("a", { href: "#/achats/nouvelle" }, "Préparer une commande fournisseur →")) : null)) : null,
+    h(
+      "div",
+      { class: "grid g2 mt" },
+      card(
+        h("div", { class: "cardhead" }, h("h2", null, "Commandes en attente"), mgr ? h("a", { class: "small", href: "#/commandes" }, "Encaisser") : null),
+        d.pending_orders.items.length
+          ? h("div", { class: "list" }, d.pending_orders.items.map((o) => h("div", { class: "item" }, h("div", { class: "grow" }, h("div", { class: "t" }, `${o.order_no}${o.table_label ? ` · ${o.table_label}` : ""}`), h("div", { class: "d" }, `${o.waiter} · ${datetime(o.at)}`)), h("div", { class: "amt" }, money(o.total)))))
+          : empty("Aucune commande en attente.", "check"),
+      ),
+      card(
+        h("div", { class: "cardhead" }, h("h2", null, "Caisses ouvertes"), h("a", { class: "small", href: "#/caisses" }, "Toutes les caisses")),
+        d.cash.open_sessions.length
+          ? h("div", { class: "list" }, d.cash.open_sessions.map((c) => h("a", { class: "item", href: `#/caisses/${c.id}` }, h("div", { class: "ic brand" }, icon("cash")), h("div", { class: "grow" }, h("div", { class: "t" }, c.cashier), h("div", { class: "d" }, `Ouverte le ${datetime(c.opened_at)} · ${num(c.sales)} vente(s)`)), h("div", { class: "amt" }, money(c.theoretical)))))
+          : empty("Aucune caisse ouverte.", "cash"),
+      ),
+    ),
+    h(
+      "div",
+      { class: "grid g2" },
+      card(
+        "Mouvements de la journée",
+        h(
+          "div",
+          { class: "list" },
+          h("a", { class: "item", href: "#/entrees" }, h("div", { class: "ic good" }, icon("in")), h("div", { class: "grow" }, h("div", { class: "t" }, "Entrées de marchandises"), h("div", { class: "d" }, `${num(d.entries.count)} livraison(s)`)), h("div", { class: "amt" }, `+${num(d.entries.qty)} btl`)),
+          h("a", { class: "item", href: "#/sorties" }, h("div", { class: "ic warn" }, icon("out")), h("div", { class: "grow" }, h("div", { class: "t" }, "Sorties hors ventes"), h("div", { class: "d" }, d.exits.length ? d.exits.map((x) => `${exitLabels[x.kind] || x.kind} : ${num(x.qty)}`).join(" · ") : "aucune")), h("div", { class: "amt" }, `${num(d.exits.reduce((a, x) => a + x.qty, 0))} btl`)),
+          h("a", { class: "item", href: "#/depenses" }, h("div", { class: "ic" }, icon("out")), h("div", { class: "grow" }, h("div", { class: "t" }, "Dépenses"), h("div", { class: "d" }, `${num(d.expenses.count)} dépense(s)`)), h("div", { class: "amt" }, money(d.expenses.amount))),
+          h("a", { class: "item", href: "#/achats" }, h("div", { class: "ic brand" }, icon("truck")), h("div", { class: "grow" }, h("div", { class: "t" }, "Commandes fournisseurs en attente de livraison")), h("div", { class: "amt" }, num(d.purchase_orders))),
+          h("a", { class: "item", href: "#/fiche-stock" }, h("div", { class: "ic brand" }, icon("list")), h("div", { class: "grow" }, h("div", { class: "t" }, "Fiche de stock du jour"), h("div", { class: "d" }, "stock début + entrées − sorties = stock fin"))),
+        ),
+      ),
+      card(
+        h("div", { class: "cardhead" }, h("h2", null, "Reçus de la journée"), h("a", { class: "small", href: "#/recus" }, "Tous les reçus")),
+        d.latest_documents.length
+          ? h("div", { class: "list" }, d.latest_documents.map((x) => h("a", { class: "item", href: `#/recus/${x.doc_no}` }, h("div", { class: "grow" }, h("div", { class: "t" }, x.title), h("div", { class: "d" }, `${x.doc_no} · ${datetime(x.at)} · ${x.user_name}`)), x.amount !== null ? h("div", { class: "amt" }, money(x.amount)) : null)))
+          : empty("Aucun reçu aujourd'hui.", "doc"),
+      ),
+    ),
+  );
+}

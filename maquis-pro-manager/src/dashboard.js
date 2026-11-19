@@ -64,3 +64,45 @@ export function dashboard(ctx, { from, to } = {}) {
     reports: reportStatus(),
   };
 }
+
+// Accueil du gérant : ce qu'il a à faire et à surveiller aujourd'hui. Pas de bénéfice, de marge ni de
+// rentabilité : ces chiffres restent sur le tableau de bord du propriétaire.
+export function managerHome(ctx) {
+  const today = businessDay(now());
+  const sales = get("SELECT COUNT(*) AS n, COALESCE(SUM(total), 0) AS amount FROM sales WHERE business_day = ? AND status != 'cancelled'", today);
+  const bottles = get("SELECT COALESCE(-SUM(qty), 0) AS v FROM stock_movements WHERE kind = 'sale' AND business_day = ?", today).v;
+  const collected = get("SELECT COALESCE(SUM(amount), 0) AS v FROM payments WHERE business_day = ?", today).v;
+  const credit = get("SELECT COUNT(*) AS n, COALESCE(SUM(total - paid), 0) AS v FROM sales WHERE status IN ('partial','credit')");
+  const pending = all(
+    "SELECT o.id, o.order_no, o.table_label, o.total, o.at, u.full_name AS waiter FROM orders o JOIN users u ON u.id = o.waiter_id WHERE o.status = 'pending' ORDER BY o.at",
+  );
+  const exitsToday = all(
+    "SELECT kind, -SUM(qty) AS qty FROM stock_movements WHERE business_day = ? AND kind IN ('offered','staff','broken','lost','expired','other') GROUP BY kind HAVING qty != 0",
+    today,
+  );
+  const entriesToday = get("SELECT COUNT(*) AS n, COALESCE(SUM((SELECT SUM(qty) FROM entry_lines l WHERE l.entry_id = e.id)), 0) AS qty FROM entries e WHERE e.business_day = ? AND e.status = 'valid'", today);
+  const expenses = get("SELECT COUNT(*) AS n, COALESCE(SUM(amount), 0) AS v FROM expenses WHERE business_day = ? AND status = 'valid'", today);
+  const stock = stockList();
+  const openSessions = all("SELECT id FROM cash_sessions WHERE status = 'open'").map((r) => {
+    const s = sessionSummary(r.id);
+    return { id: s.id, cashier: s.cashier_name, cashier_id: s.cashier_id, opened_at: s.opened_at, theoretical: s.totals.theoretical, collected: s.totals.collected, sales: s.sales.count };
+  });
+  return {
+    today,
+    me: ctx.user.id,
+    sales: { count: sales.n, amount: sales.amount, bottles, collected },
+    credits: { count: credit.n, amount: credit.v },
+    pending_orders: { count: pending.length, amount: pending.reduce((a, o) => a + o.total, 0), items: pending.slice(0, 20) },
+    cash: { open_sessions: openSessions, mine: openSessions.find((s) => s.cashier_id === ctx.user.id) || null },
+    entries: { count: entriesToday.n, qty: entriesToday.qty },
+    exits: exitsToday,
+    expenses: { count: expenses.n, amount: expenses.v },
+    stock: {
+      low: stock.filter((x) => x.low && !x.out).map((x) => ({ id: x.id, name: `${x.brand} — ${x.name}`, label: x.label })),
+      out: stock.filter((x) => x.out).map((x) => ({ id: x.id, name: `${x.brand} — ${x.name}` })),
+    },
+    purchase_orders: get("SELECT COUNT(*) AS n FROM purchase_orders WHERE status IN ('open','partial')").n,
+    inventory_draft: get("SELECT id FROM inventories WHERE status = 'draft'")?.id || null,
+    latest_documents: searchDocuments(ctx.user, { limit: 10, from: today }),
+  };
+}

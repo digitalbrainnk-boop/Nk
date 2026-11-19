@@ -12,9 +12,23 @@ La **journée commerciale** va de 03 h 00 à 02 h 59 le lendemain : une vente fa
 
 ---
 
+## Qui voit quoi
+
+| | Propriétaire | Gérant | Caissier | Serveur |
+|---|---|---|---|---|
+| Tableau de bord du propriétaire (bénéfices, rentabilité, activité du personnel) | ✅ | ❌ | ❌ | ❌ |
+| Administration (paramètres, journal d'audit, connexions, sauvegardes) | ✅ | ❌ | ❌ | ❌ |
+| Espace du gérant (accueil, caisses, commandes, stock, entrées, sorties, fournisseurs…) | 👁️ lecture seule | ✅ | — | — |
+| Tenir une caisse, encaisser, vendre, fermer la caisse | ❌ | ✅ | ✅ | ❌ |
+| Enregistrer entrées, sorties, inventaires, commandes fournisseurs | ❌ | ✅ | ❌ | ❌ |
+| Prendre les commandes des clients | ❌ | ❌ | ❌ | ✅ |
+
+Le propriétaire **voit tout ce que fait le gérant**, sur les mêmes écrans, mais **ne peut rien modifier ni valider à sa place**. Ce n'est pas qu'une question d'affichage : le serveur refuse toute modification venant du compte propriétaire. Le gérant, lui, **ne voit pas l'espace du propriétaire**.
+
 ## Propriétaire
 
-Votre espace sert à **surveiller** : il est en **lecture seule** pour toutes les opérations. Vous ne pouvez ni modifier ni supprimer une vente, une entrée, une sortie ou une opération de caisse, et personne d'autre ne le peut non plus. Les erreurs se corrigent par une annulation qui laisse une trace.
+Votre espace sert à **surveiller** : il est en **lecture seule** pour toutes les opérations.
+- **Espace du gérant (lecture seule)** (menu de gauche, ou bouton *Gérant* en bas sur téléphone) : vous voyez l'accueil du gérant tel qu'il le voit (ventes du jour, commandes en attente, caisses ouvertes avec leur montant, mouvements de stock, reçus de la journée), ainsi que chacun de ses écrans. Un bandeau « lecture seule » le rappelle, et aucun bouton d'action n'apparaît. Vous ne pouvez ni modifier ni supprimer une vente, une entrée, une sortie ou une opération de caisse, et personne d'autre ne le peut non plus. Les erreurs se corrigent par une annulation qui laisse une trace.
 
 - **Tableau de bord** : ventes, encaissements, dépenses, bénéfice estimé, sorties, pertes, stock restant, caisses ouvertes, activité du personnel, derniers reçus et derniers rapports. Choisissez *Aujourd'hui*, *Hier*, *7 jours*, *30 jours* ou une période précise.
 - **Rentabilité par boisson** (tableau de bord, et dans le bilan hebdomadaire) : bouteilles vendues, chiffre d'affaires, coût d'achat, marge brute, marge par bouteille, et bénéfice net une fois retirées les pertes, casses et boissons offertes. La période *Ce mois* donne le résultat du mois en cours.
@@ -36,6 +50,18 @@ Votre espace sert à **surveiller** : il est en **lecture seule** pour toutes le
 - **Notifications** : vous êtes prévenu des entrées, sorties, ventes, dépenses, écarts de caisse, stocks faibles, ruptures, fermetures de caisse, bilans, connexions inhabituelles et annulations. Dans *Mon compte*, choisissez pour chaque type : push, application seulement, ou désactivé.
 
 ## Gérant
+
+- **Accueil du gérant** : votre écran de travail de la journée. Il montre :
+  - l'état de votre caisse ;
+  - les boutons rapides : encaisser, vente directe, entrée, sortie, commande fournisseur, inventaire ;
+  - les ventes du jour, les commandes en attente, les caisses ouvertes, les alertes de stock, les mouvements et les reçus de la journée.
+
+  Les bénéfices et la rentabilité n'y figurent pas : ils restent sur le tableau de bord du propriétaire.
+- **Tenir la caisse** : si c'est vous qui encaissez, ouvrez *Ma caisse* avec le fonds de caisse.
+  - Vous encaissez alors les commandes des serveurs (*Commandes*, avec addition et encaissement de toute une table), les ventes au comptoir (*Vente directe*) et les crédits, exactement comme un caissier.
+  - Vous fermez votre caisse avec le comptage, et le billetage si vous le voulez.
+  - Chaque opération porte votre nom, et le propriétaire la voit.
+- Vous pouvez aussi enregistrer un retrait ou fermer la caisse d'un caissier absent (*Toutes les caisses*).
 
 - **Catalogue** (*Plus → Catalogue des boissons*) : *Nouvelle boisson* (nom, marque, catégorie, prix d'achat et de vente, bouteilles par casier, stock minimum, fournisseur, stock initial). Ajoutez une photo depuis la fiche de la boisson (*Stock* → touchez la boisson).
 - **Commandes fournisseurs** (*Stock → Commandes fournisseurs*, ou menu *Fournisseurs*) : *Nouvelle commande*, choisissez le fournisseur et le nombre de jours de vente à couvrir. L'application propose les quantités : ventes moyennes par jour × jours à couvrir + stock minimum − stock actuel − ce qui est déjà commandé, arrondies au casier complet. Vous pouvez tout modifier. *Créer le bon de commande* produit un PDF à envoyer au fournisseur par WhatsApp.

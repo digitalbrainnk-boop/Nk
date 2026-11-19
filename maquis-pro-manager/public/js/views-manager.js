@@ -645,7 +645,7 @@ export function expenseForm(done) {
     field("Catégorie", select("category", S.boot.settings.expense_categories, S.boot.settings.expense_categories[0])),
     field("Description", input("description", { required: true, minlength: 3, placeholder: "Ex. 2 sacs de glace" })),
     h("div", { class: "row" }, field("Montant (FCFA)", input("amount", { type: "number", min: 1, required: true, inputmode: "numeric" })), field("Mode de paiement", select("method", S.boot.settings.payment_methods, "Espèces"))),
-    S.user.role === "manager" ? field("Payée depuis", select("session_id", [{ value: "", label: "Hors caisse (argent du gérant ou du propriétaire)" }, ...sessions.map((s) => ({ value: s.id, label: `Caisse de ${s.cashier}` }))], "")) : h("p", { class: "small muted" }, "La dépense est retirée de votre caisse ouverte."),
+    S.user.role === "manager" ? field("Payée depuis", select("session_id", [{ value: "", label: "Hors caisse (argent du gérant ou du propriétaire)" }, ...sessions.map((s) => ({ value: s.id, label: s.id === S.boot.cash_session?.id ? "Ma caisse" : `Caisse de ${s.cashier}` }))], S.boot.cash_session?.id ?? "")) : h("p", { class: "small muted" }, "La dépense est retirée de votre caisse ouverte."),
   );
   return modal("Nouvelle dépense", form, [{ label: "Annuler", class: "ghost" }, { label: "Enregistrer", class: "primary", submit: true, onClick: async () => {
     const d = formData(form.closest("form"));

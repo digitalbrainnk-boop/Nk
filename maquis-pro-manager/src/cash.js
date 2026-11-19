@@ -111,8 +111,9 @@ export function sessionSummary(id) {
 }
 
 function sessionForWrite(ctx, sessionId) {
-  if (ctx.user.role === "cashier") return requireOpenSession(ctx);
-  // Le gérant peut enregistrer un ajout ou un retrait dans une caisse ouverte qu'il désigne.
+  if (ctx.user.role === "cashier" || !sessionId) return requireOpenSession(ctx);
+  // Le gérant peut enregistrer un ajout ou un retrait dans une caisse ouverte qu'il désigne
+  // (sinon dans la sienne, s'il tient lui-même la caisse).
   const s = get("SELECT * FROM cash_sessions WHERE id = ? AND status = 'open'", int(sessionId, "Caisse", { min: 1 }));
   if (!s) throw bad("Cette caisse n'est pas ouverte.");
   return s;
@@ -271,7 +272,8 @@ function parseBilletage(b) {
 }
 export function closeSession(ctx, body) {
   let session;
-  if (ctx.user.role === "cashier") session = requireOpenSession(ctx);
+  // Le caissier ferme sa caisse ; le gérant ferme la sienne, ou celle d'un caissier absent qu'il désigne.
+  if (ctx.user.role === "cashier" || !body.session_id) session = requireOpenSession(ctx);
   else {
     session = get("SELECT * FROM cash_sessions WHERE id = ? AND status = 'open'", int(body.session_id, "Caisse", { min: 1 }));
     if (!session) throw bad("Cette caisse n'est pas ouverte.");

@@ -90,7 +90,9 @@ test("10. permissions des quatre comptes vérifiées côté serveur", async () =
   assert.equal((await A.cashier.post("/api/products", { name: "X", brand: "X", category_id: 1, purchase_price: 1, sale_price: 2 })).status, 403);
   assert.equal((await A.cashier.patch(`/api/products/${P.brakina.id}`, { purchase_price: 1 })).status, 403);
   assert.equal((await A.cashier.post("/api/entries", { lines: [{ product_id: P.brakina.id, crates: 1 }] })).status, 403);
-  assert.equal((await A.manager.post("/api/sales", { lines: [{ product_id: P.brakina.id, qty: 1 }] })).status, 403);
+  // Le gérant peut encaisser s'il tient une caisse ; sans caisse ouverte, c'est refusé.
+  assert.equal((await A.manager.post("/api/sales", { lines: [{ product_id: P.brakina.id, qty: 1 }] })).status, 400);
+  assert.equal((await A.manager.get("/api/dashboard")).status, 403); // le tableau du propriétaire n'est pas pour le gérant
   assert.equal((await A.waiter.get("/api/dashboard")).status, 403);
   assert.equal((await A.cashier.get("/api/reports")).status, 403);
   assert.equal((await A.manager.get("/api/audit")).status, 403);

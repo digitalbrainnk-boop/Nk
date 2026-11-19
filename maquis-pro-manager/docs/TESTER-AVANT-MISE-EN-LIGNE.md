@@ -102,6 +102,9 @@ Cochez au fur et à mesure. Notez tout ce qui ne va pas (voir 4.).
 | 19 | Gérant : *Fiche de stock* du jour | « Contrôle juste » ; stock début + entrées − sorties = stock fin pour chaque boisson ; PDF et Excel |
 | 20 | Caissier : fermeture avec *billets et pièces* | Le total se calcule seul ; le reçu de fermeture montre le billetage |
 | 21 | Propriétaire : tableau de bord *Ce mois* | Rentabilité par boisson : marge, bénéfice net après pertes ; *Point des serveurs* |
+| 22 | Gérant : se connecter | Il arrive sur *Accueil du gérant* ; il n'a ni tableau de bord du propriétaire, ni administration (même en tapant l'adresse) |
+| 23 | Gérant : *Ma caisse* → ouvrir, encaisser une commande de serveur, fermer | Tout fonctionne comme pour un caissier ; ses reçus portent son nom |
+| 24 | Propriétaire : menu *Gérant* (espace du gérant) | Mêmes informations que le gérant, bandeau « lecture seule », aucun bouton pour encaisser, ajouter ou annuler ; la caisse du gérant apparaît dans *Caisses* |
 
 ### C. Sans internet
 

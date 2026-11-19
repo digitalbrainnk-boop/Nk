@@ -312,3 +312,45 @@ test("corrections de la relecture : tables partagées, commandes anciennes, stat
   assert.equal(cur.status, "received");
   assert.deepEqual(cur.lines.map((l) => l.received_qty), [24, 12]);
 });
+
+test("le gérant tient sa caisse ; le propriétaire voit tout sans rien pouvoir modifier ; le gérant ne voit pas l'espace du propriétaire", async () => {
+  at("2026-11-18T19:00:00Z");
+  A.owner = await login("patron", "Patron2026!", "owner");
+  A.manager = await login("gerant", "Gerant2026!b", "manager");
+  A.waiter = await login("serveur1", "Serveur1b", "waiter");
+  // Le gérant n'a pas accès au tableau de bord ni à l'administration du propriétaire.
+  for (const url of ["/api/dashboard", "/api/audit", "/api/login-events", "/api/backups", "/api/audit/verify"]) assert.equal((await A.manager.get(url)).status, 403, url);
+  assert.equal((await A.manager.put("/api/settings", { maquis_name: "Autre" })).status, 403);
+  // Son accueil ne montre ni bénéfice, ni marge, ni rentabilité.
+  const home = await A.manager.ok("GET", "/api/manager/home");
+  assert.doesNotMatch(JSON.stringify(home), /profit|margin|profitability|gross/);
+  // Le gérant ouvre SA caisse, encaisse la commande d'un serveur et ferme sa caisse.
+  await A.manager.ok("POST", "/api/cash/open", { opening_float: 2000 });
+  const o = await A.waiter.ok("POST", "/api/orders", { table_label: "Table 1", lines: [{ product_id: P.castel.id, qty: 2 }] });
+  const sale = await A.manager.ok("POST", "/api/sales", { order_id: o.id, payments: [{ method: "Espèces", amount: 1500 }] });
+  assert.equal(sale.status, "paid");
+  const credit = await A.manager.ok("POST", "/api/sales", { customer_name: "Koné", lines: [{ product_id: P.castel.id, qty: 1 }], payments: [] });
+  await A.manager.ok("POST", `/api/sales/${credit.id}/payments`, { amount: 750, method: "Espèces" });
+  await A.manager.ok("POST", "/api/cash/movements", { kind: "withdrawal", amount: 1000, method: "Espèces", reason: "Remis au patron" });
+  const mine = (await A.manager.ok("GET", "/api/cash/current")).session;
+  assert.equal(mine.cashier_name, "Awa Kaboré");
+  assert.equal(mine.methods.find((m) => m.method === "Espèces").theoretical, 2000 + 1500 + 750 - 1000);
+  const home2 = await A.owner.ok("GET", "/api/manager/home");
+  assert.equal(home2.cash.open_sessions.find((s) => s.cashier === "Awa Kaboré").theoretical, 3250);
+  // Le propriétaire voit tout… mais ne peut ni encaisser, ni ouvrir ou fermer une caisse, ni annuler.
+  assert.equal((await A.owner.post("/api/cash/open", { opening_float: 0 })).status, 403);
+  assert.equal((await A.owner.post("/api/sales", { order_id: o.id, payments: [] })).status, 403);
+  assert.equal((await A.owner.post(`/api/sales/${credit.id}/payments`, { amount: 1, method: "Espèces" })).status, 403);
+  assert.equal((await A.owner.post(`/api/sales/${sale.id}/cancel`, { reason: "Je veux annuler" })).status, 403);
+  assert.equal((await A.owner.post("/api/cash/close", { session_id: mine.id, counted: { Espèces: 0 } })).status, 403);
+  assert.equal((await A.owner.post("/api/cash/movements", { kind: "withdrawal", amount: 100, reason: "test", session_id: mine.id })).status, 403);
+  const sales = await A.owner.ok("GET", "/api/sales?from=2026-11-18&to=2026-11-18");
+  assert.ok(sales.some((s) => s.id === sale.id && s.cashier_name === "Awa Kaboré"));
+  assert.ok((await A.owner.ok("GET", "/api/audit?q=Vente")).some((a) => a.user_name === "Awa Kaboré"));
+  assert.ok((await A.owner.ok("GET", "/api/notifications")).items.some((n) => n.type === "sale"));
+  assert.ok(!(await A.manager.ok("GET", "/api/notifications")).items.some((n) => n.type === "sale" && n.link === `#/recus/${sale.doc_no}`)); // pas notifié de sa propre vente
+  // Fermeture de sa caisse par le gérant (sans désigner de caisse).
+  const close = await A.manager.ok("POST", "/api/cash/close", { counted: { Espèces: 3250 } });
+  assert.equal(close.variance, 0);
+  assert.equal((await A.owner.ok("GET", `/api/documents/${close.doc_no}`)).payload.fields.find((f) => f[0] === "Caissier")[1], "Awa Kaboré");
+});

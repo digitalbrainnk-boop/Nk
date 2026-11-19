@@ -403,7 +403,7 @@ export function viewDirectSale(main) {
 export async function viewCredits(main) {
   main.replaceChildren(loader());
   const rows = await GET("/api/credits");
-  const canCash = S.user.role === "cashier";
+  const canCash = S.user.role === "cashier" || S.user.role === "manager";
   main.replaceChildren(
     pageHead("Crédits clients", `Total dû : ${money(rows.reduce((s, r) => s + r.remaining, 0))}`),
     card(

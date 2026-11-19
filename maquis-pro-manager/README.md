@@ -11,6 +11,7 @@ Application de gestion d'un maquis : stocks, entrées et sorties de boissons, co
 | Exigence du cahier des charges | État |
 |---|---|
 | 4 comptes : propriétaire (lecture seule), gérant, caissier, serveur | ✅ Droits vérifiés **côté serveur** à chaque requête |
+| Interfaces séparées : le gérant a son **accueil** et peut **tenir la caisse** ; le propriétaire voit tout l'**espace du gérant en lecture seule** ; le gérant ne voit pas l'espace du propriétaire | ✅ |
 | Catalogue complet (catégories, marques, photo, référence, prix, casier, stock min., fournisseur, valeur du stock) | ✅ |
 | Entrées en casiers + bouteilles, calcul automatique, reçu PDF, reste à payer | ✅ |
 | Sorties différenciées : vendues, offertes, personnel, cassées, perdues, périmées, autres | ✅ Une vente n'est jamais comptée deux fois |
@@ -60,7 +61,7 @@ Mise en ligne (o2switch, serveur Docker) et tâche planifiée de 03 h 00 : voir 
 npm test
 ```
 
-37 tests automatiques sur un vrai serveur et une vraie base. Ils couvrent les 18 tests obligatoires du cahier des charges (scénario d'une semaine dans un maquis : entrées, ventes, casses, crédits, caisse, reçus, permissions, bilans de 03 h 00 et du lundi, hors connexion, sauvegarde et restauration), ainsi que la sécurité. Le détail est dans [docs/DOCUMENTATION-TECHNIQUE.md](docs/DOCUMENTATION-TECHNIQUE.md#tests).
+38 tests automatiques sur un vrai serveur et une vraie base. Ils couvrent les 18 tests obligatoires du cahier des charges (scénario d'une semaine dans un maquis : entrées, ventes, casses, crédits, caisse, reçus, permissions, bilans de 03 h 00 et du lundi, hors connexion, sauvegarde et restauration), ainsi que la sécurité. Le détail est dans [docs/DOCUMENTATION-TECHNIQUE.md](docs/DOCUMENTATION-TECHNIQUE.md#tests).
 
 ## Documentation
 

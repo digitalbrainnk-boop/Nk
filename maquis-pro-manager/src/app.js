@@ -16,7 +16,7 @@ import * as cash from "./cash.js";
 import * as docs from "./documents.js";
 import * as reports from "./reports.js";
 import * as notif from "./notify.js";
-import { dashboard } from "./dashboard.js";
+import { dashboard, managerHome } from "./dashboard.js";
 import { renderDocumentPdf, renderReportPdf, renderStatementPdf } from "./pdf.js";
 import * as purchases from "./purchases.js";
 import { reportToXlsx, statementToXlsx } from "./xlsx.js";
@@ -177,7 +177,7 @@ export function createApp() {
         products: catalog.listProducts(role, { includeInactive: role === "manager" || role === "owner" }),
         waiters: all("SELECT id, full_name FROM users WHERE role = 'waiter' AND active = 1 ORDER BY full_name"),
         suppliers: role === "manager" || role === "owner" ? all("SELECT id, name FROM suppliers WHERE active = 1 ORDER BY name") : [],
-        cash_session: role === "cashier" ? (cash.openSessionOf(req.user.id) ? cash.sessionSummary(cash.openSessionOf(req.user.id).id) : null) : null,
+        cash_session: role === "cashier" || role === "manager" ? (cash.openSessionOf(req.user.id) ? cash.sessionSummary(cash.openSessionOf(req.user.id).id) : null) : null,
         open_sessions: role === "manager" ? all("SELECT cs.id, u.full_name AS cashier FROM cash_sessions cs JOIN users u ON u.id = cs.cashier_id WHERE cs.status = 'open'") : [],
         unread: notif.unreadCount(req.user.id),
         vapid_key: notif.vapidPublicKey(),
@@ -382,8 +382,9 @@ export function createApp() {
   api.post("/orders/bill", need("waiter", "cashier", "manager"), h((req) => sales.createBill(ctxOf(req), req.body)));
   api.get("/sales", need(), h((req) => sales.listSales(ctxOf(req), req.query)));
   api.get("/sales/:id", need(), h((req) => sales.getSale(ctxOf(req), id(req))));
-  api.post("/sales", need("cashier"), op((req, ctx) => sales.createSale(ctx, req.body)));
-  api.post("/sales/:id/payments", need("cashier"), op((req, ctx) => sales.addSalePayment(ctx, id(req), req.body)));
+  // Encaissement : le caissier, et le gérant quand il tient lui-même une caisse (jamais le propriétaire).
+  api.post("/sales", need("cashier", "manager"), op((req, ctx) => sales.createSale(ctx, req.body)));
+  api.post("/sales/:id/payments", need("cashier", "manager"), op((req, ctx) => sales.addSalePayment(ctx, id(req), req.body)));
   api.post("/sales/:id/cancel", need("cashier", "manager"), h((req) => sales.cancelSale(ctxOf(req), id(req), req.body)));
   api.get("/credits", need("owner", "manager", "cashier"), h(() => sales.listCredits()));
   // Point des serveurs (journée ou période) : commandes, ventes, crédits, sorties attribuées.
@@ -418,11 +419,11 @@ export function createApp() {
   );
 
   // ---------- Caisse et dépenses ----------
-  api.get("/cash/current", need("cashier"), h((req) => {
+  api.get("/cash/current", need("cashier", "manager"), h((req) => {
     const s = cash.openSessionOf(req.user.id);
     return { session: s ? cash.getSession(ctxOf(req), s.id) : null };
   }));
-  api.post("/cash/open", need("cashier"), op((req, ctx) => cash.openSession(ctx, req.body)));
+  api.post("/cash/open", need("cashier", "manager"), op((req, ctx) => cash.openSession(ctx, req.body)));
   api.post("/cash/close", need("cashier", "manager"), h((req) => cash.closeSession(ctxOf(req), req.body)));
   api.post("/cash/movements", need("cashier", "manager"), op((req, ctx) => cash.addCashMovement(ctx, req.body)));
   api.get("/cash/sessions", need("owner", "manager", "cashier"), h((req) => cash.listSessions(ctxOf(req), req.query)));
@@ -536,7 +537,10 @@ export function createApp() {
     }
   });
 
-  api.get("/dashboard", need("owner", "manager"), h((req) => dashboard(ctxOf(req), req.query)));
+  // Tableau de bord du propriétaire (bénéfices, rentabilité, activité du personnel) : propriétaire seulement.
+  api.get("/dashboard", need("owner"), h((req) => dashboard(ctxOf(req), req.query)));
+  // Accueil du gérant (le travail de la journée) : le gérant, et le propriétaire en lecture seule.
+  api.get("/manager/home", need("owner", "manager"), h((req) => managerHome(ctxOf(req))));
 
   // ---------- Notifications ----------
   api.get("/notifications", need(), h((req) => notif.listNotifications(req.user.id, { before: req.query.before ? Number(req.query.before) : undefined })));
