@@ -9,7 +9,7 @@ import { now, businessDay, dayBounds, addDays, weekStart, weekBounds, daysBetwee
 import { audit } from "./audit.js";
 import { notify } from "./notify.js";
 import { createDocument } from "./documents.js";
-import { EXIT_KINDS, EXIT_LABELS, LOSS_KINDS } from "./stock.js";
+import { EXIT_KINDS, EXIT_LABELS, LOSS_KINDS, stockStatement } from "./stock.js";
 import { sessionSummary } from "./cash.js";
 import { money, num, pct, variation, cratesLabel, notFound, pname } from "./util.js";
 import { backupIfDue } from "./backup.js";
@@ -114,7 +114,15 @@ function salesStats(fromDay, toDay) {
      FROM stock_movements m LEFT JOIN users u ON u.id = m.waiter_id
      WHERE m.kind = 'sale' AND m.business_day BETWEEN ? AND ? GROUP BY m.waiter_id ORDER BY amount DESC`,
     fromDay, toDay,
-  ).map((w) => ({ ...w, sales: get("SELECT COUNT(*) AS n FROM sales WHERE business_day BETWEEN ? AND ? AND status != 'cancelled' AND waiter_id IS ?", fromDay, toDay, w.waiter_id).n }));
+  ).map((w) => ({
+    ...w,
+    // Ventes distinctes contenant au moins une bouteille de ce serveur (une table encaissée en une fois compte pour chacun de ses serveurs).
+    sales: get(
+      `SELECT COUNT(DISTINCT m.ref_id) AS n FROM stock_movements m JOIN sales s ON s.id = m.ref_id AND s.status != 'cancelled'
+       WHERE m.kind = 'sale' AND m.ref_type = 'sale' AND m.reversal_of IS NULL AND m.business_day BETWEEN ? AND ? AND m.waiter_id IS ?`,
+      fromDay, toDay, w.waiter_id,
+    ).n,
+  }));
   const cogs = get("SELECT COALESCE(-SUM(qty * unit_cost), 0) AS v FROM stock_movements WHERE kind = 'sale' AND business_day BETWEEN ? AND ?", fromDay, toDay).v;
   const bottles = get("SELECT COALESCE(-SUM(qty), 0) AS v FROM stock_movements WHERE kind = 'sale' AND business_day BETWEEN ? AND ?", fromDay, toDay).v;
   return {
@@ -234,6 +242,67 @@ function ranking(byProduct) {
   return { best: pick(sold[0]), least: pick(sold.length > 1 ? sold[sold.length - 1] : null), top: sold.slice(0, 10).map(pick), flop: sold.slice(-5).reverse().map(pick) };
 }
 
+// Rentabilité par boisson : chiffre d'affaires, coût d'achat, marge brute, et ce que coûtent
+// les pertes, casses, boissons offertes et consommées par le personnel (au prix d'achat).
+export function profitability(fromDay, toDay) {
+  const rows = all(
+    `SELECT p.id AS product_id, p.name, p.brand, c.name AS category,
+       COALESCE(-SUM(CASE WHEN m.kind = 'sale' THEN m.qty END), 0) AS qty,
+       COALESCE(-SUM(CASE WHEN m.kind = 'sale' THEN m.qty * m.unit_price END), 0) AS revenue,
+       COALESCE(-SUM(CASE WHEN m.kind = 'sale' THEN m.qty * m.unit_cost END), 0) AS cost,
+       COALESCE(-SUM(CASE WHEN m.kind IN ('broken','lost','expired') THEN m.qty * m.unit_cost END), 0) AS losses_cost,
+       COALESCE(-SUM(CASE WHEN m.kind IN ('offered','staff','other') THEN m.qty * m.unit_cost END), 0) AS given_cost
+     FROM stock_movements m JOIN products p ON p.id = m.product_id JOIN categories c ON c.id = p.category_id
+     WHERE m.business_day BETWEEN ? AND ? AND m.kind IN ('sale','broken','lost','expired','offered','staff','other')
+     GROUP BY p.id`,
+    fromDay, toDay,
+  )
+    .map((r) => {
+      const margin = r.revenue - r.cost;
+      return { ...r, name: pname(r), margin, margin_pct: pct(margin, r.revenue), unit_margin: r.qty ? Math.round(margin / r.qty) : 0, net: margin - r.losses_cost - r.given_cost };
+    })
+    .filter((r) => r.qty || r.losses_cost || r.given_cost)
+    .sort((a, b) => b.net - a.net);
+  const sum = (k) => rows.reduce((s, r) => s + r[k], 0);
+  const totals = { qty: sum("qty"), revenue: sum("revenue"), cost: sum("cost"), margin: sum("margin"), losses_cost: sum("losses_cost"), given_cost: sum("given_cost"), net: sum("net") };
+  totals.margin_pct = pct(totals.margin, totals.revenue);
+  return { rows, totals };
+}
+
+// Point des serveurs : commandes, ventes, bouteilles, montants, crédits et sorties qui leur sont attribuées.
+export function waiterSummary(fromDay, toDay) {
+  const waiters = all("SELECT id, full_name, active FROM users WHERE role = 'waiter' ORDER BY full_name");
+  return waiters
+    .map((w) => {
+      const orders = Object.fromEntries(
+        all("SELECT status, COUNT(*) AS n, COALESCE(SUM(total), 0) AS v FROM orders WHERE waiter_id = ? AND business_day BETWEEN ? AND ? GROUP BY status", w.id, fromDay, toDay).map((o) => [o.status, { count: o.n, amount: o.v }]),
+      );
+      const sold = get(
+        `SELECT COUNT(DISTINCT CASE WHEN s.status != 'cancelled' THEN m.ref_id END) AS sales, COALESCE(-SUM(m.qty), 0) AS bottles, COALESCE(-SUM(m.qty * m.unit_price), 0) AS amount
+         FROM stock_movements m JOIN sales s ON s.id = m.ref_id WHERE m.kind = 'sale' AND m.ref_type = 'sale' AND m.waiter_id = ? AND m.business_day BETWEEN ? AND ?`,
+        w.id, fromDay, toDay,
+      );
+      // Part du serveur dans le reste dû : au prorata de ses bouteilles dans la vente (table partagée).
+      const credit = get(
+        `SELECT COALESCE(SUM(ROUND((s.total - s.paid) * 1.0 * x.amt / s.total)), 0) AS v, COUNT(*) AS n FROM sales s
+         JOIN (SELECT ref_id, -SUM(qty * unit_price) AS amt FROM stock_movements WHERE kind = 'sale' AND ref_type = 'sale' AND waiter_id = ? GROUP BY ref_id) x ON x.ref_id = s.id
+         WHERE s.status IN ('partial','credit') AND s.total > 0 AND s.business_day BETWEEN ? AND ?`,
+        w.id, fromDay, toDay,
+      );
+      const products = all(
+        `SELECT p.name, p.brand, -SUM(m.qty) AS qty, -SUM(m.qty * m.unit_price) AS amount FROM stock_movements m JOIN products p ON p.id = m.product_id
+         WHERE m.kind = 'sale' AND m.waiter_id = ? AND m.business_day BETWEEN ? AND ? GROUP BY m.product_id HAVING qty != 0 ORDER BY qty DESC`,
+        w.id, fromDay, toDay,
+      ).map((p) => ({ name: pname(p), qty: p.qty, amount: p.amount }));
+      const exits = all(
+        `SELECT m.kind, -SUM(m.qty) AS qty FROM stock_movements m WHERE m.kind IN ('offered','staff','broken','lost','expired','other') AND m.waiter_id = ? AND m.business_day BETWEEN ? AND ? GROUP BY m.kind HAVING qty != 0`,
+        w.id, fromDay, toDay,
+      ).map((x) => ({ kind: x.kind, label: EXIT_LABELS[x.kind], qty: x.qty }));
+      return { waiter_id: w.id, waiter: w.full_name, active: !!w.active, orders, ...sold, credit_open: credit.v, credit_sales: credit.n, products, exits };
+    })
+    .filter((w) => w.active || w.bottles || Object.keys(w.orders).length);
+}
+
 // ---------- Bilan quotidien (sorties) ----------
 export function computeDaily(day) {
   const { start, end } = dayBounds(day);
@@ -303,6 +372,8 @@ export function computeDaily(day) {
       observations: obs,
     },
     stock_end: stock,
+    stock_statement: stockStatement(day, day),
+    profitability: profitability(day, day),
     responsibles: responsibles(start, end),
   };
 }
@@ -397,6 +468,9 @@ export function computeWeekly(monday) {
     ranking: rank,
     losses: lossDetails(monday, sunday),
     stock_end: stock,
+    stock_statement: stockStatement(monday, sunday),
+    profitability: profitability(monday, sunday),
+    waiters: waiterSummary(monday, sunday),
     observations: obs,
   };
 }
@@ -587,6 +661,7 @@ export function periodOverview(fromDay, toDay) {
     expenses: cash.expenses_total,
     cash_variance: cash.variance_total,
     estimated_profit: sales.gross_profit - cash.expenses_total - lossCost,
+    profitability: profitability(fromDay, toDay),
     top: rank.top,
     by_waiter: sales.by_waiter,
   };

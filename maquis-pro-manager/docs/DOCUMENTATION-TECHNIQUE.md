@@ -27,6 +27,7 @@ SQLite (node:sqlite, mode WAL) — DATA_DIR/maquis.db
 | `src/sales.js` | Commandes, ventes, paiements partiels, crédits, annulations |
 | `src/cash.js` | Sessions de caisse, ajouts, retraits, remboursements, dépenses, clôture |
 | `src/documents.js` | Reçus figés, numérotation, recherche, droits de consultation |
+| `src/purchases.js` | Commandes fournisseurs, quantités suggérées, réception et écarts |
 | `src/reports.js` | Calcul des bilans, versions rectificatives, planification et reprise |
 | `src/pdf.js`, `src/xlsx.js` | PDF (pdfkit) et Excel (Office Open XML via fflate) |
 | `src/notify.js` | Notifications (base + temps réel SSE + Web Push VAPID) |
@@ -40,6 +41,14 @@ SQLite (node:sqlite, mode WAL) — DATA_DIR/maquis.db
 - **Annulation** : une ligne de même nature et de signe opposé (`reversal_of`), rattachée à la **même journée commerciale** que l'original. Le document d'origine reste ; un document « rectificatif » (ANN-…) est créé.
 - **Caisse**, pour chaque mode de paiement : `théorique = fonds (espèces) + encaissements + ajouts − dépenses − retraits − remboursements`. `écart = compté − théorique`. Une vente à crédit diminue le stock ; l'argent n'entre qu'au paiement (`payments.kind = 'credit'`).
 - **Bénéfice brut estimé** = chiffre d'affaires − coût d'achat des bouteilles vendues (prix d'achat figé au moment de la vente). Le résultat estimé retire en plus les dépenses et les pertes.
+
+- **Commande → vente** : une vente faite à partir de commandes (une ou toute une table) reprend le **prix annoncé à la commande**. Chaque ligne garde le serveur qui l'a commandée (`stock_movements.waiter_id`) : les ventes, montants et bouteilles par serveur sont calculés à partir de ces lignes. Le crédit d'une table partagée est réparti au prorata de la part de chaque serveur.
+- **Réservation** : une nouvelle commande est refusée (en ligne) si le stock, diminué des commandes en attente **de la journée en cours**, ne suffit pas. Les commandes en attente d'anciennes journées ne bloquent rien et restent visibles pour être annulées ou encaissées.
+- **Quantité à commander** = ⌈ventes moyennes par jour (journées complètes récentes, 14 au plus) × jours à couvrir⌉ + stock minimum − stock actuel − déjà commandé et pas encore reçu, arrondie au casier complet supérieur.
+- **Fiche de stock** : pour chaque boisson, stock début (avant la période) + entrées (y compris stock initial) − sorties par nature ± ajustements d'inventaire = stock fin, calculé à partir du grand livre ; le contrôle `ok` vérifie l'égalité.
+- **Rentabilité** : marge brute = Σ (prix de vente − prix d'achat) des bouteilles vendues ; bénéfice net = marge − (casses, pertes, périmés, offertes, personnel, autres) au prix d'achat.
+- **Billetage** : facultatif à la fermeture ; s'il est saisi, son total doit être égal aux espèces comptées.
+- **Bons de commande et additions** : documents numérotés (CMD-…, ADD-…), non comptables. Leur statut affiché (à encaisser, encaissée, refusée, annulée) est recalculé à l'affichage ; le contenu enregistré et son empreinte ne changent jamais.
 
 ## Bilans automatiques
 
@@ -90,7 +99,8 @@ Toutes les routes sont sous `/api` ; les écritures exigent `X-Requested-With: M
 | Administration | `GET/POST /users`, `PATCH /users/:id`, `POST /users/:id/password`, `GET /devices`, `DELETE /devices/:id`, `GET /login-events`, `GET /audit`, `GET /audit/verify`, `GET/PUT /settings`, `POST /settings/logo`, `GET/POST /backups`, `GET /backups/:nom` |
 | Catalogue | `GET/POST /categories`, `GET/POST /products`, `GET/PATCH /products/:id`, `POST /products/:id/photo`, `GET /products/:id/history`, `GET/POST /suppliers`, `GET/PATCH /suppliers/:id`, `POST /suppliers/:id/payments` |
 | Stock | `GET /stock`, `GET /movements`, `GET/POST /entries`, `GET /entries/:id`, `POST /entries/:id/cancel`, `GET/POST /exits`, `GET /exits/:id`, `POST /exits/:id/cancel`, `GET/POST /inventories`, `GET/PUT /inventories/:id`, `POST /inventories/:id/validate`, `POST /inventories/:id/abandon`, `GET/POST /consignments` |
-| Ventes | `GET/POST /orders`, `GET /orders/:id`, `POST /orders/:id/cancel`, `GET/POST /sales`, `GET /sales/:id`, `POST /sales/:id/payments`, `POST /sales/:id/cancel`, `GET /credits`, `GET /my-stats` |
+| Ventes | `GET/POST /orders`, `GET /orders/:id`, `POST /orders/:id/cancel`, `POST /orders/bill` (addition), `GET/POST /sales` (`order_ids` pour une table), `GET /sales/:id`, `POST /sales/:id/payments`, `POST /sales/:id/cancel`, `GET /credits`, `GET /my-stats`, `GET /waiters/summary` |
+| Commandes fournisseurs, fiche de stock | `GET /purchase-orders`, `GET /purchase-orders/suggestions`, `GET/POST /purchase-orders/:id`, `POST /purchase-orders/:id/cancel`, `POST /entries` avec `po_id` (réception), `GET /stock/statement` (+ `/pdf`, `/xlsx`) |
 | Caisse | `GET /cash/current`, `POST /cash/open`, `POST /cash/close`, `POST /cash/movements`, `GET /cash/sessions`, `GET /cash/sessions/:id`, `GET/POST /expenses`, `POST /expenses/:id/cancel` |
 | Reçus | `GET /documents`, `GET /documents/:no`, `GET /documents/:no/pdf`, `GET /documents/:no/print` |
 | Rapports | `GET /reports`, `GET /reports/status`, `GET /reports/preview`, `POST /reports/run`, `GET /reports/:id`, `GET /reports/:id/pdf`, `GET /reports/:id/xlsx`, `GET /dashboard` |
@@ -120,6 +130,8 @@ Toutes les routes sont sous `/api` ; les écritures exigent `X-Requested-With: M
 | 16. Fonctionnement hors connexion | « 16 et 17. » + essai dans le navigateur (voir ci-dessous) |
 | 17. Synchronisation sans doublon et bilan rectificatif | « 16 et 17. » |
 | 18. Sauvegarde et restauration | « 18. » |
+
+`features.test.js` : bons de commande, addition et encaissement d'une table partagée par deux serveurs, prix de la commande conservé, commande fournisseur (suggestion, réception partielle, écarts, annulation), fiche de stock, rentabilité, point des serveurs, billetage, contenu des bilans, réservation du stock, et les corrections issues de la relecture du code.
 
 Autres tests : annulation traçable d'une vente, inventaire avec écart justifié, intégrité du journal d'audit, et `security.test.js` (anti-devinette, nouvel appareil, déconnexion à distance, compte bloqué, inactivité, mot de passe provisoire, en-têtes).
 

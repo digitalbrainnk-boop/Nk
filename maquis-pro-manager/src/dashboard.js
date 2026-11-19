@@ -31,10 +31,15 @@ export function dashboard(ctx, { from, to } = {}) {
        (SELECT MAX(last_seen_at) FROM sessions s WHERE s.user_id = u.id) AS last_seen,
        (SELECT COUNT(*) FROM audit_log a WHERE a.user_id = u.id AND a.at >= ? AND a.action != 'connexion') AS operations,
        (SELECT COUNT(*) FROM orders o WHERE o.waiter_id = u.id AND o.business_day BETWEEN ? AND ?) AS orders,
-       (SELECT COUNT(*) FROM sales s WHERE (s.cashier_id = u.id OR s.waiter_id = u.id) AND s.status != 'cancelled' AND s.business_day BETWEEN ? AND ?) AS sales,
-       (SELECT COALESCE(SUM(total), 0) FROM sales s WHERE (s.cashier_id = u.id OR s.waiter_id = u.id) AND s.status != 'cancelled' AND s.business_day BETWEEN ? AND ?) AS sales_amount
+       CASE WHEN u.role = 'waiter' THEN
+         (SELECT COUNT(DISTINCT m.ref_id) FROM stock_movements m JOIN sales s ON s.id = m.ref_id AND s.status != 'cancelled'
+          WHERE m.kind = 'sale' AND m.ref_type = 'sale' AND m.reversal_of IS NULL AND m.waiter_id = u.id AND m.business_day BETWEEN ? AND ?)
+       ELSE (SELECT COUNT(*) FROM sales s WHERE s.cashier_id = u.id AND s.status != 'cancelled' AND s.business_day BETWEEN ? AND ?) END AS sales,
+       CASE WHEN u.role = 'waiter' THEN
+         (SELECT COALESCE(-SUM(m.qty * m.unit_price), 0) FROM stock_movements m WHERE m.kind = 'sale' AND m.ref_type = 'sale' AND m.waiter_id = u.id AND m.business_day BETWEEN ? AND ?)
+       ELSE (SELECT COALESCE(SUM(total), 0) FROM sales s WHERE s.cashier_id = u.id AND s.status != 'cancelled' AND s.business_day BETWEEN ? AND ?) END AS sales_amount
      FROM users u WHERE u.active = 1 AND u.role != 'owner' ORDER BY u.role, u.full_name`,
-    now() - 86400000, from, to, from, to, from, to,
+    now() - 86400000, from, to, from, to, from, to, from, to, from, to,
   );
   const pending = get("SELECT COUNT(*) AS n, COALESCE(SUM(total), 0) AS v FROM orders WHERE status = 'pending'");
   const credits = get("SELECT COUNT(*) AS n, COALESCE(SUM(total - paid), 0) AS v FROM sales WHERE status IN ('partial','credit')");

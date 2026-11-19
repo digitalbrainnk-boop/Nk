@@ -442,6 +442,33 @@ CREATE TABLE IF NOT EXISTS push_subscriptions (
   created_at INTEGER NOT NULL
 );
 
+-- Commandes fournisseurs (bons de commande) et leur réception.
+CREATE TABLE IF NOT EXISTS purchase_orders (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  doc_no TEXT NOT NULL UNIQUE,
+  at INTEGER NOT NULL,
+  business_day TEXT NOT NULL,
+  supplier_id INTEGER NOT NULL REFERENCES suppliers(id),
+  user_id INTEGER NOT NULL,
+  status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','partial','received','cancelled')),
+  expected_date TEXT NOT NULL DEFAULT '',
+  note TEXT NOT NULL DEFAULT '',
+  total_estimated INTEGER NOT NULL DEFAULT 0,
+  cancelled_at INTEGER, cancelled_by INTEGER, cancel_reason TEXT,
+  created_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS purchase_order_lines (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  po_id INTEGER NOT NULL REFERENCES purchase_orders(id),
+  product_id INTEGER NOT NULL REFERENCES products(id),
+  crates INTEGER NOT NULL DEFAULT 0,
+  units_per_crate INTEGER NOT NULL,
+  extra_units INTEGER NOT NULL DEFAULT 0,
+  qty INTEGER NOT NULL,
+  unit_cost INTEGER NOT NULL,
+  received_qty INTEGER NOT NULL DEFAULT 0
+);
+
 -- Anti-doublons de la synchronisation hors connexion (un identifiant par opération).
 CREATE TABLE IF NOT EXISTS sync_ops (
   user_id INTEGER NOT NULL,
@@ -470,7 +497,7 @@ const APPEND_ONLY = [
   "price_history",
 ];
 // Tables d'opérations : jamais supprimées ; seuls le statut et les champs d'annulation évoluent.
-const NO_DELETE = ["entries", "exits", "sales", "expenses", "orders", "cash_sessions", "inventories", "reports", "users", "products"];
+const NO_DELETE = ["entries", "exits", "sales", "expenses", "orders", "cash_sessions", "inventories", "reports", "users", "products", "purchase_orders", "purchase_order_lines"];
 const FROZEN_COLUMNS = {
   entries: ["doc_no", "at", "business_day", "supplier_id", "total_amount", "paid_amount", "user_id"],
   exits: ["doc_no", "at", "business_day", "reason", "user_id"],
@@ -513,6 +540,7 @@ export function openDb(dir = process.env.DATA_DIR || "data") {
   db = new DatabaseSync(file);
   db.exec("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 8000; PRAGMA synchronous = NORMAL;");
   db.exec(SCHEMA);
+  migrate();
   db.exec(triggers());
   const n = db.prepare("SELECT COUNT(*) AS n FROM categories").get().n;
   if (!n) {
@@ -520,6 +548,12 @@ export function openDb(dir = process.env.DATA_DIR || "data") {
     DEFAULT_CATEGORIES.forEach((c, i) => ins.run(c, (i + 1) * 10));
   }
   return db;
+}
+
+// Évolutions du schéma sur une base existante (jamais de perte de données).
+function migrate() {
+  const cols = (t) => db.prepare(`PRAGMA table_info(${t})`).all().map((c) => c.name);
+  if (!cols("entries").includes("po_id")) db.exec("ALTER TABLE entries ADD COLUMN po_id INTEGER REFERENCES purchase_orders(id)");
 }
 
 export function closeDb() {

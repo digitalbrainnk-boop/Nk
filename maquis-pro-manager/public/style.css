@@ -353,7 +353,7 @@ table.t tr.click:hover td { background: var(--surface-2); }
 .auth .tag { text-align: center; color: var(--muted); margin: 4px 0 20px; }
 
 /* ---------- Reçu (aperçu à l'écran) ---------- */
-.receipt { max-width: 560px; }
+.receipt { max-width: 760px; }
 .receipt .rh { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; border-bottom: 2px solid var(--brand); padding-bottom: 10px; margin-bottom: 12px; }
 .receipt .status { display: inline-block; margin-top: 10px; padding: 5px 12px; border: 2px solid currentColor; border-radius: 8px; font-weight: 800; letter-spacing: 0.04em; }
 .receipt .status.ok { color: var(--good); }

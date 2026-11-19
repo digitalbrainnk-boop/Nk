@@ -17,8 +17,9 @@ import * as docs from "./documents.js";
 import * as reports from "./reports.js";
 import * as notif from "./notify.js";
 import { dashboard } from "./dashboard.js";
-import { renderDocumentPdf, renderReportPdf } from "./pdf.js";
-import { reportToXlsx } from "./xlsx.js";
+import { renderDocumentPdf, renderReportPdf, renderStatementPdf } from "./pdf.js";
+import * as purchases from "./purchases.js";
+import { reportToXlsx, statementToXlsx } from "./xlsx.js";
 import { backupNow, listBackups, backupPath } from "./backup.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -181,6 +182,7 @@ export function createApp() {
         unread: notif.unreadCount(req.user.id),
         vapid_key: notif.vapidPublicKey(),
         exit_labels: stock.EXIT_LABELS,
+        denominations: cash.DENOMINATIONS,
         notif_types: notif.NOTIF_TYPES,
       };
     }),
@@ -330,6 +332,41 @@ export function createApp() {
   api.put("/inventories/:id", need("manager"), h((req) => stock.saveInventoryCounts(ctxOf(req), id(req), req.body)));
   api.post("/inventories/:id/validate", need("manager"), h((req) => stock.validateInventory(ctxOf(req), id(req))));
   api.post("/inventories/:id/abandon", need("manager"), h((req) => stock.abandonInventory(ctxOf(req), id(req))));
+  // Fiche de stock d'une période (stock début + entrées − sorties = stock fin), à l'écran, en PDF et en Excel.
+  const statementFor = (req) => {
+    const today = businessDay();
+    let from = isDay(req.query.from) ? req.query.from : today;
+    let to = isDay(req.query.to) ? req.query.to : from;
+    if (to < from) [from, to] = [to, from];
+    if (to > today) to = today;
+    if (from > to) from = to;
+    return stock.stockStatement(from, to);
+  };
+  api.get("/stock/statement", need("owner", "manager"), h((req) => statementFor(req)));
+  api.get("/stock/statement/pdf", need("owner", "manager"), async (req, res, next) => {
+    try {
+      const st = statementFor(req);
+      sendFile(res, await renderStatementPdf(st), "application/pdf", `fiche-de-stock-${st.from}${st.to !== st.from ? `-au-${st.to}` : ""}.pdf`, req.query.inline === "1");
+    } catch (e) {
+      next(e);
+    }
+  });
+  api.get("/stock/statement/xlsx", need("owner", "manager"), (req, res, next) => {
+    try {
+      const st = statementFor(req);
+      sendFile(res, statementToXlsx(st, allSettings().maquis_name), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", `fiche-de-stock-${st.from}${st.to !== st.from ? `-au-${st.to}` : ""}.xlsx`);
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  // Commandes fournisseurs.
+  api.get("/purchase-orders", need("owner", "manager"), h((req) => purchases.listPurchaseOrders(req.query)));
+  api.get("/purchase-orders/suggestions", need("owner", "manager"), h((req) => purchases.reorderSuggestions(req.query)));
+  api.get("/purchase-orders/:id", need("owner", "manager"), h((req) => purchases.getPurchaseOrder(id(req))));
+  api.post("/purchase-orders", need("manager"), op((req, ctx) => purchases.createPurchaseOrder(ctx, req.body)));
+  api.post("/purchase-orders/:id/cancel", need("manager"), h((req) => purchases.cancelPurchaseOrder(ctxOf(req), id(req), req.body)));
+
   api.get("/consignments", need("owner", "manager"), h(() => stock.consignmentSummary()));
   api.post("/consignments", need("manager"), op((req, ctx) => stock.createConsignment(ctx, req.body)));
 
@@ -342,22 +379,35 @@ export function createApp() {
   }));
   api.post("/orders", need("waiter"), op((req, ctx) => sales.createOrder(ctx, req.body)));
   api.post("/orders/:id/cancel", need("waiter", "cashier", "manager"), h((req) => sales.cancelOrder(ctxOf(req), id(req), req.body)));
+  api.post("/orders/bill", need("waiter", "cashier", "manager"), h((req) => sales.createBill(ctxOf(req), req.body)));
   api.get("/sales", need(), h((req) => sales.listSales(ctxOf(req), req.query)));
   api.get("/sales/:id", need(), h((req) => sales.getSale(ctxOf(req), id(req))));
   api.post("/sales", need("cashier"), op((req, ctx) => sales.createSale(ctx, req.body)));
   api.post("/sales/:id/payments", need("cashier"), op((req, ctx) => sales.addSalePayment(ctx, id(req), req.body)));
   api.post("/sales/:id/cancel", need("cashier", "manager"), h((req) => sales.cancelSale(ctxOf(req), id(req), req.body)));
   api.get("/credits", need("owner", "manager", "cashier"), h(() => sales.listCredits()));
+  // Point des serveurs (journée ou période) : commandes, ventes, crédits, sorties attribuées.
+  api.get(
+    "/waiters/summary",
+    need("owner", "manager", "cashier"),
+    h((req) => {
+      const today = businessDay();
+      const from = isDay(req.query.from) ? req.query.from : today;
+      const to = isDay(req.query.to) && req.query.to >= from ? req.query.to : from;
+      return { from, to, waiters: reports.waiterSummary(from, to > today ? today : to) };
+    }),
+  );
   api.get(
     "/my-stats",
     need("waiter"),
     h((req) => {
       const day = businessDay();
       const s = get(
-        "SELECT COUNT(*) AS n, COALESCE(SUM(total), 0) AS amount FROM sales WHERE waiter_id = ? AND business_day = ? AND status != 'cancelled'",
+        `SELECT COUNT(DISTINCT CASE WHEN s.status != 'cancelled' THEN m.ref_id END) AS n, COALESCE(-SUM(m.qty * m.unit_price), 0) AS amount, COALESCE(-SUM(m.qty), 0) AS bottles
+         FROM stock_movements m JOIN sales s ON s.id = m.ref_id WHERE m.kind = 'sale' AND m.ref_type = 'sale' AND m.waiter_id = ? AND m.business_day = ?`,
         req.user.id, day,
       );
-      const bottles = get("SELECT COALESCE(-SUM(qty), 0) AS v FROM stock_movements WHERE kind = 'sale' AND waiter_id = ? AND business_day = ?", req.user.id, day).v;
+      const bottles = s.bottles;
       const orders = all("SELECT status, COUNT(*) AS n FROM orders WHERE waiter_id = ? AND business_day = ? GROUP BY status", req.user.id, day);
       const byProduct = all(
         "SELECT p.brand, p.name, -SUM(m.qty) AS qty FROM stock_movements m JOIN products p ON p.id = m.product_id WHERE m.kind = 'sale' AND m.waiter_id = ? AND m.business_day = ? GROUP BY m.product_id ORDER BY qty DESC",
@@ -385,7 +435,24 @@ export function createApp() {
   const docFor = (req) => {
     const d = docs.getDocument(req.params.no);
     if (!docs.canSeeDocument(req.user, d)) throw forbidden();
-    return d;
+    return withLiveStatus(d);
+  };
+  // Un bon de commande ou une addition n'est pas un document comptable : on affiche son statut
+  // actuel (encaissée, refusée, annulée…). Le contenu enregistré et son empreinte ne changent pas.
+  const withLiveStatus = (d) => {
+    if (d.type !== "order" && d.type !== "bill") return d;
+    const ids = d.type === "bill" && Array.isArray(d.payload.order_ids) ? d.payload.order_ids.map(Number) : [d.ref_id];
+    const orders = all(`SELECT o.status, o.status_reason, s.doc_no AS sale_doc FROM orders o LEFT JOIN sales s ON s.id = o.sale_id WHERE o.id IN (${ids.map(() => "?").join(",")})`, ...ids);
+    if (!orders.length) return d;
+    const sales = [...new Set(orders.map((o) => o.sale_doc).filter(Boolean))];
+    let status;
+    if (orders.some((o) => o.status === "pending")) status = d.payload.status;
+    else if (orders.every((o) => o.status === "served")) status = { label: `${d.type === "bill" ? "RÉGLÉE" : "ENCAISSÉE"} — ${sales.join(", ")}`, tone: "ok" };
+    else if (orders.every((o) => o.status === "rejected")) status = { label: "COMMANDE REFUSÉE", tone: "bad" };
+    else if (orders.every((o) => o.status !== "served")) status = { label: "COMMANDE ANNULÉE", tone: "bad" };
+    else status = { label: `EN PARTIE ENCAISSÉE — ${sales.join(", ")}`, tone: "warn" };
+    const reasons = [...new Set(orders.map((o) => o.status_reason).filter(Boolean))];
+    return { ...d, payload: { ...d.payload, status, notes: [...(d.payload.notes || []), ...(status !== d.payload.status ? [`Statut au moment de l'affichage.${reasons.length ? ` ${reasons.join(" ; ")}` : ""}`] : [])] } };
   };
   api.get("/documents", need(), h((req) => docs.searchDocuments(req.user, req.query)));
   api.get("/documents/:no", need(), h((req) => {
@@ -558,13 +625,21 @@ function printHtml(d) {
           .join("")}</tbody></table>`
       : "";
   const totals = (p.totals || []).map(([k, v, b]) => `<div class="t${b ? " b" : ""}"><span>${escHtml(k)}</span><span>${escHtml(v)}</span></div>`).join("");
+  const extra = (p.extra_tables || [])
+    .map(
+      (t) =>
+        `<h3>${escHtml(t.title)}</h3><table><thead><tr>${t.columns.map((c) => `<th class="${c.align === "right" ? "r" : ""}">${escHtml(c.label)}</th>`).join("")}</tr></thead><tbody>${t.rows
+          .map((r) => `<tr>${r.map((c, i) => `<td class="${t.columns[i]?.align === "right" ? "r" : ""}">${escHtml(c)}</td>`).join("")}</tr>`)
+          .join("")}</tbody></table>`,
+    )
+    .join("");
   return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escHtml(p.doc_no)}</title>
 <link rel="stylesheet" href="/print.css"></head><body>
 <div class="bar noprint"><button id="print">Imprimer</button> <label><input type="checkbox" id="ticket" checked> Ticket 80 mm</label></div>
 <main class="ticket">${logo}<h1>${escHtml(p.maquis?.name)}</h1><p class="m">${escHtml([p.maquis?.address, p.maquis?.phone].filter(Boolean).join(" · "))}</p>
 <h2>${escHtml(p.title)}</h2><p class="m">N° ${escHtml(p.doc_no)}<br>${escHtml(fmtDateTime(p.at))}</p>
 ${p.rectifies ? `<p class="warn">Document rectificatif du ${escHtml(p.rectifies)}</p>` : ""}
-<div class="fields">${fields}</div>${table}<div class="totals">${totals}</div>
+<div class="fields">${fields}</div>${table}<div class="totals">${totals}</div>${extra}
 ${p.status ? `<p class="status ${escHtml(p.status.tone)}">${escHtml(p.status.label)}</p>` : ""}
 ${(p.notes || []).map((n) => `<p class="note">${escHtml(n)}</p>`).join("")}
 <p class="foot">${escHtml(p.maquis?.footer || "")}</p><p class="m small">Empreinte ${escHtml(String(d.hash).slice(0, 16))}</p></main>

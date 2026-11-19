@@ -11,6 +11,9 @@ export const DOC_TYPES = {
   entry: { prefix: "ENT", label: "Reçu d'entrée de boissons" },
   exit: { prefix: "SOR", label: "Reçu de sortie de boissons" },
   sale: { prefix: "VTE", label: "Reçu de vente" },
+  order: { prefix: "CMD", label: "Bon de commande" },
+  bill: { prefix: "ADD", label: "Addition" },
+  purchase_order: { prefix: "BCF", label: "Bon de commande fournisseur" },
   payment: { prefix: "PAI", label: "Reçu de paiement (crédit)" },
   expense: { prefix: "DEP", label: "Reçu de dépense" },
   refund: { prefix: "RMB", label: "Reçu de remboursement" },
@@ -63,14 +66,20 @@ export function getDocument(docNo) {
   return { ...d, payload: JSON.parse(d.payload) };
 }
 
+const CASHIER_TYPES = ["sale", "payment", "refund", "withdrawal", "deposit", "expense", "cash_close", "order", "bill"];
+
 // Qui voit quoi : propriétaire et gérant voient tout ; caissier ses documents de caisse ;
 // serveur les reçus des ventes de ses commandes.
 export function canSeeDocument(user, d) {
   if (user.role === "owner" || user.role === "manager") return true;
-  if (user.role === "cashier") return d.user_id === user.id || ["sale", "payment", "refund", "withdrawal", "deposit", "expense", "cash_close"].includes(d.type);
+  if (user.role === "cashier") return d.user_id === user.id || CASHIER_TYPES.includes(d.type);
   if (user.role === "waiter") {
+    if (d.ref_type === "order") {
+      const ids = Array.isArray(d.payload?.order_ids) ? d.payload.order_ids.map(Number) : [d.ref_id];
+      return !!get(`SELECT 1 FROM orders WHERE waiter_id = ? AND id IN (${ids.map(() => "?").join(",")})`, user.id, ...ids);
+    }
     if (d.ref_type !== "sale") return false;
-    return !!get("SELECT 1 FROM sales WHERE id = ? AND waiter_id = ?", d.ref_id, user.id);
+    return !!get("SELECT 1 FROM sales s WHERE s.id = ? AND (s.waiter_id = ? OR EXISTS (SELECT 1 FROM orders o WHERE o.sale_id = s.id AND o.waiter_id = ?))", d.ref_id, user.id, user.id);
   }
   return false;
 }
@@ -101,11 +110,15 @@ export function searchDocuments(user, { q = "", type = "", from = "", to = "", u
     p.push(Number(user_id));
   }
   if (user.role === "cashier") {
-    where.push(`(user_id = ? OR type IN ('sale','payment','refund','withdrawal','deposit','expense','cash_close'))`);
-    p.push(user.id);
+    where.push(`(user_id = ? OR type IN (${CASHIER_TYPES.map(() => "?").join(",")}))`);
+    p.push(user.id, ...CASHIER_TYPES);
   } else if (user.role === "waiter") {
-    where.push("ref_type = 'sale' AND ref_id IN (SELECT id FROM sales WHERE waiter_id = ?)");
-    p.push(user.id);
+    where.push(
+      `((ref_type = 'sale' AND ref_id IN (SELECT id FROM sales WHERE waiter_id = ? UNION SELECT sale_id FROM orders WHERE waiter_id = ? AND sale_id IS NOT NULL))
+        OR (ref_type = 'order' AND (ref_id IN (SELECT id FROM orders WHERE waiter_id = ?)
+          OR (type = 'bill' AND EXISTS (SELECT 1 FROM json_each(documents.payload, '$.order_ids') j JOIN orders o ON o.id = j.value WHERE o.waiter_id = ?)))))`,
+    );
+    p.push(user.id, user.id, user.id, user.id);
   }
   const sql = `SELECT id, doc_no, type, ref_type, ref_id, at, business_day, user_id, user_name, title, amount, rectifies FROM documents
     ${where.length ? "WHERE " + where.join(" AND ") : ""} ORDER BY at DESC, id DESC LIMIT ? OFFSET ?`;

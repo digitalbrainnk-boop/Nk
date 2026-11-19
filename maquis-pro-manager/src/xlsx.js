@@ -29,7 +29,7 @@ function sheetXml(rows, widths = []) {
     body += `<row r="${r + 1}">`;
     (cells || []).forEach((v, c) => {
       const ref = `${colName(c)}${r + 1}`;
-      if (typeof v === "number" && Number.isFinite(v)) body += `<c r="${ref}" s="${style || 3}"><v>${v}</v></c>`;
+      if (typeof v === "number" && Number.isFinite(v)) body += `<c r="${ref}" s="${style || (Number.isInteger(v) ? 3 : 4)}"><v>${v}</v></c>`;
       else if (v !== null && v !== undefined && v !== "") body += `<c r="${ref}" t="inlineStr"${style ? ` s="${style}"` : ""}><is><t xml:space="preserve">${esc(v)}</t></is></c>`;
     });
     body += "</row>";
@@ -50,7 +50,7 @@ export function buildXlsx(sheets) {
     "xl/_rels/workbook.xml.rels": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${sheets
       .map((_, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i + 1}.xml"/>`)
       .join("")}<Relationship Id="rId${sheets.length + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`,
-    "xl/styles.xml": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><numFmts count="1"><numFmt numFmtId="164" formatCode="#,##0"/></numFmts><fonts count="3"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font><font><b/><sz val="13"/><color rgb="FF065F46"/><name val="Calibri"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF065F46"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="1"><border/></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="4"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/><xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/><xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/></cellXfs></styleSheet>`,
+    "xl/styles.xml": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><numFmts count="1"><numFmt numFmtId="164" formatCode="#,##0"/></numFmts><fonts count="3"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font><font><b/><sz val="13"/><color rgb="FF065F46"/><name val="Calibri"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF065F46"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="1"><border/></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="5"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/><xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/><xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/><xf numFmtId="2" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/></cellXfs></styleSheet>`,
   };
   sheets.forEach((s, i) => (files[`xl/worksheets/sheet${i + 1}.xml`] = sheetXml(s.rows, s.widths)));
   const zipped = zipSync(Object.fromEntries(Object.entries(files).map(([k, v]) => [k, strToU8(v)])), { level: 6 });
@@ -143,10 +143,41 @@ export function reportToXlsx(r) {
       ...d.cash.expenses.map((x) => [x.doc_no, x.category, x.description, x.user_name, x.amount]),
     ],
   });
+  if (d.stock_statement) sheets.push(statementSheet(d.stock_statement));
+  if (d.profitability)
+    sheets.push({
+      name: "Rentabilité",
+      widths: [34, 12, 16, 14, 14, 10, 12, 16, 14],
+      rows: [
+        { header: ["Boisson", "Btl vendues", "Chiffre d'affaires", "Coût d'achat", "Marge brute", "Marge %", "Marge / btl", "Pertes et offerts", "Bénéfice net"] },
+        ...d.profitability.rows.map((r) => [r.name, r.qty, r.revenue, r.cost, r.margin, r.margin_pct, r.unit_margin, r.losses_cost + r.given_cost, r.net]),
+        ["TOTAL", d.profitability.totals.qty, d.profitability.totals.revenue, d.profitability.totals.cost, d.profitability.totals.margin, d.profitability.totals.margin_pct, "", d.profitability.totals.losses_cost + d.profitability.totals.given_cost, d.profitability.totals.net],
+      ],
+    });
   sheets.push({
     name: "Stock à la clôture",
     widths: [34, 18, 20, 12, 24, 16],
     rows: [{ header: ["Boisson", "Marque", "Catégorie", "Stock", "En casiers", "Valeur achat"] }, ...d.stock_end.map((s) => [s.name, s.brand, s.category, s.stock, s.label, s.value])],
   });
   return buildXlsx(sheets);
+}
+
+const SKINDS = ["sale", "offered", "staff", "broken", "lost", "expired", "other"];
+function statementSheet(st) {
+  const t = st.totals;
+  return {
+    name: "Fiche de stock",
+    widths: [34, 20, 12, 10, ...SKINDS.map(() => 11), 12, 11, 16],
+    rows: [
+      { header: ["Boisson", "Catégorie", "Stock début", "Entrées", ...SKINDS.map((k) => EXIT_LABELS[k]), "Ajustement inventaire", "Stock fin", "Valeur (achat)"] },
+      ...st.rows.map((r) => [r.name, r.category, r.opening, r.entries, ...SKINDS.map((k) => r[k]), r.adjust, r.closing, r.value]),
+      ["TOTAL", "", t.opening, t.entries, ...SKINDS.map((k) => t[k]), t.adjust, t.closing, t.value],
+    ],
+  };
+}
+
+export function statementToXlsx(st, maquisName = "") {
+  const sh = statementSheet(st);
+  sh.rows = [{ title: `${maquisName} — Fiche de stock du ${st.from.split("-").reverse().join("/")}${st.to !== st.from ? ` au ${st.to.split("-").reverse().join("/")}` : ""}` }, ["Stock début + entrées − sorties ± ajustements = stock fin"], [], ...sh.rows];
+  return buildXlsx([sh]);
 }

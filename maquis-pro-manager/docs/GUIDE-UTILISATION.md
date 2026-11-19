@@ -13,6 +13,8 @@ La **journée commerciale** va de 03 h 00 à 02 h 59 le lendemain : une vente fa
 Votre espace sert à **surveiller** : il est en **lecture seule** pour toutes les opérations. Vous ne pouvez ni modifier ni supprimer une vente, une entrée, une sortie ou une opération de caisse, et personne d'autre ne le peut non plus. Les erreurs se corrigent par une annulation qui laisse une trace.
 
 - **Tableau de bord** : ventes, encaissements, dépenses, bénéfice estimé, sorties, pertes, stock restant, caisses ouvertes, activité du personnel, derniers reçus et derniers rapports. Choisissez *Aujourd'hui*, *Hier*, *7 jours*, *30 jours* ou une période précise.
+- **Rentabilité par boisson** (tableau de bord, et dans le bilan hebdomadaire) : bouteilles vendues, chiffre d'affaires, coût d'achat, marge brute, marge par bouteille, et bénéfice net une fois retirées les pertes, casses et boissons offertes. La période *Ce mois* donne le résultat du mois en cours.
+- **Point des serveurs** (menu *Plus*) : pour chaque serveur, commandes, ventes, bouteilles, montant, crédits non soldés (sa part seulement pour une table partagée) et sorties hors ventes. Imprimable.
 - **Rapports** :
   - chaque jour à **03 h 00**, le **bilan quotidien des sorties** : bouteilles sorties par marque, par catégorie, par nature (vendues, offertes, personnel, cassées, perdues, périmées, autres) et par serveur, avec les ventes, les encaissements, les crédits, les pertes, la caisse et une analyse automatique ;
   - chaque **lundi à 03 h 00**, le **bilan hebdomadaire des ventes** : chiffre d'affaires, encaissements, dépenses, bouteilles et casiers vendus, classements, comparaison avec la semaine précédente, bénéfice brut estimé, écarts de caisse et stock restant.
@@ -32,6 +34,9 @@ Votre espace sert à **surveiller** : il est en **lecture seule** pour toutes le
 ## Gérant
 
 - **Catalogue** (*Plus → Catalogue des boissons*) : *Nouvelle boisson* (nom, marque, catégorie, prix d'achat et de vente, bouteilles par casier, stock minimum, fournisseur, stock initial). Ajoutez une photo depuis la fiche de la boisson (*Stock* → touchez la boisson).
+- **Commandes fournisseurs** (*Stock → Commandes fournisseurs*, ou menu *Fournisseurs*) : *Nouvelle commande*, choisissez le fournisseur et le nombre de jours de vente à couvrir. L'application propose les quantités : ventes moyennes par jour × jours à couvrir + stock minimum − stock actuel − ce qui est déjà commandé, arrondies au casier complet. Vous pouvez tout modifier. *Créer le bon de commande* produit un PDF à envoyer au fournisseur par WhatsApp.
+- **Réception** : à la livraison, ouvrez la commande puis *Réceptionner la livraison*. Les quantités restantes sont déjà remplies ; corrigez-les selon ce qui est vraiment livré. Le reçu d'entrée montre la comparaison commandé / reçu, et le propriétaire est prévenu en cas d'écart.
+- **Fiche de stock** (*Stock → Fiche de stock*) : pour un jour ou une période, chaque boisson avec stock début, entrées, ventes, offertes, cassées…, ajustements d'inventaire et stock fin. L'application vérifie que le calcul tombe juste. Disponible en PDF et en Excel.
 - **Entrée** de marchandises : choisissez le fournisseur, puis pour chaque boisson le nombre de casiers, les bouteilles par casier et les bouteilles en plus. Le total se calcule seul (exemple : 10 casiers de 12 = 120 bouteilles). Indiquez le montant payé : le reste à payer s'ajoute à la dette du fournisseur. À la validation, le stock augmente et un **reçu d'entrée** est créé.
 - **Sortie** (hors ventes) : choisissez le motif (*Cassée*, *Offerte*, *Consommée par le personnel*, *Perdue*, *Périmée*, *Autre*), les boissons, le responsable et une observation. Les **ventes ne s'enregistrent pas ici** : la caisse les sort déjà du stock.
 - **Stock** : quantités disponibles, entrées, ventes, autres sorties, valeur, alertes. *Mouvements* donne le journal de chaque bouteille.
@@ -45,7 +50,12 @@ Votre espace sert à **surveiller** : il est en **lecture seule** pour toutes le
 ## Caissier
 
 1. **Ouvrir la caisse** : saisissez le fonds de caisse (la monnaie présente dans le tiroir).
-2. **Commandes** : les commandes des serveurs arrivent en direct. *Encaisser* :
+2. **Commandes** : les commandes des serveurs arrivent en direct, **regroupées par table**.
+   - *Addition* imprime la note de la table pour le client (ce n'est pas un reçu).
+   - *Encaisser la table* encaisse toutes les commandes de la table en une seule vente ; *Encaisser seule* n'en encaisse qu'une.
+   - Le prix est celui annoncé au moment de la commande, même si le gérant change le prix entre-temps.
+
+   À l'encaissement :
    - *Tout en espèces* : saisissez les espèces reçues, la monnaie à rendre s'affiche ;
    - *Tout en Orange Money / Moov Money / Wave* ;
    - *Autre mode de paiement* : paiement mixte, par exemple une partie en espèces et une partie en Orange Money ;
@@ -55,7 +65,7 @@ Votre espace sert à **surveiller** : il est en **lecture seule** pour toutes le
 3. **Vente directe** : vente au comptoir, sans commande de serveur (vous pouvez quand même choisir le serveur).
 4. **Crédits** : liste des clients qui doivent de l'argent. *Encaisser* enregistre un paiement total ou partiel et crée un reçu.
 5. **Dépense**, **Ajout / retrait / remboursement** : chaque opération demande un motif et crée un reçu.
-6. **Fermer la caisse** : comptez l'argent réellement présent pour chaque mode de paiement. L'application calcule
+6. **Fermer la caisse** : comptez l'argent réellement présent pour chaque mode de paiement. Pour les espèces, ouvrez *Compter les espèces par billets et pièces* : saisissez le nombre de billets de 10 000, 5 000… et de pièces, le total se calcule tout seul et s'imprime sur le reçu de fermeture. L'application calcule
    **solde théorique = fonds initial + encaissements + ajouts − dépenses − retraits − remboursements**,
    puis affiche l'**écart** (manquant ou excédent). Le reçu de fermeture est créé et le propriétaire est prévenu.
 
@@ -63,8 +73,9 @@ Une vente à crédit sort les boissons du stock mais n'entre dans la caisse que 
 
 ## Serveur
 
-1. **Commander** : touchez les boissons (chaque touche ajoute une bouteille), ajustez les quantités avec − et +, indiquez la table, puis **Envoyer au caissier**.
-2. **Commandes** : suivez l'état de vos commandes (en attente, encaissée, refusée). Une commande encore en attente peut être annulée.
+1. **Commander** : touchez les boissons (chaque touche ajoute une bouteille), ajustez les quantités avec − et +, indiquez la table, puis **Envoyer au caissier**. Le **bon de commande** numéroté peut être imprimé tout de suite pour le comptoir.
+   Si une boisson est déjà presque toute commandée par d'autres serveurs, l'application le dit avant d'envoyer.
+2. **Commandes** : suivez l'état de vos commandes (en attente, encaissée, refusée). *Imprimer l'addition* donne la note de la table au client. Une commande encore en attente peut être annulée.
 3. **Mes ventes** : vos ventes et vos bouteilles de la journée, boisson par boisson.
 
 Chaque vente encaissée est rattachée au serveur qui a pris la commande.

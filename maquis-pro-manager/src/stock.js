@@ -7,6 +7,7 @@ import { audit } from "./audit.js";
 import { notify, signal } from "./notify.js";
 import { createDocument, newDocNumber, documentsFor } from "./documents.js";
 import { productRow } from "./catalog.js";
+import { receptionTarget, applyReception, revertReception } from "./purchases.js";
 import { bad, notFound, conflict, str, int, oneOf, arr, money, num, cratesLabel, pname } from "./util.js";
 
 export const EXIT_KINDS = ["sale", "offered", "staff", "broken", "lost", "expired", "other"];
@@ -100,7 +101,7 @@ export function stockAlerts(before) {
 export const snapshotStock = (productIds) => new Map([...new Set(productIds)].map((id) => [id, stockOf(id)]));
 
 // Lignes « casiers + bouteilles » -> quantité totale en bouteilles.
-function parseCrateLines(lines, { costField = false, label = "Ligne" } = {}) {
+export function parseCrateLines(lines, { costField = false, label = "Ligne" } = {}) {
   return arr(lines, "Boissons", { min: 1, max: 100 }).map((l, i) => {
     const p = productRow(int(l.product_id, `${label} ${i + 1} : boisson`, { min: 1 }));
     if (!p) throw bad(`${label} ${i + 1} : boisson inconnue.`);
@@ -117,7 +118,10 @@ function parseCrateLines(lines, { costField = false, label = "Ligne" } = {}) {
 
 // ---------- Entrées de marchandises ----------
 export function createEntry(ctx, body) {
-  const supplier_id = body.supplier_id ? int(body.supplier_id, "Fournisseur", { min: 1 }) : null;
+  let supplier_id = body.supplier_id ? int(body.supplier_id, "Fournisseur", { min: 1 }) : null;
+  // Réception d'une commande fournisseur : le fournisseur est celui de la commande.
+  const po = body.po_id ? receptionTarget(body.po_id, supplier_id) : null;
+  if (po) supplier_id = po.supplier_id;
   const supplier = supplier_id ? get("SELECT * FROM suppliers WHERE id = ?", supplier_id) : null;
   if (supplier_id && !supplier) throw bad("Fournisseur inconnu.");
   const lines = parseCrateLines(body.lines, { costField: true });
@@ -134,9 +138,9 @@ export function createEntry(ctx, body) {
     const doc_no = newDocNumber("entry", at);
     const id = Number(
       run(
-        `INSERT INTO entries (doc_no, at, business_day, supplier_id, invoice_no, total_amount, paid_amount, payment_method, user_id, observation, created_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
-        doc_no, at, day, supplier_id, invoice_no, total, paid, method, ctx.user.id, observation, now(),
+        `INSERT INTO entries (doc_no, at, business_day, supplier_id, invoice_no, total_amount, paid_amount, payment_method, user_id, observation, po_id, created_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+        doc_no, at, day, supplier_id, invoice_no, total, paid, method, ctx.user.id, observation, po?.id ?? null, now(),
       ).lastInsertRowid,
     );
     for (const l of lines) {
@@ -147,6 +151,9 @@ export function createEntry(ctx, body) {
       addMovement({ at, business_day: day, product_id: l.product_id, qty: l.qty, kind: "entry", unit_cost: l.unit_cost, unit_price: l.unit_price, ref_type: "entry", ref_id: id, user_id: ctx.user.id });
     }
     const totalQty = lines.reduce((s, l) => s + l.qty, 0);
+    const reception = po ? applyReception(po, lines) : null;
+    const gaps = reception ? reception.rows.filter((r) => r.gap !== 0) : [];
+    const nameOf = (pid) => pname(productRow(pid));
     createDocument({
       type: "entry",
       docNo: doc_no,
@@ -159,6 +166,7 @@ export function createEntry(ctx, body) {
         fields: [
           ["Fournisseur", supplier?.name || "Non précisé"],
           ["N° de facture", invoice_no || "—"],
+          ...(po ? [["Commande fournisseur", `${po.doc_no} (${{ received: "entièrement reçue", partial: "reçue en partie", open: "en attente" }[reception.status]})`]] : []),
           ["Enregistré par", ctx.user.full_name],
           ["Observation", observation || "—"],
         ],
@@ -179,10 +187,30 @@ export function createEntry(ctx, body) {
           ["Reste à payer", money(total - paid), true],
         ],
         status: paid >= total ? { label: "PAYÉ", tone: "ok" } : paid > 0 ? { label: "PAIEMENT PARTIEL", tone: "warn" } : { label: "NON PAYÉ", tone: "bad" },
+        extra_tables: reception
+          ? [
+              {
+                title: `Comparaison avec la commande ${po.doc_no}`,
+                columns: [{ label: "Boisson", w: 3 }, { label: "Attendu", align: "right" }, { label: "Reçu", align: "right" }, { label: "Écart", align: "right" }],
+                rows: reception.rows.map((r) => [nameOf(r.product_id) + (r.extra ? " (hors commande)" : ""), num(r.expected), num(r.received), (r.gap > 0 ? "+" : "") + num(r.gap)]),
+              },
+            ]
+          : undefined,
+        notes: gaps.length ? [`Écarts avec la commande : ${gaps.map((g) => `${nameOf(g.product_id)} ${g.gap > 0 ? "+" : ""}${g.gap}`).join(", ")}.`] : po ? ["Livraison conforme à la commande."] : [],
       },
-      search: [supplier?.name || "", invoice_no, ...lines.flatMap((l) => [l.product.name, l.product.brand])],
+      search: [supplier?.name || "", invoice_no, po?.doc_no || "", ...lines.flatMap((l) => [l.product.name, l.product.brand])],
     });
-    audit(ctx, "entree_enregistree", "entry", id, `Entrée ${doc_no} : ${totalQty} bouteilles, ${money(total)}`, { lines: lines.map((l) => ({ product_id: l.product_id, qty: l.qty, unit_cost: l.unit_cost })), paid });
+    audit(ctx, "entree_enregistree", "entry", id, `Entrée ${doc_no} : ${totalQty} bouteilles, ${money(total)}${po ? ` (réception de ${po.doc_no})` : ""}`, { lines: lines.map((l) => ({ product_id: l.product_id, qty: l.qty, unit_cost: l.unit_cost })), paid, po_id: po?.id ?? null });
+    if (gaps.length)
+      notify({
+        roles: ["owner", "manager"],
+        exceptUserId: ctx.user.id,
+        type: "purchase",
+        severity: "warn",
+        title: `Livraison différente de la commande ${po.doc_no}`,
+        body: gaps.map((g) => `${nameOf(g.product_id)} : attendu ${g.expected}, reçu ${g.received}`).join(" ; "),
+        link: `#/recus/${doc_no}`,
+      });
     touchDay(day, "entrée tardive");
     notify({
       roles: ["owner", "manager"],
@@ -240,6 +268,7 @@ export function cancelEntry(ctx, id, body) {
     const t = now();
     run("UPDATE entries SET status = 'cancelled', cancelled_at = ?, cancelled_by = ?, cancel_reason = ? WHERE id = ?", t, ctx.user.id, reason, id);
     reverseMovements("entry", id, ctx, `Annulation ${e.doc_no}`);
+    if (e.po_id) revertReception(e.po_id, e.lines);
     const doc = rectification(ctx, {
       type: "entry",
       original: e,
@@ -656,4 +685,44 @@ export function consignmentSummary() {
     label: CONSIGN_LABELS[c.party][c.kind],
   }));
   return { suppliers, customers, history };
+}
+
+// ---------- Fiche de stock d'une période ----------
+// Pour chaque boisson : STOCK DÉBUT + ENTRÉES − SORTIES (par nature) ± AJUSTEMENTS = STOCK FIN.
+// Le contrôle « ok » vérifie que l'égalité tombe juste avec le grand livre.
+const STATEMENT_KINDS = ["sale", "offered", "staff", "broken", "lost", "expired", "other"];
+export function stockStatement(fromDay, toDay) {
+  const inRange = (cond) => `CASE WHEN m.business_day BETWEEN ? AND ? AND ${cond} THEN m.qty END`;
+  const rows = all(
+    `SELECT p.id AS product_id, p.name, p.brand, p.units_per_crate, p.pack_label, p.purchase_price, p.sale_price, p.min_stock, p.active, c.name AS category, c.sort,
+       COALESCE(SUM(CASE WHEN m.business_day < ? THEN m.qty END), 0) AS opening,
+       COALESCE(SUM(${inRange("m.kind IN ('initial','entry')")}), 0) AS entries,
+       ${STATEMENT_KINDS.map((k) => `COALESCE(-SUM(${inRange(`m.kind = '${k}'`)}), 0) AS ${k}`).join(",\n       ")},
+       COALESCE(SUM(${inRange("m.kind = 'inventory'")}), 0) AS adjust,
+       COALESCE(SUM(CASE WHEN m.business_day <= ? THEN m.qty END), 0) AS closing,
+       COUNT(m.id) AS movements
+     FROM products p JOIN categories c ON c.id = p.category_id LEFT JOIN stock_movements m ON m.product_id = p.id
+     GROUP BY p.id ORDER BY c.sort, p.brand, p.name`,
+    fromDay,
+    ...Array(2 + STATEMENT_KINDS.length).fill([fromDay, toDay]).flat(),
+    toDay,
+  )
+    .filter((r) => r.active || r.opening || r.closing || r.entries)
+    .map((r) => {
+      const exits = STATEMENT_KINDS.reduce((s, k) => s + r[k], 0);
+      return {
+        ...r,
+        name: pname(r),
+        exits,
+        ok: r.opening + r.entries - exits + r.adjust === r.closing,
+        closing_label: cratesLabel(r.closing, r.units_per_crate, r.pack_label),
+        value: r.closing * r.purchase_price,
+        sale_value: r.closing * r.sale_price,
+        sold_amount: r.sale * r.sale_price,
+        low: r.closing <= r.min_stock,
+      };
+    });
+  const sum = (k) => rows.reduce((s, r) => s + r[k], 0);
+  const totals = Object.fromEntries(["opening", "entries", ...STATEMENT_KINDS, "exits", "adjust", "closing", "value", "sale_value"].map((k) => [k, sum(k)]));
+  return { from: fromDay, to: toDay, rows, totals, ok: rows.every((r) => r.ok) };
 }

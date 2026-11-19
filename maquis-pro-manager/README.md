@@ -24,6 +24,11 @@ Application de gestion d'un maquis : stocks, entrées et sorties de boissons, co
 | Notifications (entrée, sortie, vente, dépense, écart, stock faible, rupture, clôture, bilans, connexion inhabituelle…) | ✅ Dans l'application et en push |
 | Fournisseurs, dettes, paiements, consignes et casiers | ✅ |
 | Fonctionnement hors connexion avec synchronisation sans doublon | ✅ Testé dans un vrai navigateur |
+| **Bon de commande** imprimable pour chaque commande, **addition** de table, **encaissement de toute une table** en une fois | ✅ Prix annoncé à la commande conservé ; chaque bouteille reste au compte de son serveur |
+| **Commandes fournisseurs** : quantités calculées d'après les ventes réelles, bon de commande PDF à envoyer, réception avec écarts commandé / reçu | ✅ |
+| **Fiche de stock** : stock début + entrées − sorties = stock fin, boisson par boisson, contrôlée, en PDF et Excel (aussi dans les bilans) | ✅ |
+| **Billetage** à la fermeture de caisse (billets et pièces) | ✅ |
+| **Rentabilité par boisson** (marge, marge par bouteille, bénéfice net après pertes) et **point des serveurs** | ✅ Tableau de bord, bilans PDF et Excel |
 
 ## Tester avant la mise en ligne
 
@@ -55,7 +60,7 @@ Mise en ligne (o2switch, serveur Docker) et tâche planifiée de 03 h 00 : voir 
 npm test
 ```
 
-26 tests automatiques sur un vrai serveur et une vraie base. Ils couvrent les 18 tests obligatoires du cahier des charges (scénario d'une semaine dans un maquis : entrées, ventes, casses, crédits, caisse, reçus, permissions, bilans de 03 h 00 et du lundi, hors connexion, sauvegarde et restauration), ainsi que la sécurité. Le détail est dans [docs/DOCUMENTATION-TECHNIQUE.md](docs/DOCUMENTATION-TECHNIQUE.md#tests).
+36 tests automatiques sur un vrai serveur et une vraie base. Ils couvrent les 18 tests obligatoires du cahier des charges (scénario d'une semaine dans un maquis : entrées, ventes, casses, crédits, caisse, reçus, permissions, bilans de 03 h 00 et du lundi, hors connexion, sauvegarde et restauration), ainsi que la sécurité. Le détail est dans [docs/DOCUMENTATION-TECHNIQUE.md](docs/DOCUMENTATION-TECHNIQUE.md#tests).
 
 ## Documentation
 

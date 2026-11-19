@@ -238,7 +238,9 @@ test("8 et 9. reçus de sortie et de vente téléchargeables, imprimables, reche
   assert.ok((await A.manager.ok("GET", "/api/documents?q=sawadogo")).length >= 3);
   // Le serveur ne voit que les reçus de ses propres ventes.
   const waiterDocs = await A.waiter.ok("GET", "/api/documents");
-  assert.deepEqual(waiterDocs.map((d) => d.doc_no), [saleDoc]);
+  assert.deepEqual(waiterDocs.filter((d) => d.type === "sale").map((d) => d.doc_no), [saleDoc]);
+  assert.deepEqual(waiterDocs.filter((d) => d.type === "order").map((d) => d.doc_no), ["CMD-2026-000001"]); // son bon de commande
+  assert.equal(waiterDocs.length, 2);
   assert.equal((await A.waiter.get(`/api/documents/${exitsDocs[0].doc_no}`)).status, 403);
 });
 

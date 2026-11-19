@@ -4,6 +4,7 @@ import {
   money, num, datetime, date, dayShort, dayLabel, columnChart, barList, downloadUrl, shareFile, whatsappText, emailText, go, debounce, today, queue,
   refreshQueueCount, syncQueue, emit, ROLE_LABELS, addDays, productName
 } from "./core.js";
+import { statementTable } from "./views-plus.js";
 
 const deviceId = () => {
   let id = "";
@@ -107,6 +108,9 @@ export function viewChangePassword(main, { forced = false } = {}) {
 const DOC_TYPES = {
   "": "Tous les documents",
   sale: "Ventes",
+  order: "Bons de commande",
+  bill: "Additions",
+  purchase_order: "Commandes fournisseurs",
   payment: "Paiements de crédit",
   entry: "Entrées de boissons",
   exit: "Sorties de boissons",
@@ -165,6 +169,7 @@ function receiptBody(d) {
     h("div", { class: "kv" }, [["Responsable", p.responsible], ...(p.fields || [])].map(([k, v]) => h("div", null, h("span", null, k), h("b", null, v)))),
     p.columns && p.rows ? h("div", { class: "mt" }, table(p.columns.map((c, i) => ({ label: c.label, r: c.align === "right", get: (r) => r[i] })), p.rows)) : null,
     p.totals?.length ? h("div", { class: "totals" }, p.totals.map(([k, v, b]) => h("div", { class: b ? "b" : "" }, h("span", null, k), h("span", { class: "num" }, v)))) : null,
+    (p.extra_tables || []).map((t) => h("div", { class: "mt" }, h("h3", { class: "mb" }, t.title), table(t.columns.map((c, i) => ({ label: c.label, r: c.align === "right", get: (r) => r[i] })), t.rows))),
     p.status ? h("div", { class: `status ${p.status.tone}` }, p.status.label) : null,
     (p.notes || []).map((n) => h("p", { class: "small muted" }, n)),
     p.maquis?.footer ? h("p", { class: "center text-2 mt" }, p.maquis.footer) : null,
@@ -389,7 +394,7 @@ function dailyBody(d) {
       h("div", { class: "flex mt small" }, h("span", null, "Veille : ", h("b", null, money(a.comparison.previous_day.amount)), " "), variation(a.comparison.previous_day.variation), a.comparison.average_7d ? h("span", null, " · Moyenne précédente : ", h("b", null, money(a.comparison.average_7d.amount)), " ", variation(a.comparison.average_7d.variation)) : null),
     ),
     card("Responsables des opérations", table([{ label: "Nom", get: (x) => x.user_name }, { label: "Rôle", get: (x) => ROLE_LABELS[x.role] || x.role }, { label: "Opérations", r: true, get: (x) => num(x.operations) }], d.responsibles)),
-    card("Stock restant à la clôture", stockEnd(d.stock_end)),
+    d.stock_statement ? card("Mouvement du stock de la journée (stock début + entrées − sorties = stock fin)", statementTable(d.stock_statement)) : card("Stock restant à la clôture", stockEnd(d.stock_end)),
   ];
 }
 
@@ -437,7 +442,11 @@ function weeklyBody(d) {
     h("div", { class: "grid g2" }, card("Dépenses par catégorie", table([{ label: "Catégorie", get: (x) => x.category }, { label: "Montant", r: true, get: (x) => money(x.amount) }], d.cash.expenses_by_category)), card("Résultat", h("div", { class: "totals" }, [["Chiffre d'affaires", money(s.revenue), true], ["Coût d'achat des boissons vendues", money(s.cogs)], ["Bénéfice brut estimé", money(s.gross_profit), true], ["Dépenses", money(s.expenses)], ["Pertes (prix d'achat)", money(s.losses_cost)], ["Résultat estimé", money(s.estimated_result), true], ["Achats de marchandises", money(s.purchases)]].map(([k, v, b]) => h("div", { class: b ? "b" : "" }, h("span", null, k), h("span", { class: "num" }, v)))))),
     card("Caisses et écarts", cashTable(d.cash.sessions)),
     card("Observations", h("ul", { class: "bullets" }, (d.observations.length ? d.observations : ["Aucune observation particulière."]).map((t) => h("li", null, t)))),
-    card(`Stock restant à la clôture — ${num(s.stock_bottles)} bouteilles (${money(s.stock_value)})`, stockEnd(d.stock_end)),
+    d.profitability ? card("Rentabilité par boisson", profitTable(d.profitability)) : null,
+    d.waiters ? card("Point des serveurs", table([{ label: "Serveur", get: (w) => w.waiter }, { label: "Ventes", r: true, get: (w) => num(w.sales) }, { label: "Bouteilles", r: true, get: (w) => num(w.bottles) }, { label: "Montant", r: true, get: (w) => money(w.amount) }, { label: "Crédits non soldés", r: true, get: (w) => (w.credit_open ? money(w.credit_open) : "—") }, { label: "Sorties hors ventes", get: (w) => w.exits.map((x) => `${x.qty} ${x.label.toLowerCase()}`).join(", ") || "—" }], d.waiters)) : null,
+    d.stock_statement
+      ? card(`Mouvement du stock de la semaine — stock final ${num(s.stock_bottles)} bouteilles (${money(s.stock_value)})`, statementTable(d.stock_statement))
+      : card(`Stock restant à la clôture — ${num(s.stock_bottles)} bouteilles (${money(s.stock_value)})`, stockEnd(d.stock_end)),
   ];
 }
 
@@ -539,5 +548,26 @@ export async function viewAccount(main) {
       } } }, icon("sync"), "Synchroniser maintenant") : null,
     ),
     card("Notifications", h("div", { class: "btnrow mb" }, h("button", { class: "btn primary", on: { click: () => enablePush().catch(fail) } }, icon("bell"), "Activer les notifications sur cet appareil")), prefBox),
+  );
+}
+
+// Rentabilité par boisson (bilans et tableau de bord).
+export function profitTable(pr) {
+  const t = pr.totals;
+  const pctTxt = (v) => `${String(v).replace(".", ",")} %`;
+  return table(
+    [
+      { label: "Boisson", get: (r) => h("b", null, r.name) },
+      { label: "Btl vendues", r: true, get: (r) => num(r.qty) },
+      { label: "Chiffre d'affaires", r: true, get: (r) => money(r.revenue) },
+      { label: "Coût d'achat", r: true, get: (r) => money(r.cost) },
+      { label: "Marge brute", r: true, get: (r) => money(r.margin) },
+      { label: "Marge %", r: true, get: (r) => pctTxt(r.margin_pct) },
+      { label: "Marge / btl", r: true, get: (r) => money(r.unit_margin) },
+      { label: "Pertes et offerts", r: true, get: (r) => (r.losses_cost + r.given_cost ? h("span", { class: "bad" }, money(r.losses_cost + r.given_cost)) : "—") },
+      { label: "Bénéfice net", r: true, get: (r) => h("b", { class: r.net < 0 ? "bad" : "" }, money(r.net)) },
+    ],
+    pr.rows,
+    { foot: ["Total", num(t.qty), money(t.revenue), money(t.cost), money(t.margin), pctTxt(t.margin_pct), "", money(t.losses_cost + t.given_cost), money(t.net)] },
   );
 }

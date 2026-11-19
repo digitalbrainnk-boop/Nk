@@ -243,6 +243,32 @@ export function listExpenses(ctx, { from, to } = {}) {
 }
 
 // ---------- Clôture ----------
+// Coupures en circulation (franc CFA, UEMOA).
+export const DENOMINATIONS = [
+  { key: "b10000", value: 10000, label: "Billet de 10 000" },
+  { key: "b5000", value: 5000, label: "Billet de 5 000" },
+  { key: "b2000", value: 2000, label: "Billet de 2 000" },
+  { key: "b1000", value: 1000, label: "Billet de 1 000" },
+  { key: "b500", value: 500, label: "Billet de 500" },
+  { key: "p500", value: 500, label: "Pièce de 500" },
+  { key: "p250", value: 250, label: "Pièce de 250" },
+  { key: "p200", value: 200, label: "Pièce de 200" },
+  { key: "p100", value: 100, label: "Pièce de 100" },
+  { key: "p50", value: 50, label: "Pièce de 50" },
+  { key: "p25", value: 25, label: "Pièce de 25" },
+  { key: "p10", value: 10, label: "Pièce de 10" },
+  { key: "p5", value: 5, label: "Pièce de 5" },
+];
+function parseBilletage(b) {
+  if (!b || typeof b !== "object") return null;
+  const lines = [];
+  for (const d of DENOMINATIONS) {
+    const c = int(b[d.key], d.label, { required: false, def: 0, min: 0, max: 1_000_000 });
+    if (c) lines.push({ ...d, count: c, amount: c * d.value });
+  }
+  if (!lines.length) return null;
+  return { lines, total: lines.reduce((s, l) => s + l.amount, 0) };
+}
 export function closeSession(ctx, body) {
   let session;
   if (ctx.user.role === "cashier") session = requireOpenSession(ctx);
@@ -259,6 +285,9 @@ export function closeSession(ctx, body) {
       counted[m.method] = 0;
     } else counted[m.method] = int(v, `Montant compté (${m.method})`, { min: 0, max: 1_000_000_000 });
   }
+  // Billetage : comptage des espèces billet par billet et pièce par pièce (facultatif).
+  const billetage = parseBilletage(body.billetage);
+  if (billetage && billetage.total !== counted[CASH]) throw bad(`Le billetage (${money(billetage.total)}) ne correspond pas au montant compté en espèces (${money(counted[CASH] || 0)}).`);
   const note = str(body.note, "Observation", { max: 500 });
   const pending = get("SELECT COUNT(*) AS n FROM orders WHERE status = 'pending'").n;
   return tx(() => {
@@ -268,7 +297,7 @@ export function closeSession(ctx, body) {
     const doc_no = newDocNumber("cash_close", t);
     run(
       "UPDATE cash_sessions SET status = 'closed', closed_at = ?, closed_by = ?, theoretical = ?, counted = ?, variance = ?, details = ?, closing_note = ?, doc_no = ? WHERE id = ?",
-      t, ctx.user.id, summary.totals.theoretical, totalCounted, variance, JSON.stringify({ counted }), note, doc_no, session.id,
+      t, ctx.user.id, summary.totals.theoretical, totalCounted, variance, JSON.stringify({ counted, billetage: billetage?.lines || null }), note, doc_no, session.id,
     );
     const rows = summary.methods.filter((m) => m.theoretical || counted[m.method] || m.collected || m.expenses || m.withdrawals || m.deposits || m.refunds);
     createDocument({
@@ -308,6 +337,9 @@ export function closeSession(ctx, body) {
           ["Écart de caisse", (variance > 0 ? "+" : "") + money(variance), true],
         ],
         status: variance === 0 ? { label: "CAISSE JUSTE", tone: "ok" } : variance < 0 ? { label: "MANQUANT EN CAISSE", tone: "bad" } : { label: "EXCÉDENT EN CAISSE", tone: "warn" },
+        extra_tables: billetage
+          ? [{ title: "Billetage des espèces", columns: [{ label: "Coupure", w: 2 }, { label: "Nombre", align: "right" }, { label: "Montant", align: "right", w: 1.5 }], rows: [...billetage.lines.map((l) => [l.label, num(l.count), money(l.amount)]), ["TOTAL ESPÈCES", "", money(billetage.total)]] }]
+          : undefined,
         notes: ["Solde théorique = fonds initial + encaissements + ajouts - dépenses - retraits - remboursements."],
       },
       search: [summary.cashier_name, "clôture caisse"],

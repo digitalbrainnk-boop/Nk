@@ -82,6 +82,12 @@ Cochez au fur et à mesure. Notez tout ce qui ne va pas (voir 4.).
 | 13 | Ouvrir des reçus : *Télécharger*, *Imprimer*, *WhatsApp*, *E-mail* | PDF lisible ; impression au format ticket ; partage vers WhatsApp |
 | 14 | *Reçus* : chercher par numéro, par boisson, par nom | Les bons reçus sont trouvés |
 | 15 | Gérant : inventaire, compter une boisson avec un écart | Validation refusée sans justification ; acceptée avec ; stock ajusté ; propriétaire prévenu |
+| 16 | Deux serveurs commandent pour la **même table** | Le caissier voit la table regroupée ; *Addition* imprime la note ; *Encaisser la table* fait une seule vente ; chaque serveur voit ses bouteilles dans *Mes ventes* |
+| 17 | Serveur : après une commande, *Imprimer le bon* | Bon de commande numéroté (CMD-…) ; après encaissement, le bon affiche « ENCAISSÉE » |
+| 18 | Gérant : *Commandes fournisseurs → Nouvelle commande* | Quantités proposées d'après les ventes ; bon de commande PDF ; *Réceptionner* avec une quantité en moins → écart signalé, commande « reçue en partie » |
+| 19 | Gérant : *Fiche de stock* du jour | « Contrôle juste » ; stock début + entrées − sorties = stock fin pour chaque boisson ; PDF et Excel |
+| 20 | Caissier : fermeture avec *billets et pièces* | Le total se calcule seul ; le reçu de fermeture montre le billetage |
+| 21 | Propriétaire : tableau de bord *Ce mois* | Rentabilité par boisson : marge, bénéfice net après pertes ; *Point des serveurs* |
 
 ### C. Sans internet
 

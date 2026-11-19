@@ -49,7 +49,11 @@ export async function viewStock(main) {
   q.addEventListener("input", render);
   const totalValue = rows.reduce((s, r) => s + r.value, 0);
   main.replaceChildren(
-    pageHead("Stock", "STOCK FINAL = STOCK INITIAL + ENTRÉES − SORTIES, calculé automatiquement.", isManager() ? [h("a", { class: "btn primary", href: "#/entrees/nouvelle" }, icon("in"), "Entrée"), h("a", { class: "btn", href: "#/sorties/nouvelle" }, icon("out"), "Sortie"), h("a", { class: "btn", href: "#/inventaires" }, icon("clip"), "Inventaire")] : []),
+    pageHead("Stock", "STOCK FINAL = STOCK INITIAL + ENTRÉES − SORTIES, calculé automatiquement.", [
+      ...(isManager() ? [h("a", { class: "btn primary", href: "#/entrees/nouvelle" }, icon("in"), "Entrée"), h("a", { class: "btn", href: "#/sorties/nouvelle" }, icon("out"), "Sortie"), h("a", { class: "btn", href: "#/inventaires" }, icon("clip"), "Inventaire")] : []),
+      h("a", { class: "btn", href: "#/fiche-stock" }, icon("list"), "Fiche de stock"),
+      h("a", { class: "btn", href: "#/achats" }, icon("truck"), "Commandes fournisseurs"),
+    ]),
     h("div", { class: "stats mb" }, stat("Bouteilles en stock", num(rows.reduce((s, r) => s + r.stock, 0))), stat("Valeur (prix d'achat)", money(totalValue)), stat("Valeur (prix de vente)", money(rows.reduce((s, r) => s + r.sale_value, 0))), stat("Alertes", `${rows.filter((r) => r.low).length}`, `${rows.filter((r) => r.out).length} rupture(s)`)),
     card(null, h("div", { class: "search mb" }, icon("search"), q), tabs, listBox),
   );
@@ -182,7 +186,7 @@ function categoryForm(main) {
 }
 
 // ---------- Lignes « casiers + bouteilles » (entrées et sorties) ----------
-function crateLines({ withCost = false, onChange = () => {} } = {}) {
+function crateLines({ withCost = false, onChange = () => {}, initial = [] } = {}) {
   const lines = [];
   let ready = false;
   const changed = () => ready && onChange();
@@ -220,7 +224,8 @@ function crateLines({ withCost = false, onChange = () => {} } = {}) {
       h("button", { class: "btn", type: "button", on: { click: () => (lines.push({ product_id: "", crates: 0, extra: 0, upc: 12, cost: 0 }), render()) } }, icon("plus"), "Ajouter une boisson"),
     );
   };
-  lines.push({ product_id: "", crates: 0, extra: 0, upc: 12, cost: 0 });
+  if (initial.length) lines.push(...initial.map((l) => ({ product_id: String(l.product_id), crates: l.crates || 0, extra: l.extra || 0, upc: l.upc || 12, cost: l.cost || 0 })));
+  else lines.push({ product_id: "", crates: 0, extra: 0, upc: 12, cost: 0 });
   render();
   ready = true;
   return {
@@ -260,10 +265,16 @@ export async function viewEntries(main) {
   load().catch(fail);
 }
 
-export function viewEntryForm(main) {
+export async function viewEntryForm(main, poId = null) {
+  const po = poId ? await GET(`/api/purchase-orders/${poId}`) : null;
+  const initial = po
+    ? po.lines
+        .filter((l) => l.remaining > 0)
+        .map((l) => ({ product_id: l.product_id, crates: l.units_per_crate > 1 ? Math.floor(l.remaining / l.units_per_crate) : 0, extra: l.units_per_crate > 1 ? l.remaining % l.units_per_crate : l.remaining, upc: l.units_per_crate, cost: l.unit_cost }))
+    : [];
   const total = h("b");
   const qtyEl = h("b");
-  const lines = crateLines({ withCost: true, onChange: () => upd() });
+  const lines = crateLines({ withCost: true, onChange: () => upd(), initial });
   const paid = input("paid_amount", { type: "number", min: 0, value: 0, inputmode: "numeric" });
   const rest = h("b");
   const upd = () => {
@@ -277,7 +288,7 @@ export function viewEntryForm(main) {
     { class: "form", on: { submit: async (e) => {
       e.preventDefault();
       const d = formData(form);
-      const body = { supplier_id: d.supplier_id || null, invoice_no: d.invoice_no, observation: d.observation, paid_amount: Number(d.paid_amount) || 0, payment_method: d.payment_method, lines: lines.get() };
+      const body = { supplier_id: po ? po.supplier_id : d.supplier_id || null, po_id: po?.id, invoice_no: d.invoice_no, observation: d.observation, paid_amount: Number(d.paid_amount) || 0, payment_method: d.payment_method, lines: lines.get() };
       if (!body.lines.length) return toast("Ajoutez au moins une boisson.", "bad");
       const btn = form.querySelector("button[type=submit]");
       btn.disabled = true;
@@ -297,7 +308,10 @@ export function viewEntryForm(main) {
         btn.disabled = false;
       }
     } } },
-    h("div", { class: "row" }, field("Fournisseur", select("supplier_id", [{ value: "", label: "Non précisé" }, ...(S.boot.suppliers || []).map((s) => ({ value: s.id, label: s.name }))], "")), field("Numéro de facture", input("invoice_no"))),
+    po
+      ? h("div", { class: "banner info" }, icon("truck"), h("div", null, h("b", null, `Réception de la commande ${po.doc_no} — ${po.supplier}`), h("div", null, "Les quantités restant à recevoir sont déjà remplies : corrigez-les selon ce qui est réellement livré. Les écarts seront signalés.")))
+      : null,
+    h("div", { class: "row" }, po ? null : field("Fournisseur", select("supplier_id", [{ value: "", label: "Non précisé" }, ...(S.boot.suppliers || []).map((s) => ({ value: s.id, label: s.name }))], "")), field("Numéro de facture", input("invoice_no"))),
     lines.el,
     h("div", { class: "card" }, h("div", { class: "totals" }, h("div", null, h("span", null, "Quantité totale reçue"), qtyEl), h("div", { class: "b" }, h("span", null, "Montant total"), total))),
     h("div", { class: "row" }, field("Montant payé maintenant", paid), field("Mode de paiement", select("payment_method", S.boot.settings.payment_methods, "Espèces"))),
@@ -305,7 +319,7 @@ export function viewEntryForm(main) {
     field("Observation", h("textarea", { name: "observation", rows: 2 })),
     h("button", { class: "btn primary lg", type: "submit" }, icon("check"), "Valider l'entrée"),
   );
-  main.replaceChildren(pageHead("Nouvelle entrée de boissons", "Le stock augmente dès la validation ; un reçu est créé automatiquement.", [], "#/entrees"), card(null, form));
+  main.replaceChildren(pageHead(po ? "Réception d'une commande" : "Nouvelle entrée de boissons", "Le stock augmente dès la validation ; un reçu est créé automatiquement.", [], po ? `#/achats/${po.id}` : "#/entrees"), card(null, form));
   upd();
 }
 
@@ -727,17 +741,51 @@ export function movementForm(sessionId, done) {
 
 export function closeForm(s, done) {
   const methods = s.methods.filter((m) => m.theoretical || m.collected || m.method === "Espèces");
+  const denoms = S.boot.denominations || [];
+  const counts = {};
+  const cashInput = input("m_Espèces", { type: "number", min: 0, required: true, inputmode: "numeric", "data-method": "Espèces" });
+  const ecart = h("div", { class: "small" });
+  const theoCash = methods.find((m) => m.method === "Espèces")?.theoretical || 0;
+  const showGap = () => {
+    if (cashInput.value === "") return (ecart.textContent = "");
+    const g = Number(cashInput.value) - theoCash;
+    ecart.textContent = g === 0 ? "Espèces justes." : g < 0 ? `Manquant : ${money(g)}` : `Excédent : +${money(g)}`;
+    ecart.className = `small ${g === 0 ? "good" : g < 0 ? "bad" : "warn"}`;
+  };
+  cashInput.addEventListener("input", showGap);
+  const billTotal = h("b");
+  const billetage = h(
+    "details",
+    { class: "linebox" },
+    h("summary", null, h("b", null, "Compter les espèces par billets et pièces"), " (le total se calcule tout seul)"),
+    h(
+      "div",
+      { class: "row mt" },
+      denoms.map((d) =>
+        field(d.label, input(d.key, { type: "number", min: 0, inputmode: "numeric", placeholder: "0", on: { input: (e) => {
+          counts[d.key] = Number(e.target.value) || 0;
+          const t = denoms.reduce((a, x) => a + (counts[x.key] || 0) * x.value, 0);
+          billTotal.textContent = money(t);
+          cashInput.value = t;
+          showGap();
+        } } })),
+      ),
+    ),
+    h("div", { class: "totals" }, h("div", { class: "b" }, h("span", null, "Total des espèces comptées"), billTotal)),
+  );
   const form = h(
     "div",
     { class: "form" },
     h("p", { class: "text-2" }, "Comptez l'argent réellement présent pour chaque mode de paiement (espèces dans le tiroir, soldes Orange Money / Moov Money…)."),
-    methods.map((m) => field(`${m.method} — théorique ${money(m.theoretical)}`, input(`m_${m.method}`, { type: "number", min: 0, required: true, inputmode: "numeric", "data-method": m.method }))),
+    billetage,
+    methods.map((m) => (m.method === "Espèces" ? h("div", null, field(`Espèces — théorique ${money(m.theoretical)}`, cashInput), ecart) : field(`${m.method} — théorique ${money(m.theoretical)}`, input(`m_${m.method}`, { type: "number", min: 0, required: true, inputmode: "numeric", "data-method": m.method })))),
     field("Observation", input("note")),
   );
   return modal("Fermer la caisse", form, [{ label: "Annuler", class: "ghost" }, { label: "Fermer la caisse", class: "danger fill", submit: true, onClick: async () => {
     const counted = {};
     for (const el of form.querySelectorAll("[data-method]")) counted[el.dataset.method] = Number(el.value);
-    const r = await POST("/api/cash/close", { session_id: s.id, counted, note: form.querySelector("[name=note]").value });
+    const used = Object.values(counts).some((c) => c > 0);
+    const r = await POST("/api/cash/close", { session_id: s.id, counted, billetage: used ? counts : undefined, note: form.querySelector("[name=note]").value });
     toast(r.variance === 0 ? "Caisse fermée : caisse juste." : `Caisse fermée : écart de ${money(r.variance)}.`, r.variance === 0 ? "good" : "bad");
     done?.(r);
   } }]);
@@ -823,6 +871,6 @@ export async function viewOrdersAll(main) {
   const rows = await GET(`/api/orders?day=${today()}`);
   main.replaceChildren(
     pageHead("Commandes des serveurs", "Journée commerciale en cours."),
-    card(null, table([{ label: "Heure", get: (o) => datetime(o.at) }, { label: "N°", get: (o) => o.order_no }, { label: "Serveur", get: (o) => o.waiter_name }, { label: "Table", get: (o) => o.table_label || "—" }, { label: "Boissons", get: (o) => o.lines.map((l) => `${l.qty} ${l.brand}`).join(", ") }, { label: "Total", r: true, get: (o) => money(o.total) }, { label: "Statut", get: (o) => chip(o.status_label, o.status === "served" ? "good" : o.status === "pending" ? "warn" : "bad") }], rows, { onRow: (o) => o.sale_id && go(`#/ventes/${o.sale_id}`) })),
+    card(null, table([{ label: "Heure", get: (o) => datetime(o.at) }, { label: "N°", get: (o) => o.order_no }, { label: "Serveur", get: (o) => o.waiter_name }, { label: "Table", get: (o) => o.table_label || "—" }, { label: "Boissons", get: (o) => o.lines.map((l) => `${l.qty} ${l.brand}`).join(", ") }, { label: "Total", r: true, get: (o) => money(o.total) }, { label: "Statut", get: (o) => chip(o.status_label, o.status === "served" ? "good" : o.status === "pending" ? "warn" : "bad") }], rows, { onRow: (o) => (o.sale_id ? go(`#/ventes/${o.sale_id}`) : o.documents?.some((x) => x.type === "order") ? go(`#/recus/${o.order_no}`) : null) })),
   );
 }

@@ -7,9 +7,9 @@ import { audit } from "./audit.js";
 import { notify, signal } from "./notify.js";
 import { createDocument, newDocNumber, documentsFor } from "./documents.js";
 import { productRow } from "./catalog.js";
-import { addMovement, checkStock, reverseMovements, snapshotStock, stockAlerts, touchDay, periodWhere } from "./stock.js";
+import { addMovement, checkStock, reverseMovements, snapshotStock, stockAlerts, touchDay, periodWhere, stockOf } from "./stock.js";
 import { requireOpenSession, checkMethod, openSessionOf, CASH } from "./cash.js";
-import { bad, forbidden, notFound, str, int, arr, money, num, pname } from "./util.js";
+import { bad, forbidden, notFound, conflict, str, int, arr, money, num, pname } from "./util.js";
 
 export const SALE_STATUS = { paid: "Payée", partial: "Paiement partiel", credit: "À crédit", cancelled: "Annulée" };
 export const ORDER_STATUS = { pending: "En attente", served: "Servie / encaissée", cancelled: "Annulée", rejected: "Refusée" };
@@ -38,6 +38,18 @@ export function createOrder(ctx, body) {
   const note = str(body.note, "Note", { max: 300 });
   return tx(() => {
     checkStock(lines, ctx);
+    if (!ctx.offline) {
+      const short = [];
+      for (const l of lines) {
+        const reserved = get(
+          "SELECT COALESCE(SUM(ol.qty), 0) AS q FROM order_lines ol JOIN orders o ON o.id = ol.order_id WHERE o.status = 'pending' AND o.business_day = ? AND ol.product_id = ?",
+          businessDay(now()), l.product_id,
+        ).q;
+        const free = stockOf(l.product_id) - reserved;
+        if (l.qty > free) short.push(`${pname(l.product)} : ${Math.max(0, free)} disponible(s), ${reserved} déjà commandée(s) en attente`);
+      }
+      if (short.length) throw conflict(`Pas assez de bouteilles : ${short.join(" ; ")}.`);
+    }
     const t = ctx.at || now();
     const order_no = nextNumber("CMD", localParts(t).y);
     const id = Number(
@@ -45,6 +57,24 @@ export function createOrder(ctx, body) {
         .lastInsertRowid,
     );
     for (const l of lines) run("INSERT INTO order_lines (order_id, product_id, qty, unit_price) VALUES (?,?,?,?)", id, l.product_id, l.qty, l.unit_price);
+    createDocument({
+      type: "order",
+      docNo: order_no,
+      refType: "order",
+      refId: id,
+      at: t,
+      user: ctx.user,
+      amount: total,
+      payload: {
+        fields: [["Table", table_label || "—"], ["Serveur", ctx.user.full_name], ["Client", customer_name || "—"], ["Note", note || "—"]],
+        columns: [{ label: "Boisson", w: 3.4 }, { label: "Qté", align: "right", w: 0.8 }, { label: "Prix unit.", align: "right", w: 1.5 }, { label: "Montant", align: "right", w: 1.7 }],
+        rows: lines.map((l) => [pname(l.product), num(l.qty), money(l.unit_price), money(l.qty * l.unit_price)]),
+        totals: [["Bouteilles", num(lines.reduce((a, l) => a + l.qty, 0))], ["TOTAL DE LA COMMANDE", money(total), true]],
+        status: { label: "À ENCAISSER", tone: "warn" },
+        notes: ["Bon de commande : ce n'est pas un reçu de paiement. Le reçu de vente est remis à l'encaissement."],
+      },
+      search: [table_label, customer_name, ...lines.flatMap((l) => [l.product.name, l.product.brand])],
+    });
     audit(ctx, "commande_creee", "order", id, `Commande ${order_no} (${table_label || "sans table"}) : ${money(total)}`);
     signal(["cashier", "manager", "owner"], "orders", { id, order_no });
     return getOrder(id);
@@ -56,6 +86,7 @@ export function getOrder(id) {
   if (!o) throw notFound("Commande introuvable.");
   o.lines = all("SELECT l.*, p.name, p.brand, p.photo FROM order_lines l JOIN products p ON p.id = l.product_id WHERE order_id = ?", id);
   o.status_label = ORDER_STATUS[o.status];
+  o.documents = documentsFor("order", id);
   return o;
 }
 
@@ -94,6 +125,76 @@ export function cancelOrder(ctx, id, body) {
   });
 }
 
+// Commandes en attente désignées par order_id ou order_ids (encaisser toute une table).
+function pendingOrders(body) {
+  const ids = [...new Set((Array.isArray(body.order_ids) ? body.order_ids : body.order_id ? [body.order_id] : []).map((x) => int(x, "Commande", { min: 1 })))];
+  if (ids.length > 40) throw bad("Trop de commandes à la fois (40 au maximum).");
+  return ids.map((id) => {
+    const o = getOrder(id);
+    if (o.status !== "pending") throw bad(`La commande ${o.order_no} est déjà ${ORDER_STATUS[o.status].toLowerCase()}.`);
+    return o;
+  });
+}
+
+// Lignes de vente d'après les commandes : au prix annoncé au client lors de la commande,
+// et chaque bouteille reste attribuée au serveur qui l'a commandée.
+function orderSaleLines(orders) {
+  const merged = new Map();
+  for (const o of orders) {
+    for (const l of o.lines) {
+      const key = `${l.product_id}|${l.unit_price}|${o.waiter_id}`;
+      const cur = merged.get(key);
+      if (cur) cur.qty += l.qty;
+      else {
+        const p = productRow(l.product_id);
+        if (!p.active) throw bad(`${pname(p)} n'est plus disponible (commande ${o.order_no}) : refusez la commande et faites-la refaire.`);
+        merged.set(key, { product: p, product_id: p.id, qty: l.qty, unit_price: l.unit_price, unit_cost: p.purchase_price, waiter_id: o.waiter_id });
+      }
+    }
+  }
+  return [...merged.values()];
+}
+
+// Addition d'une table (une ou plusieurs commandes en attente) : document numéroté, non comptable.
+export function createBill(ctx, body) {
+  const orders = pendingOrders({ order_ids: body.order_ids });
+  if (!orders.length) throw bad("Choisissez au moins une commande.");
+  if (ctx.user.role === "waiter" && orders.some((o) => o.waiter_id !== ctx.user.id)) throw forbidden("Vous ne pouvez imprimer l'addition que de vos propres commandes.");
+  const lines = orderSaleLines(orders);
+  const rows = new Map();
+  for (const l of lines) {
+    const k = `${l.product_id}|${l.unit_price}`;
+    const r = rows.get(k) || { name: pname(l.product), qty: 0, unit_price: l.unit_price };
+    r.qty += l.qty;
+    rows.set(k, r);
+  }
+  const total = lines.reduce((a, l) => a + l.qty * l.unit_price, 0);
+  return tx(() => {
+    const t = now();
+    const tables = [...new Set(orders.map((o) => o.table_label).filter(Boolean))].join(", ");
+    const doc_no = createDocument({
+      type: "bill",
+      refType: "order",
+      refId: orders[0].id,
+      at: t,
+      user: ctx.user,
+      amount: total,
+      payload: {
+        order_ids: orders.map((o) => o.id),
+        fields: [["Table", tables || "—"], ["Serveur", [...new Set(orders.map((o) => o.waiter_name))].join(", ")], ["Commandes", orders.map((o) => o.order_no).join(", ")], ["Client", orders.map((o) => o.customer_name).find(Boolean) || "—"]],
+        columns: [{ label: "Boisson", w: 3.4 }, { label: "Qté", align: "right", w: 0.8 }, { label: "Prix unit.", align: "right", w: 1.5 }, { label: "Montant", align: "right", w: 1.7 }],
+        rows: [...rows.values()].map((r) => [r.name, num(r.qty), money(r.unit_price), money(r.qty * r.unit_price)]),
+        totals: [["Bouteilles", num(lines.reduce((a, l) => a + l.qty, 0))], ["TOTAL À PAYER", money(total), true]],
+        status: { label: "À PAYER", tone: "warn" },
+        notes: ["Addition : ce n'est pas un reçu. Le reçu de vente est remis au paiement."],
+      },
+      search: [tables, ...orders.map((o) => o.order_no), ...lines.flatMap((l) => [l.product.name, l.product.brand])],
+    });
+    audit(ctx, "addition", "order", orders[0].id, `Addition ${doc_no} (${tables || "sans table"}) : ${money(total)} pour ${orders.length} commande(s)`);
+    return { doc_no, total, orders: orders.length };
+  });
+}
+
 // ---------- Ventes (caissier) ----------
 function parsePayments(payments, total) {
   const list = (Array.isArray(payments) ? payments : [])
@@ -106,24 +207,24 @@ function parsePayments(payments, total) {
 
 export function createSale(ctx, body) {
   const session = requireOpenSession(ctx);
-  let order = null;
+  const orders = pendingOrders(body);
   let lines;
   let waiterId = null;
-  if (body.order_id) {
-    order = getOrder(int(body.order_id, "Commande", { min: 1 }));
-    if (order.status !== "pending") throw bad(`La commande ${order.order_no} est déjà ${ORDER_STATUS[order.status].toLowerCase()}.`);
-    lines = parseQtyLines(order.lines.map((l) => ({ product_id: l.product_id, qty: l.qty })));
-    waiterId = order.waiter_id;
+  if (orders.length) {
+    lines = orderSaleLines(orders);
+    const waiters = new Set(orders.map((o) => o.waiter_id));
+    waiterId = waiters.size === 1 ? orders[0].waiter_id : null;
   } else {
-    lines = parseQtyLines(body.lines);
     if (body.waiter_id) {
       waiterId = int(body.waiter_id, "Serveur", { min: 1 });
       if (!get("SELECT 1 FROM users WHERE id = ? AND role = 'waiter'", waiterId)) throw bad("Serveur inconnu.");
     }
+    lines = parseQtyLines(body.lines).map((l) => ({ ...l, waiter_id: waiterId }));
   }
+  const order = orders[0] || null;
   const total = lines.reduce((s, l) => s + l.qty * l.unit_price, 0);
   const { list: payments, paid } = parsePayments(body.payments, total);
-  const customer_name = str(body.customer_name ?? order?.customer_name, "Nom du client", { max: 80, required: paid < total });
+  const customer_name = str(body.customer_name || orders.map((o) => o.customer_name).find(Boolean) || "", "Nom du client", { max: 80, required: paid < total });
   const customer_phone = str(body.customer_phone, "Téléphone du client", { max: 30 });
   const note = str(body.note, "Note", { max: 300 });
   const status = paid >= total ? "paid" : paid > 0 ? "partial" : "credit";
@@ -138,16 +239,16 @@ export function createSale(ctx, body) {
       run(
         `INSERT INTO sales (doc_no, at, business_day, cashier_id, waiter_id, order_id, session_id, customer_name, customer_phone, total, paid, status, note, created_at)
          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-        doc_no, at, day, ctx.user.id, waiterId, order?.id ?? null, session.id, customer_name, customer_phone, total, paid, status, note, now(),
+        doc_no, at, day, ctx.user.id, waiterId, orders.length === 1 ? order.id : null, session.id, customer_name, customer_phone, total, paid, status, note, now(),
       ).lastInsertRowid,
     );
     for (const l of lines) {
       run("INSERT INTO sale_lines (sale_id, product_id, qty, unit_price, unit_cost, line_total) VALUES (?,?,?,?,?,?)", id, l.product_id, l.qty, l.unit_price, l.unit_cost, l.qty * l.unit_price);
-      addMovement({ at, business_day: day, product_id: l.product_id, qty: -l.qty, kind: "sale", unit_cost: l.unit_cost, unit_price: l.unit_price, ref_type: "sale", ref_id: id, user_id: ctx.user.id, waiter_id: waiterId });
+      addMovement({ at, business_day: day, product_id: l.product_id, qty: -l.qty, kind: "sale", unit_cost: l.unit_cost, unit_price: l.unit_price, ref_type: "sale", ref_id: id, user_id: ctx.user.id, waiter_id: l.waiter_id ?? null });
     }
     for (const p of payments) run("INSERT INTO payments (doc_no, at, business_day, sale_id, session_id, amount, method, kind, user_id) VALUES (?,?,?,?,?,?,?,?,?)", doc_no, at, day, id, session.id, p.amount, p.method, "sale", ctx.user.id);
-    if (order) run("UPDATE orders SET status = 'served', sale_id = ?, handled_by = ?, handled_at = ? WHERE id = ?", id, ctx.user.id, now(), order.id);
-    const waiter = waiterId ? get("SELECT full_name FROM users WHERE id = ?", waiterId).full_name : "";
+    for (const o of orders) run("UPDATE orders SET status = 'served', sale_id = ?, handled_by = ?, handled_at = ? WHERE id = ?", id, ctx.user.id, now(), o.id);
+    const waiter = waiterId ? get("SELECT full_name FROM users WHERE id = ?", waiterId).full_name : [...new Set(orders.map((o) => o.waiter_name))].join(", ");
     const bottles = lines.reduce((s, l) => s + l.qty, 0);
     createDocument({
       type: "sale",
@@ -161,7 +262,7 @@ export function createSale(ctx, body) {
         fields: [
           ["Caissier", ctx.user.full_name],
           ["Serveur", waiter || "Vente au comptoir"],
-          ["Commande", order ? `${order.order_no}${order.table_label ? ` — ${order.table_label}` : ""}` : "—"],
+          [orders.length > 1 ? "Commandes" : "Commande", orders.length ? orders.map((o) => `${o.order_no}${o.table_label ? ` — ${o.table_label}` : ""}`).join(", ") : "—"],
           ["Client", customer_name || "—"],
           ...(customer_phone ? [["Téléphone du client", customer_phone]] : []),
         ],
@@ -186,7 +287,7 @@ export function createSale(ctx, body) {
     audit(ctx, "vente", "sale", id, `Vente ${doc_no} : ${bottles} bouteille(s), ${money(total)} (${SALE_STATUS[status]})`, {
       lines: lines.map((l) => ({ product_id: l.product_id, qty: l.qty, unit_price: l.unit_price })),
       payments,
-      order_id: order?.id ?? null,
+      order_ids: orders.map((o) => o.id),
       waiter_id: waiterId,
     });
     touchDay(day, "vente tardive");
@@ -198,7 +299,7 @@ export function createSale(ctx, body) {
       link: `#/recus/${doc_no}`,
     });
     stockAlerts(before);
-    signal(["cashier", "manager", "owner", "waiter"], "orders", { id: order?.id });
+    signal(["cashier", "manager", "owner", "waiter"], "orders", { ids: orders.map((o) => o.id) });
     signal(["owner", "manager", "cashier", "waiter"], "stock");
     return { id, doc_no, total, paid, status, remaining: total - paid };
   });
@@ -211,7 +312,10 @@ export function getSale(ctx, id) {
     id,
   );
   if (!s) throw notFound("Vente introuvable.");
-  if (ctx.user.role === "waiter" && s.waiter_id !== ctx.user.id) throw forbidden();
+  if (ctx.user.role === "waiter" && s.waiter_id !== ctx.user.id && !get("SELECT 1 FROM orders WHERE sale_id = ? AND waiter_id = ?", s.id, ctx.user.id)) throw forbidden();
+  s.orders = all("SELECT o.id, o.order_no, o.table_label, o.waiter_id, u.full_name AS waiter_name FROM orders o JOIN users u ON u.id = o.waiter_id WHERE o.sale_id = ? ORDER BY o.id", s.id);
+  if (!s.order_no && s.orders.length) s.order_no = s.orders.map((o) => o.order_no).join(", ");
+  if (!s.waiter_name && s.orders.length) s.waiter_name = [...new Set(s.orders.map((o) => o.waiter_name))].join(", ");
   s.lines = all("SELECT l.*, p.name, p.brand FROM sale_lines l JOIN products p ON p.id = l.product_id WHERE sale_id = ?", id);
   s.payments = all("SELECT p.*, u.full_name AS user_name FROM payments p JOIN users u ON u.id = p.user_id WHERE sale_id = ? ORDER BY p.at", id);
   s.refunds = all("SELECT * FROM cash_movements WHERE ref_type = 'sale' AND ref_id = ?", id);
@@ -226,8 +330,8 @@ export function listSales(ctx, { from, to, status, waiter_id, limit = 200 } = {}
   const extra = [];
   const ps = [];
   if (ctx.user.role === "waiter") {
-    extra.push("s.waiter_id = ?");
-    ps.push(ctx.user.id);
+    extra.push("(s.waiter_id = ? OR s.id IN (SELECT sale_id FROM orders WHERE waiter_id = ? AND sale_id IS NOT NULL))");
+    ps.push(ctx.user.id, ctx.user.id);
   } else if (ctx.user.role === "cashier") {
     extra.push("s.cashier_id = ?");
     ps.push(ctx.user.id);
@@ -237,12 +341,12 @@ export function listSales(ctx, { from, to, status, waiter_id, limit = 200 } = {}
     ps.push(status);
   }
   if (waiter_id) {
-    extra.push("s.waiter_id = ?");
-    ps.push(Number(waiter_id));
+    extra.push("(s.waiter_id = ? OR s.id IN (SELECT sale_id FROM orders WHERE waiter_id = ? AND sale_id IS NOT NULL))");
+    ps.push(Number(waiter_id), Number(waiter_id));
   }
   const { where, p } = periodWhere("s.at", from, to, extra);
   return all(
-    `SELECT s.id, s.doc_no, s.at, s.business_day, s.total, s.paid, s.status, s.customer_name, s.waiter_id, c.full_name AS cashier_name, w.full_name AS waiter_name,
+    `SELECT s.id, s.doc_no, s.at, s.business_day, s.total, s.paid, s.status, s.customer_name, s.waiter_id, c.full_name AS cashier_name, COALESCE(w.full_name, (SELECT GROUP_CONCAT(DISTINCT u2.full_name) FROM orders o2 JOIN users u2 ON u2.id = o2.waiter_id WHERE o2.sale_id = s.id)) AS waiter_name,
        (SELECT SUM(qty) FROM sale_lines l WHERE l.sale_id = s.id) AS bottles
      FROM sales s JOIN users c ON c.id = s.cashier_id LEFT JOIN users w ON w.id = s.waiter_id ${where} ORDER BY s.at DESC LIMIT ?`,
     ...ps, ...p, Math.min(Number(limit) || 200, 1000),
@@ -251,7 +355,7 @@ export function listSales(ctx, { from, to, status, waiter_id, limit = 200 } = {}
 
 export function listCredits() {
   return all(
-    `SELECT s.id, s.doc_no, s.at, s.total, s.paid, s.total - s.paid AS remaining, s.customer_name, s.customer_phone, s.status, w.full_name AS waiter_name
+    `SELECT s.id, s.doc_no, s.at, s.total, s.paid, s.total - s.paid AS remaining, s.customer_name, s.customer_phone, s.status, COALESCE(w.full_name, (SELECT GROUP_CONCAT(DISTINCT u2.full_name) FROM orders o2 JOIN users u2 ON u2.id = o2.waiter_id WHERE o2.sale_id = s.id)) AS waiter_name
      FROM sales s LEFT JOIN users w ON w.id = s.waiter_id WHERE s.status IN ('partial','credit') ORDER BY s.at`,
   );
 }
@@ -327,6 +431,7 @@ export function cancelSale(ctx, saleId, body) {
     const t = now();
     run("UPDATE sales SET status = 'cancelled', cancelled_at = ?, cancelled_by = ?, cancel_reason = ? WHERE id = ?", t, ctx.user.id, reason, s.id);
     reverseMovements("sale", s.id, ctx, `Annulation ${s.doc_no}`);
+    run("UPDATE orders SET status = 'cancelled', status_reason = ?, handled_by = ?, handled_at = ? WHERE sale_id = ? AND status = 'served'", `Vente ${s.doc_no} annulée : ${reason}`, ctx.user.id, t, s.id);
     const byMethod = {};
     for (const p of payments) byMethod[p.method] = (byMethod[p.method] || 0) + p.amount;
     const refundDocs = [];

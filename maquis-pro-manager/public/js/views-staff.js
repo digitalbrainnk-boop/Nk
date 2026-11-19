@@ -87,9 +87,11 @@ export function viewOrder(main) {
     if (!lines.length) return;
     try {
       const r = await POST("/api/orders", { lines, table_label: table_label.value, customer_name: customer.value, note: note.value }, { offline: `Commande ${table_label.value || ""} (${picker.count()} bouteilles)` });
-      toast(r.queued ? "Pas de connexion : commande gardée sur le téléphone, envoyée dès le retour du réseau." : `Commande ${r.order_no} envoyée au caissier.`, "good");
       picker.clear();
       table_label.value = customer.value = note.value = "";
+      if (r.queued) return toast("Pas de connexion : commande gardée sur le téléphone, envoyée dès le retour du réseau.", "good");
+      toast(`Commande ${r.order_no} envoyée au caissier.`, "good");
+      orderSlipActions(r);
     } catch (e) {
       fail(e);
     }
@@ -104,21 +106,93 @@ export function viewOrder(main) {
   update();
 }
 
+// Petite fenêtre après une commande : imprimer ou partager le bon de commande.
+function orderSlipActions(o) {
+  return modal(`Commande ${o.order_no} envoyée`, h("p", { class: "text-2" }, `${money(o.total)}${o.table_label ? ` — ${o.table_label}` : ""}. Le bon de commande peut être imprimé pour le comptoir.`), [
+    { label: "Fermer", class: "ghost" },
+    { label: "Imprimer le bon", onClick: () => window.open(`/api/documents/${o.order_no}/print`, "_blank") },
+    { label: "Voir le bon", class: "primary", onClick: () => go(`#/recus/${o.order_no}`) },
+  ]);
+}
+
+// Regroupe les commandes en attente par table (une commande sans table reste seule).
+function byTable(orders) {
+  const groups = new Map();
+  for (const o of orders) {
+    const key = o.table_label ? `t:${o.table_label.trim().toLowerCase()}` : `o:${o.id}`;
+    if (!groups.has(key)) groups.set(key, { label: o.table_label || o.order_no, orders: [] });
+    groups.get(key).orders.push(o);
+  }
+  return [...groups.values()];
+}
+
+export async function printBill(orderIds) {
+  // La fenêtre est ouverte pendant le toucher : les téléphones bloquent celles ouvertes plus tard.
+  const win = window.open("", "_blank");
+  try {
+    const r = await POST("/api/orders/bill", { order_ids: orderIds });
+    const url = `/api/documents/${r.doc_no}/print`;
+    if (win) win.location.href = url;
+    else go(`#/recus/${r.doc_no}`);
+    toast(`Addition ${r.doc_no} : ${money(r.total)}.`, "good");
+  } catch (e) {
+    win?.close();
+    fail(e);
+  }
+}
+
+const orderLines = (o) => h("div", { class: "list" }, o.lines.map((l) => h("div", { class: "item" }, h("div", { class: "grow" }, `${l.qty} × ${productName(l)}`), h("div", { class: "amt" }, money(l.qty * l.unit_price)))));
+
 export async function viewMyOrders(main) {
   main.replaceChildren(loader());
-  const rows = await GET(`/api/orders?day=${today()}`);
+  const [todays, pendingAll] = await Promise.all([GET(`/api/orders?day=${today()}`), GET("/api/orders?status=pending")]);
+  const rows = [...pendingAll.filter((o) => !todays.some((t) => t.id === o.id)), ...todays];
   const off = on((t) => t === "orders" && location.hash.startsWith("#/mes-commandes") && viewMyOrders(main));
   setTimeout(() => window.addEventListener("hashchange", off, { once: true }));
+  const pending = rows.filter((o) => o.status === "pending");
+  const done = rows.filter((o) => o.status !== "pending");
+  const pendingTotal = pending.reduce((a, o) => a + o.total, 0);
   main.replaceChildren(
-    pageHead("Mes commandes", "Journée en cours", [h("a", { class: "btn primary", href: "#/commander" }, icon("plus"), "Nouvelle commande")]),
-    rows.length
-      ? h("div", { class: "grid g2" }, rows.map((o) => card(h("div", { class: "cardhead" }, h("h3", null, `${o.order_no}${o.table_label ? ` · ${o.table_label}` : ""}`), chip(o.status_label, o.status === "served" ? "good" : o.status === "pending" ? "warn" : "bad")), h("p", { class: "small muted" }, timeOf(o.at)), h("div", { class: "list" }, o.lines.map((l) => h("div", { class: "item" }, h("div", { class: "grow" }, `${l.qty} × ${productName(l)}`), h("div", { class: "amt" }, money(l.qty * l.unit_price))))), h("div", { class: "totals" }, h("div", { class: "b" }, h("span", null, "Total"), h("span", null, money(o.total)))), o.status_reason ? h("p", { class: "small bad" }, o.status_reason) : null, h("div", { class: "btnrow mt" }, o.status === "pending" ? h("button", { class: "btn sm danger", on: { click: async () => {
-          if (await confirmBox("Annuler la commande ?", "Elle n'a pas encore été encaissée.", { danger: true, ok: "Annuler la commande" })) {
-            await POST(`/api/orders/${o.id}/cancel`, {}).catch(fail);
-            viewMyOrders(main);
-          }
-        } } }, "Annuler") : null, o.sale_id ? h("a", { class: "btn sm", href: `#/ventes/${o.sale_id}` }, icon("doc"), "Reçu") : null))))
-      : card(null, empty("Aucune commande aujourd'hui.", "cart")),
+    pageHead("Mes commandes", `Journée en cours · ${pending.length} en attente (${money(pendingTotal)})`, [h("a", { class: "btn primary", href: "#/commander" }, icon("plus"), "Nouvelle commande")]),
+    pending.length
+      ? h(
+          "div",
+          { class: "grid g2" },
+          byTable(pending).map((g) => {
+            const total = g.orders.reduce((a, o) => a + o.total, 0);
+            return card(
+              h("div", { class: "cardhead" }, h("h3", null, g.label), chip(`${g.orders.length} commande(s) · ${money(total)}`, "warn")),
+              g.orders.map((o) =>
+                h(
+                  "div",
+                  { class: "linebox mb" },
+                  h("div", { class: "flex between" }, h("b", null, `${o.order_no} · ${timeOf(o.at)}`), o.documents?.some((x) => x.type === "order") ? h("a", { class: "btn sm", href: `#/recus/${o.order_no}` }, icon("doc"), "Bon") : null),
+                  orderLines(o),
+                  h("div", { class: "btnrow" }, h("button", { class: "btn sm danger", on: { click: async () => {
+                    if (await confirmBox("Annuler la commande ?", "Elle n'a pas encore été encaissée.", { danger: true, ok: "Annuler la commande" })) {
+                      await POST(`/api/orders/${o.id}/cancel`, {}).catch(fail);
+                      viewMyOrders(main);
+                    }
+                  } } }, "Annuler")),
+                ),
+              ),
+              h("div", { class: "totals" }, h("div", { class: "b" }, h("span", null, "Total à payer"), h("span", null, money(total)))),
+              h("div", { class: "btnrow mt" }, h("button", { class: "btn primary", on: { click: () => printBill(g.orders.map((o) => o.id)) } }, icon("print"), "Imprimer l'addition")),
+            );
+          }),
+        )
+      : null,
+    done.length
+      ? card(
+          "Commandes traitées",
+          h(
+            "div",
+            { class: "list" },
+            done.map((o) => h("div", { class: "item" }, h("div", { class: "grow" }, h("div", { class: "t" }, `${o.order_no}${o.table_label ? ` · ${o.table_label}` : ""}`), h("div", { class: "d" }, `${timeOf(o.at)} · ${o.lines.map((l) => `${l.qty} ${l.brand}`).join(", ")}`), o.status_reason ? h("div", { class: "d bad" }, o.status_reason) : null), h("div", { class: "amt" }, money(o.total), h("div", null, chip(o.status_label, o.status === "served" ? "good" : "bad"))), o.sale_id ? h("a", { class: "btn sm", href: `#/ventes/${o.sale_id}` }, "Reçu") : null)),
+          ),
+        )
+      : null,
+    !rows.length ? card(null, empty("Aucune commande aujourd'hui.", "cart")) : null,
   );
 }
 
@@ -126,7 +200,7 @@ export async function viewMyStats(main) {
   main.replaceChildren(loader());
   const d = await GET("/api/my-stats");
   main.replaceChildren(
-    pageHead("Mes ventes", "Journée commerciale en cours (depuis 03 h 00)"),
+    pageHead("Mes ventes", "Journée commerciale en cours (depuis 03 h 00)", [h("button", { class: "btn", on: { click: () => window.print() } }, icon("print"), "Imprimer mon point")]),
     h("div", { class: "stats" }, stat("Montant vendu", money(d.amount), null, "hero"), stat("Bouteilles", num(d.bottles)), stat("Ventes encaissées", num(d.sales)), stat("Commandes en attente", num(d.orders.pending || 0))),
     card("Par boisson", table([{ label: "Boisson", get: (x) => `${productName(x)}` }, { label: "Bouteilles", r: true, get: (x) => num(x.qty) }], d.by_product)),
   );
@@ -240,40 +314,59 @@ export async function viewPending(main) {
   const rows = await GET("/api/orders?status=pending");
   const off = on((t) => t === "orders" && location.hash === "#/commandes" && viewPending(main));
   setTimeout(() => window.addEventListener("hashchange", off, { once: true }));
+  const encaisser = async (orders) => {
+    const total = orders.reduce((a, o) => a + o.total, 0);
+    const pay = await paymentDialog(total, { customer: orders.map((o) => o.customer_name).find(Boolean) || "" });
+    if (!pay) return;
+    try {
+      const label = orders.length > 1 ? `Encaissement de ${orders.length} commandes (${money(total)})` : `Encaissement ${orders[0].order_no} (${money(total)})`;
+      const r = await POST("/api/sales", { order_ids: orders.map((o) => o.id), ...pay }, { offline: label });
+      await refreshSession().catch(() => {});
+      await saleDone(r);
+      viewPending(main);
+    } catch (e) {
+      fail(e);
+    }
+  };
   main.replaceChildren(
-    pageHead("Commandes à encaisser", "Envoyées par les serveurs. Encaisser une commande sort les boissons du stock.", [h("a", { class: "btn", href: "#/vente" }, icon("cart"), "Vente directe")]),
+    pageHead("Commandes à encaisser", "Regroupées par table. Encaisser sort les boissons du stock ; chaque bouteille reste attribuée à son serveur.", [h("a", { class: "btn", href: "#/vente" }, icon("cart"), "Vente directe")]),
     rows.length
       ? h(
           "div",
           { class: "grid g2" },
-          rows.map((o) =>
-            card(
-              h("div", { class: "cardhead" }, h("h3", null, `${o.order_no}${o.table_label ? ` · ${o.table_label}` : ""}`), chip(`${o.waiter_name} · ${timeOf(o.at)}`, "brand")),
-              h("div", { class: "list" }, o.lines.map((l) => h("div", { class: "item" }, h("div", { class: "grow" }, `${l.qty} × ${productName(l)}`), h("div", { class: "amt" }, money(l.qty * l.unit_price))))),
-              o.note ? h("p", { class: "small muted" }, o.note) : null,
-              h("div", { class: "totals" }, h("div", { class: "b" }, h("span", null, "Total"), h("span", null, money(o.total)))),
+          byTable(rows).map((g) => {
+            const total = g.orders.reduce((a, o) => a + o.total, 0);
+            const several = g.orders.length > 1;
+            return card(
+              h("div", { class: "cardhead" }, h("h3", null, g.label), chip(several ? `${g.orders.length} commandes` : `${g.orders[0].waiter_name} · ${timeOf(g.orders[0].at)}`, "brand")),
+              g.orders.map((o) =>
+                h(
+                  "div",
+                  { class: several ? "linebox mb" : "" },
+                  several ? h("div", { class: "flex between" }, h("b", null, `${o.order_no} · ${o.waiter_name} · ${timeOf(o.at)}`), h("b", null, money(o.total))) : null,
+                  orderLines(o),
+                  o.note ? h("p", { class: "small muted" }, o.note) : null,
+                  h(
+                    "div",
+                    { class: "btnrow" },
+                    several ? h("button", { class: "btn sm", on: { click: () => encaisser([o]) } }, "Encaisser seule") : null,
+                    o.documents?.some((x) => x.type === "order") ? h("a", { class: "btn sm", href: `#/recus/${o.order_no}` }, icon("doc"), "Bon") : null,
+                    h("button", { class: "btn sm danger", on: { click: async () => {
+                      const reason = await confirmBox("Refuser la commande ?", "Le serveur sera prévenu.", { danger: true, ok: "Refuser", reason: "Motif (ex. rupture de stock)" });
+                      if (reason) await POST(`/api/orders/${o.id}/cancel`, { reason }).then(() => viewPending(main)).catch(fail);
+                    } } }, "Refuser"),
+                  ),
+                ),
+              ),
+              h("div", { class: "totals" }, h("div", { class: "b" }, h("span", null, several ? "Total de la table" : "Total"), h("span", null, money(total)))),
               h(
                 "div",
                 { class: "btnrow mt" },
-                h("button", { class: "btn primary", on: { click: async () => {
-                  const pay = await paymentDialog(o.total, { customer: o.customer_name });
-                  if (!pay) return;
-                  try {
-                    const r = await POST("/api/sales", { order_id: o.id, ...pay }, { offline: `Encaissement ${o.order_no} (${money(o.total)})` });
-                    await refreshSession().catch(() => {});
-                    await saleDone(r);
-                    viewPending(main);
-                  } catch (e) {
-                    fail(e);
-                  }
-                } } }, icon("cash"), "Encaisser"),
-                h("button", { class: "btn danger", on: { click: async () => {
-                  const reason = await confirmBox("Refuser la commande ?", "Le serveur sera prévenu.", { danger: true, ok: "Refuser", reason: "Motif (ex. rupture de stock)" });
-                  if (reason) await POST(`/api/orders/${o.id}/cancel`, { reason }).then(() => viewPending(main)).catch(fail);
-                } } }, "Refuser"),
+                h("button", { class: "btn primary", on: { click: () => encaisser(g.orders) } }, icon("cash"), several ? "Encaisser la table" : "Encaisser"),
+                h("button", { class: "btn", on: { click: () => printBill(g.orders.map((o) => o.id)) } }, icon("print"), "Addition"),
               ),
-            ),
-          ),
+            );
+          }),
         )
       : card(null, empty("Aucune commande en attente.", "check")),
   );

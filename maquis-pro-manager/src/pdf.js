@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import PDFDocument from "pdfkit";
 import { getDataDir, allSettings } from "./db.js";
-import { fmtDateTime } from "./time.js";
+import { fmtDateTime, fmtDayShort, fmtDateTime as fdt, now } from "./time.js";
 import { money, num, pct, pname } from "./util.js";
 import { EXIT_LABELS } from "./stock.js";
 
@@ -263,6 +263,12 @@ export function renderDocumentPdf(d) {
   doc.moveDown(0.3);
   if (p.columns && p.rows) table(doc, p.columns, p.rows, { fontSize: 7.8 });
   if (p.totals?.length) totalsBlock(doc, p.totals);
+  for (const t of p.extra_tables || []) {
+    ensure(doc, 40);
+    doc.font("Helvetica-Bold").fontSize(9).fillColor(C.text).text(clean(t.title));
+    doc.moveDown(0.2);
+    table(doc, t.columns, t.rows, { fontSize: 7.6 });
+  }
   badge(doc, p.status);
   if (p.notes?.length) {
     doc.font("Helvetica-Oblique").fontSize(7.5).fillColor(C.muted);
@@ -340,6 +346,94 @@ function stockTable(doc, stock) {
     stock.map((s) => [`${pname(s)}`, s.category, num(s.stock), s.label, num(s.value), s.stock <= 0 ? "Rupture" : s.low && s.min_stock ? "Faible" : ""]),
     { fontSize: 7.2 },
   );
+}
+
+const SK = ["sale", "offered", "staff", "broken", "lost", "expired", "other"];
+function statementTable(doc, st, fontSize = 6.9) {
+  const rows = st.rows.map((r) => [r.name, num(r.opening), num(r.entries), ...SK.map((k) => (r[k] ? num(r[k]) : "")), r.adjust ? (r.adjust > 0 ? "+" : "") + num(r.adjust) : "", num(r.closing), num(r.value), r.ok ? "" : "!"]);
+  const t = st.totals;
+  rows.push(["TOTAL", num(t.opening), num(t.entries), ...SK.map((k) => num(t[k])), t.adjust ? num(t.adjust) : "", num(t.closing), num(t.value), ""]);
+  table(
+    doc,
+    [
+      { label: "Boisson", w: 2.8 },
+      { label: "Stock début", align: "right", w: 1 },
+      { label: "Entrées", align: "right", w: 1 },
+      ...SK.map((k) => ({ label: KIND_SHORT[k], align: "right", w: 0.9 })),
+      { label: "Ajust. invent.", align: "right", w: 0.9 },
+      { label: "Stock fin", align: "right", w: 1 },
+      { label: "Valeur achat", align: "right", w: 1.3 },
+      { label: "", w: 0.3 },
+    ],
+    rows,
+    { fontSize, boldLast: true },
+  );
+  doc.font("Helvetica-Oblique").fontSize(7.5).fillColor(st.ok ? C.muted : C.bad).text(clean(st.ok ? "Contrôle : stock début + entrées − sorties ± ajustements = stock fin, vérifié pour chaque boisson." : "Attention : une ligne marquée « ! » ne tombe pas juste. Signalez-le."));
+  doc.moveDown(0.5);
+}
+
+function profitTable(doc, pr) {
+  if (!pr) return;
+  const rows = pr.rows.map((r) => [r.name, num(r.qty), num(r.revenue), num(r.cost), num(r.margin), `${String(r.margin_pct).replace(".", ",")} %`, num(r.unit_margin), num(r.losses_cost + r.given_cost), num(r.net)]);
+  const t = pr.totals;
+  rows.push(["TOTAL", num(t.qty), num(t.revenue), num(t.cost), num(t.margin), `${String(t.margin_pct).replace(".", ",")} %`, "", num(t.losses_cost + t.given_cost), num(t.net)]);
+  table(
+    doc,
+    [
+      { label: "Boisson", w: 2.6 },
+      { label: "Btl vendues", align: "right" },
+      { label: "Chiffre d'affaires", align: "right", w: 1.3 },
+      { label: "Coût d'achat", align: "right", w: 1.2 },
+      { label: "Marge brute", align: "right", w: 1.2 },
+      { label: "Marge %", align: "right", w: 0.9 },
+      { label: "Marge / btl", align: "right", w: 0.9 },
+      { label: "Pertes et offerts", align: "right", w: 1.1 },
+      { label: "Bénéfice net", align: "right", w: 1.2 },
+    ],
+    rows,
+    { fontSize: 7, boldLast: true },
+  );
+}
+
+function waitersTable(doc, waiters) {
+  if (!waiters?.length) return;
+  table(
+    doc,
+    [
+      { label: "Serveur", w: 2 },
+      { label: "Commandes", align: "right" },
+      { label: "Ventes", align: "right" },
+      { label: "Bouteilles", align: "right" },
+      { label: "Montant", align: "right", w: 1.4 },
+      { label: "Crédits non soldés", align: "right", w: 1.3 },
+      { label: "Sorties hors ventes", w: 2 },
+    ],
+    waiters.map((w) => [
+      w.waiter,
+      num(Object.values(w.orders).reduce((s, o) => s + o.count, 0)),
+      num(w.sales),
+      num(w.bottles),
+      money(w.amount),
+      w.credit_open ? money(w.credit_open) : "—",
+      w.exits.map((x) => `${x.qty} ${x.label.toLowerCase()}`).join(", ") || "—",
+    ]),
+    { fontSize: 7.2 },
+  );
+}
+
+export function renderStatementPdf(st) {
+  const doc = new PDFDocument({ size: "A4", layout: "landscape", margins: { top: 30, bottom: 34, left: 30, right: 30 }, bufferPages: true, info: { Title: clean(`Fiche de stock ${st.from}`), Author: "MAQUIS PRO MANAGER" } });
+  const period = st.from === st.to ? `Journée commerciale du ${fmtDayShort(st.from)}` : `Du ${fmtDayShort(st.from)} au ${fmtDayShort(st.to)}`;
+  header(doc, { maquis: pickMaquis(), title: "FICHE DE STOCK", at: now(), subtitle: period });
+  kpis(doc, [
+    ["Stock au début", `${num(st.totals.opening)} btl`, ""],
+    ["Entrées", `${num(st.totals.entries)} btl`, ""],
+    ["Sorties", `${num(st.totals.exits)} btl`, `dont ${num(st.totals.sale)} vendues`],
+    ["Stock à la fin", `${num(st.totals.closing)} btl`, `${money(st.totals.value)} (achat)`],
+  ]);
+  statementTable(doc, st, 7.4);
+  footer(doc, `Fiche de stock · ${period} · éditée le ${fdt(now())} · MAQUIS PRO MANAGER`);
+  return toBuffer(doc);
 }
 
 export function renderReportPdf(r) {
@@ -442,8 +536,13 @@ function renderDaily(doc, r) {
   section(doc, "Responsables des opérations");
   table(doc, [{ label: "Nom", w: 3 }, { label: "Rôle", w: 1.5 }, { label: "Opérations enregistrées", align: "right", w: 1.6 }], d.responsibles.map((x) => [x.user_name, { owner: "Propriétaire", manager: "Gérant", cashier: "Caissier", waiter: "Serveur" }[x.role] || x.role, num(x.operations)]));
 
-  section(doc, "Stock restant à la clôture");
-  stockTable(doc, d.stock_end);
+  if (d.stock_statement) {
+    section(doc, "Mouvement du stock de la journée (stock début + entrées − sorties = stock fin)");
+    statementTable(doc, d.stock_statement);
+  } else {
+    section(doc, "Stock restant à la clôture");
+    stockTable(doc, d.stock_end);
+  }
 }
 
 function renderWeekly(doc, r) {
@@ -520,6 +619,19 @@ function renderWeekly(doc, r) {
   section(doc, "Observations");
   bullets(doc, d.observations.length ? d.observations : ["Aucune observation particulière."]);
 
-  section(doc, `Stock restant à la clôture — ${num(s.stock_bottles)} bouteilles, ${money(s.stock_value)} au prix d'achat`);
-  stockTable(doc, d.stock_end);
+  if (d.profitability) {
+    section(doc, "Rentabilité par boisson (au prix d'achat de chaque bouteille)");
+    profitTable(doc, d.profitability);
+  }
+  if (d.waiters) {
+    section(doc, "Point des serveurs");
+    waitersTable(doc, d.waiters);
+  }
+  if (d.stock_statement) {
+    section(doc, `Mouvement du stock de la semaine — stock final ${num(s.stock_bottles)} bouteilles, ${money(s.stock_value)} au prix d'achat`);
+    statementTable(doc, d.stock_statement);
+  } else {
+    section(doc, `Stock restant à la clôture — ${num(s.stock_bottles)} bouteilles, ${money(s.stock_value)} au prix d'achat`);
+    stockTable(doc, d.stock_end);
+  }
 }

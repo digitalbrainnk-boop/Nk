@@ -10,6 +10,7 @@ bus.setMaxListeners(500);
 
 export const NOTIF_TYPES = {
   entry: "Nouvelle entrée de marchandises",
+  purchase: "Commande fournisseur et réception",
   exit: "Nouvelle sortie (offerte, cassée, perdue…)",
   sale: "Nouvelle vente",
   expense: "Nouvelle dépense",

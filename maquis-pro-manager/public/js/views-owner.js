@@ -3,6 +3,7 @@ import {
   S, h, icon, api, GET, POST, toast, fail, modal, confirmBox, field, input, select, formData, pageHead, card, stat, empty, loader, chip, table,
   money, num, datetime, date, dayLabel, dayShort, columnChart, barList, downloadUrl, go, today, addDays, ROLE_LABELS, timeOf, debounce,
 } from "./core.js";
+import { profitTable } from "./views-common.js";
 
 // ---------- Tableau de bord ----------
 let period = null;
@@ -13,6 +14,7 @@ export async function viewDashboard(main) {
     ["Hier", addDays(t, -1), addDays(t, -1)],
     ["7 jours", addDays(t, -6), t],
     ["30 jours", addDays(t, -29), t],
+    ["Ce mois", `${t.slice(0, 8)}01`, t],
   ];
   period ||= { from: t, to: t, label: "Aujourd'hui" };
   const from = input("from", { type: "date", value: period.from, max: t });
@@ -79,6 +81,13 @@ export async function viewDashboard(main) {
         ),
       ),
     ),
+    p.profitability?.rows.length
+      ? card(
+          h("div", { class: "cardhead" }, h("h2", null, "Rentabilité par boisson"), chip(`Marge ${String(p.profitability.totals.margin_pct).replace(".", ",")} %`, "brand")),
+          h("p", { class: "small muted mb" }, "Marge = prix de vente − prix d'achat de chaque bouteille vendue. Bénéfice net = marge − pertes, casses et boissons offertes (au prix d'achat)."),
+          profitTable(p.profitability),
+        )
+      : null,
     h(
       "div",
       { class: "grid g2" },

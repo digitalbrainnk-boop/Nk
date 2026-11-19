@@ -1,6 +1,6 @@
 // Service worker : l'application s'ouvre même sans internet, les dernières données consultées
 // restent lisibles, et les notifications push arrivent même application fermée.
-const VERSION = "mpm-v1";
+const VERSION = "mpm-v2";
 const SHELL = [
   "/",
   "/index.html",
@@ -16,9 +16,10 @@ const SHELL = [
   "/js/views-owner.js",
   "/js/views-manager.js",
   "/js/views-staff.js",
+  "/js/views-plus.js",
 ];
 // Lectures gardées pour le mode hors connexion (catalogue, commandes, caisse…).
-const CACHEABLE_API = /^\/api\/(bootstrap|products|orders|cash\/current|credits|my-stats|stock|dashboard|notifications|reports|documents)(\?|$|\/)/;
+const CACHEABLE_API = /^\/api\/(bootstrap|products|orders|cash\/current|credits|my-stats|stock|dashboard|notifications|reports|documents|purchase-orders|waiters\/summary)(\?|$|\/)/;
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(VERSION).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));

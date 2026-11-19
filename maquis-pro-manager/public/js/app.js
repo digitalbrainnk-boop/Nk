@@ -4,6 +4,7 @@ import { viewLogin, viewSetup, viewChangePassword, viewReceipts, viewReceipt, vi
 import { viewDashboard, viewUsers, viewDevices, viewLogins, viewAudit, viewSettings, viewBackups } from "./views-owner.js";
 import * as M from "./views-manager.js";
 import * as T from "./views-staff.js";
+import * as X from "./views-plus.js";
 
 const root = document.getElementById("app");
 
@@ -22,7 +23,7 @@ const NAV = {
     bottom: [["#/tableau", "home", "Tableau"], ["#/stock", "box", "Stock"], ["#/rapports", "chart", "Rapports"], ["#/recus", "doc", "Reçus"], ["#/plus", "more", "Plus"]],
     groups: [
       ["Suivi", [["#/tableau", "home", "Tableau de bord"], ["#/rapports", "chart", "Rapports"], ["#/recus", "doc", "Reçus"], ["#/notifications", "bell", "Notifications"]]],
-      ["Activité", [["#/stock", "box", "Stock"], ["#/mouvements", "list", "Mouvements"], ["#/ventes", "cart", "Ventes"], ["#/commandes", "clip", "Commandes"], ["#/caisses", "cash", "Caisses"], ["#/depenses", "out", "Dépenses"], ["#/credits", "credit", "Crédits clients"], ["#/entrees", "in", "Entrées"], ["#/sorties", "out", "Sorties"], ["#/inventaires", "clip", "Inventaires"], ["#/fournisseurs", "truck", "Fournisseurs"], ["#/produits", "bottle", "Catalogue"]]],
+      ["Activité", [["#/stock", "box", "Stock"], ["#/fiche-stock", "list", "Fiche de stock"], ["#/mouvements", "list", "Mouvements"], ["#/ventes", "cart", "Ventes"], ["#/commandes", "clip", "Commandes"], ["#/point-serveurs", "users", "Point des serveurs"], ["#/caisses", "cash", "Caisses"], ["#/depenses", "out", "Dépenses"], ["#/credits", "credit", "Crédits clients"], ["#/entrees", "in", "Entrées"], ["#/sorties", "out", "Sorties"], ["#/achats", "truck", "Commandes fournisseurs"], ["#/inventaires", "clip", "Inventaires"], ["#/fournisseurs", "truck", "Fournisseurs"], ["#/produits", "bottle", "Catalogue"]]],
       ["Administration", [["#/admin/comptes", "users", "Comptes"], ["#/admin/appareils", "shield", "Appareils connectés"], ["#/admin/connexions", "user", "Connexions"], ["#/admin/audit", "list", "Journal d'audit"], ["#/admin/parametres", "settings", "Paramètres"], ["#/admin/sauvegardes", "download", "Sauvegardes"], ["#/compte", "user", "Mon compte"]]],
     ],
   },
@@ -30,9 +31,9 @@ const NAV = {
     home: "#/tableau",
     bottom: [["#/tableau", "home", "Accueil"], ["#/stock", "box", "Stock"], ["#/entrees/nouvelle", "in", "Entrée"], ["#/sorties/nouvelle", "out", "Sortie"], ["#/plus", "more", "Plus"]],
     groups: [
-      ["Opérations", [["#/tableau", "home", "Tableau de bord"], ["#/stock", "box", "Stock"], ["#/entrees", "in", "Entrées"], ["#/sorties", "out", "Sorties"], ["#/inventaires", "clip", "Inventaires"], ["#/produits", "bottle", "Catalogue des boissons"], ["#/mouvements", "list", "Mouvements"]]],
-      ["Ventes et caisse", [["#/commandes", "clip", "Commandes"], ["#/ventes", "cart", "Ventes"], ["#/caisses", "cash", "Caisses"], ["#/depenses", "out", "Dépenses"], ["#/credits", "credit", "Crédits clients"]]],
-      ["Partenaires", [["#/fournisseurs", "truck", "Fournisseurs"], ["#/consignes", "box", "Consignes"]]],
+      ["Opérations", [["#/tableau", "home", "Tableau de bord"], ["#/stock", "box", "Stock"], ["#/fiche-stock", "list", "Fiche de stock"], ["#/entrees", "in", "Entrées"], ["#/sorties", "out", "Sorties"], ["#/inventaires", "clip", "Inventaires"], ["#/produits", "bottle", "Catalogue des boissons"], ["#/mouvements", "list", "Mouvements"]]],
+      ["Ventes et caisse", [["#/commandes", "clip", "Commandes"], ["#/ventes", "cart", "Ventes"], ["#/point-serveurs", "users", "Point des serveurs"], ["#/caisses", "cash", "Caisses"], ["#/depenses", "out", "Dépenses"], ["#/credits", "credit", "Crédits clients"]]],
+      ["Fournisseurs", [["#/achats", "truck", "Commandes fournisseurs"], ["#/fournisseurs", "truck", "Fournisseurs"], ["#/consignes", "box", "Consignes"]]],
       ["Suivi", [["#/rapports", "chart", "Rapports"], ["#/recus", "doc", "Reçus"], ["#/notifications", "bell", "Notifications"], ["#/admin/comptes", "users", "Personnel"], ["#/admin/appareils", "shield", "Appareils"], ["#/compte", "user", "Mon compte"]]],
     ],
   },
@@ -40,7 +41,7 @@ const NAV = {
     home: "#/caisse",
     bottom: [["#/caisse", "cash", "Caisse"], ["#/commandes", "list", "Commandes"], ["#/vente", "cart", "Vente"], ["#/credits", "credit", "Crédits"], ["#/plus", "more", "Plus"]],
     groups: [
-      ["Caisse", [["#/caisse", "cash", "Ma caisse"], ["#/commandes", "list", "Commandes à encaisser"], ["#/vente", "cart", "Vente directe"], ["#/credits", "credit", "Crédits clients"], ["#/depenses", "out", "Dépenses"], ["#/ventes", "doc", "Mes ventes"], ["#/caisses", "clock", "Mes caisses"]]],
+      ["Caisse", [["#/caisse", "cash", "Ma caisse"], ["#/commandes", "list", "Commandes à encaisser"], ["#/vente", "cart", "Vente directe"], ["#/credits", "credit", "Crédits clients"], ["#/depenses", "out", "Dépenses"], ["#/ventes", "doc", "Mes ventes"], ["#/point-serveurs", "users", "Point des serveurs"], ["#/caisses", "clock", "Mes caisses"]]],
       ["Suivi", [["#/recus", "doc", "Reçus"], ["#/notifications", "bell", "Notifications"], ["#/compte", "user", "Mon compte"]]],
     ],
   },
@@ -62,7 +63,10 @@ const ROUTES = {
   stock: [OM, (m, id) => (id ? M.viewProduct(m, id) : M.viewStock(m))],
   produits: [OM, (m) => M.viewProducts(m)],
   mouvements: [OM, (m) => M.viewMovements(m)],
-  entrees: [OM, (m, x) => (x === "nouvelle" && S.user.role === "manager" ? M.viewEntryForm(m) : x ? M.viewEntry(m, x) : M.viewEntries(m))],
+  entrees: [OM, (m, x, y, z) => (x === "nouvelle" && S.user.role === "manager" ? M.viewEntryForm(m, y === "po" ? z : null) : x ? M.viewEntry(m, x) : M.viewEntries(m))],
+  achats: [OM, (m, x) => (x === "nouvelle" && S.user.role === "manager" ? X.viewPurchaseOrderForm(m) : x && x !== "nouvelle" ? X.viewPurchaseOrder(m, x) : X.viewPurchaseOrders(m))],
+  "fiche-stock": [OM, (m) => X.viewStockStatement(m)],
+  "point-serveurs": [["owner", "manager", "cashier"], (m) => X.viewWaiterSummary(m)],
   sorties: [OM, (m, x) => (x === "nouvelle" && S.user.role === "manager" ? M.viewExitForm(m) : x ? M.viewExit(m, x) : M.viewExits(m))],
   inventaires: [OM, (m, id) => (id ? M.viewInventory(m, id) : M.viewInventories(m))],
   fournisseurs: [OM, (m, id) => (id ? M.viewSupplier(m, id) : M.viewSuppliers(m))],
