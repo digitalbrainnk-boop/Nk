@@ -27,18 +27,18 @@ La **journée commerciale** va de 03 h 00 à 02 h 59 le lendemain : une vente fa
 | Changer un prix | ❌ (prévenu de chaque changement) | ✅ | ❌ | ❌ |
 | Prendre les commandes des clients | ❌ | ❌ | ❌ | ✅ |
 
-Le propriétaire **voit tout ce que fait le gérant**, sur les mêmes écrans. Il **n'encaisse pas et ne valide pas les commandes à sa place**. En revanche, **seul le propriétaire peut corriger ou annuler une entrée ou une sortie** une fois enregistrée : le gérant les enregistre et les consulte, mais ne peut plus y toucher. Ce n'est pas qu'une question d'affichage : le serveur refuse toute modification venant du compte propriétaire. Le gérant, lui, **ne voit pas l'espace du propriétaire**.
+Le propriétaire **voit tout ce que fait le gérant**, sur les mêmes écrans. Il **n'encaisse pas et ne valide pas les commandes à sa place**. En revanche, **seul le propriétaire peut corriger ou annuler une entrée ou une sortie** une fois enregistrée : le gérant les enregistre et les consulte, mais ne peut plus y toucher. Ce n'est pas qu'une question d'affichage : le serveur vérifie ces droits à chaque opération et refuse ce qui n'est pas permis. Le gérant, lui, **ne voit pas l'espace du propriétaire**.
 
 ## Propriétaire
 
-Votre espace sert à **surveiller** : il est en **lecture seule** pour toutes les opérations.
+Votre espace sert à **surveiller** : vous n'encaissez pas et n'enregistrez pas d'opération à la place du gérant. Votre seule action sur les opérations est la correction des entrées et des sorties.
 - **Corriger une entrée ou une sortie** : ouvrez-la (*Espace du gérant → Entrées* ou *Sorties*). Vous avez deux boutons, avec un motif obligatoire :
-  - *Corriger* : le formulaire s'ouvre avec les quantités enregistrées, vous mettez les bonnes. L'opération d'origine est annulée par un document rectificatif et remplacée par la bonne, dans un seul geste.
+  - *Corriger* : le formulaire s'ouvre avec les quantités enregistrées, vous mettez les bonnes. L'opération d'origine est annulée par un document rectificatif et remplacée par la bonne, dans un seul geste. La bonne opération garde la **date de l'originale** : le bilan et la fiche de stock de ce jour-là sont refaits avec les bons chiffres (version rectifiée).
   - *Annuler* : l'opération n'a plus d'effet sur le stock.
 
   Le gérant est prévenu. Rien n'est effacé : l'original, l'annulation et la correction restent visibles. Une correction qui rendrait le stock négatif est refusée.
 - **Erreurs signalées** : quand le gérant se trompe, il vous le signale depuis l'entrée ou la sortie. Vous recevez une notification, et son message apparaît en jaune sur l'opération.
-- **Espace du gérant** (menu de gauche, ou bouton *Gérant* en bas sur téléphone) : vous voyez l'accueil du gérant tel qu'il le voit (ventes du jour, commandes en attente, caisses ouvertes avec leur montant, mouvements de stock, reçus de la journée), ainsi que chacun de ses écrans. Un bandeau « lecture seule » le rappelle, et aucun bouton d'action n'apparaît. Vous ne pouvez ni modifier ni supprimer une vente, une entrée, une sortie ou une opération de caisse, et personne d'autre ne le peut non plus. Les erreurs se corrigent par une annulation qui laisse une trace.
+- **Espace du gérant** (menu de gauche, ou bouton *Gérant* en bas sur téléphone) : vous voyez l'accueil du gérant tel qu'il le voit (ventes du jour, commandes en attente, caisses ouvertes avec leur montant, mouvements de stock, reçus de la journée), ainsi que chacun de ses écrans. Un bandeau « lecture seule » le rappelle : vous n'y trouvez ni encaissement ni bouton de saisie. Personne ne peut modifier ou effacer une vente, une entrée, une sortie ou une opération de caisse enregistrée : les erreurs, y compris vos corrections, passent par une annulation qui laisse une trace.
 
 - **Tableau de bord** : ventes, encaissements, dépenses, bénéfice estimé, sorties, pertes, stock restant, caisses ouvertes, activité du personnel, derniers reçus et derniers rapports. Choisissez *Aujourd'hui*, *Hier*, *7 jours*, *30 jours* ou une période précise.
 - **Rentabilité par boisson** (tableau de bord, et dans le bilan hebdomadaire) : bouteilles vendues, chiffre d'affaires, coût d'achat, marge brute, marge par bouteille, et bénéfice net une fois retirées les pertes, casses et boissons offertes. La période *Ce mois* donne le résultat du mois en cours.
@@ -68,6 +68,7 @@ Votre espace sert à **surveiller** : il est en **lecture seule** pour toutes le
 
   Les bénéfices et la rentabilité n'y figurent pas : ils restent sur le tableau de bord du propriétaire.
 - **Nouvelle commande** : quand un serveur envoie une commande, votre tablette **sonne** (et vibre sur téléphone). Un message montre la table, le serveur et les boissons ; la commande vous attend dans *Commandes*. Pour être alerté même écran éteint, activez les notifications dans *Mon compte*.
+- **Demandes d'annulation du caissier** : elles apparaissent en haut de votre accueil, dans *À valider*. *Valider* annule la vente (boissons remises en stock, client remboursé depuis la caisse de la vente si elle est encore ouverte, sinon depuis la caisse que vous choisissez). *Refuser* demande une raison. Le caissier est prévenu dans les deux cas.
 - **Une erreur dans une entrée ou une sortie ?** Une fois enregistrée, vous ne pouvez plus la modifier ni l'annuler. Ouvrez-la et touchez *Signaler une erreur au propriétaire*, en expliquant l'erreur. Le propriétaire fera la correction.
 - **Tenir la caisse** : si c'est vous qui encaissez, ouvrez *Ma caisse* avec le fonds de caisse.
   - Vous encaissez alors les commandes des serveurs (*Commandes*, avec addition et encaissement de toute une table), les ventes au comptoir (*Vente directe*) et les crédits, exactement comme un caissier.
@@ -107,6 +108,7 @@ Votre espace sert à **surveiller** : il est en **lecture seule** pour toutes le
 3. **Vente directe** : vente au comptoir, sans commande de serveur (vous pouvez quand même choisir le serveur).
 4. **Crédits** : liste des clients qui doivent de l'argent. *Encaisser* enregistre un paiement total ou partiel et crée un reçu.
 5. **Dépense**, **Ajout / retrait / remboursement** : chaque opération demande un motif et crée un reçu.
+   **Annuler une vente** : vous ne pouvez pas le faire seul. Ouvrez la vente et touchez *Demander l'annulation au gérant*, avec le motif. Le gérant valide ou refuse ; la réponse arrive dans vos notifications et s'affiche sur la vente.
 6. **Fermer la caisse** : comptez l'argent réellement présent pour chaque mode de paiement. Pour les espèces, ouvrez *Compter les espèces par billets et pièces* : saisissez le nombre de billets de 10 000, 5 000… et de pièces, le total se calcule tout seul et s'imprime sur le reçu de fermeture. L'application calcule
    **solde théorique = fonds initial + encaissements + ajouts − dépenses − retraits − remboursements**,
    puis affiche l'**écart** (manquant ou excédent). Le reçu de fermeture est créé et le propriétaire est prévenu.

@@ -295,14 +295,25 @@ export async function viewManagerHome(main) {
                       { class: "btnrow" },
                       h("a", { class: "btn sm", href: `#/ventes/${r.sale_id}` }, "Voir"),
                       h("button", { class: "btn sm primary", on: { click: async () => {
-                        if (!(await confirmBox("Valider l'annulation ?", `La vente ${r.doc_no} sera annulée : boissons remises en stock, ${r.paid ? `${money(r.paid)} remboursés depuis la caisse` : "rien à rembourser"}, document rectificatif créé.`, { ok: "Valider l'annulation" }))) return;
-                        try {
-                          await POST(`/api/cancel-requests/${r.id}/approve`, {});
-                          toast("Annulation validée.", "good");
-                          viewManagerHome(main);
-                        } catch (e) {
-                          fail(e);
-                        }
+                        // Si la caisse de la vente est fermée et que plusieurs caisses sont ouvertes, le gérant choisit celle qui rembourse.
+                        const open = r.paid > 0 ? await GET("/api/cash/sessions?status=open").catch(() => []) : [];
+                        const mine = open.find((x) => x.cashier_id === S.user.id);
+                        const sel = open.length > 1 ? select("refund_session_id", open.map((x) => ({ value: x.id, label: x.cashier_id === S.user.id ? "Ma caisse" : `Caisse de ${x.cashier_name}` })), (mine || open[0]).id) : null;
+                        const body = h(
+                          "div",
+                          { class: "form" },
+                          h("p", { class: "text-2" }, `La vente ${r.doc_no} sera annulée : boissons remises en stock, ${r.paid ? `${money(r.paid)} remboursés depuis une caisse ouverte (celle de la vente si elle est encore ouverte)` : "rien à rembourser"}, document rectificatif créé.`),
+                          sel ? field("Caisse qui rembourse, si celle de la vente est fermée", sel) : null,
+                        );
+                        const ok = await modal("Valider l'annulation ?", body, [
+                          { label: "Retour", class: "ghost" },
+                          { label: "Valider l'annulation", class: "primary", submit: true, onClick: async () => {
+                            await POST(`/api/cancel-requests/${r.id}/approve`, { refund_session_id: sel ? Number(sel.value) : undefined });
+                            toast("Annulation validée.", "good");
+                            return true;
+                          } },
+                        ]);
+                        if (ok) viewManagerHome(main);
                       } } }, "Valider"),
                       h("button", { class: "btn sm danger", on: { click: async () => {
                         const note = await confirmBox("Refuser la demande ?", "Le caissier sera prévenu.", { danger: true, ok: "Refuser", reason: "Raison du refus" });

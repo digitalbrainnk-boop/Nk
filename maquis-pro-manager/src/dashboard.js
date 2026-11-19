@@ -98,8 +98,8 @@ export function managerHome(ctx) {
     exits: exitsToday,
     expenses: { count: expenses.n, amount: expenses.v },
     stock: {
-      low: stock.filter((x) => x.low && !x.out).map((x) => ({ id: x.id, name: `${x.brand} — ${x.name}`, label: x.label })),
-      out: stock.filter((x) => x.out).map((x) => ({ id: x.id, name: `${x.brand} — ${x.name}` })),
+      low: stock.filter((x) => x.low && !x.out).map((x) => ({ id: x.id, name: pname(x), label: x.label })),
+      out: stock.filter((x) => x.out).map((x) => ({ id: x.id, name: pname(x) })),
     },
     approvals: all(
       `SELECT r.id, r.sale_id, r.reason, r.at, s.doc_no, s.total, s.paid, u.full_name AS requested_by_name FROM cancel_requests r

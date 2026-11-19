@@ -329,7 +329,7 @@ export async function viewEntryForm(main, poId = null, correctId = null) {
       ? h("div", { class: "banner info" }, icon("truck"), h("div", null, h("b", null, `Réception de la commande ${po.doc_no} — ${po.supplier}`), h("div", null, "Les quantités restant à recevoir sont déjà remplies : corrigez-les selon ce qui est réellement livré. Les écarts seront signalés.")))
       : null,
     orig
-      ? h("div", { class: "banner warn" }, icon("clip"), h("div", null, h("b", null, `Correction de l'entrée ${orig.doc_no} du ${datetime(orig.at)} (enregistrée par ${orig.user_name})`), h("div", null, "Mettez les bonnes quantités et les bons prix. L'entrée d'origine sera annulée par un document rectificatif et remplacée par celle-ci ; le gérant sera prévenu.")))
+      ? h("div", { class: "banner warn" }, icon("clip"), h("div", null, h("b", null, `Correction de l'entrée ${orig.doc_no} du ${datetime(orig.at)} (enregistrée par ${orig.user_name})`), h("div", null, "Mettez les bonnes quantités et les bons prix. L'entrée d'origine sera annulée par un document rectificatif et remplacée par celle-ci, à la même date, pour que les bilans de ce jour restent justes ; le gérant sera prévenu.")))
       : null,
     orig ? field("Motif de la correction (obligatoire)", why) : null,
     h("div", { class: "row" }, po ? null : field("Fournisseur", select("supplier_id", [{ value: "", label: "Non précisé" }, ...(S.boot.suppliers || []).map((s) => ({ value: s.id, label: s.name }))], orig?.supplier_id ?? "")), field("Numéro de facture", input("invoice_no", { value: orig?.invoice_no || "" }))),
@@ -400,7 +400,7 @@ function opActions(kind, op, done) {
 }
 
 function reportsCard(reports) {
-  return reports?.length ? h("div", { class: "banner warn mt" }, icon("alert"), h("div", null, h("b", null, "Erreurs signalées par le gérant :"), reports.map((r) => h("div", null, `${datetime(r.at)} — ${r.summary.replace(/^Erreur signalée sur [^:]+: /, "")}`)))) : null;
+  return reports?.length ? h("div", { class: "banner warn mt" }, icon("alert"), h("div", null, h("b", null, "Erreurs signalées par le gérant :"), reports.map((r) => h("div", null, `${datetime(r.at)} — ${r.user_name} : ${r.summary.replace(/^Erreur signalée sur [^:]+: /, "")}`)))) : null;
 }
 
 function docsCard(docs) {
@@ -504,7 +504,7 @@ export async function viewExitForm(main, correctId = null) {
       }
     } } },
     orig
-      ? h("div", { class: "banner warn" }, icon("clip"), h("div", null, h("b", null, `Correction de la sortie ${orig.doc_no} du ${datetime(orig.at)} (enregistrée par ${orig.user_name})`), h("div", null, "La sortie d'origine sera annulée par un document rectificatif et remplacée par celle-ci ; le gérant sera prévenu.")))
+      ? h("div", { class: "banner warn" }, icon("clip"), h("div", null, h("b", null, `Correction de la sortie ${orig.doc_no} du ${datetime(orig.at)} (enregistrée par ${orig.user_name})`), h("div", null, "La sortie d'origine sera annulée par un document rectificatif et remplacée par celle-ci, à la même date, pour que les bilans de ce jour restent justes ; le gérant sera prévenu.")))
       : null,
     orig ? field("Motif de la correction (obligatoire)", h("textarea", { name: "correction_reason", rows: 2, required: true, minlength: 5 })) : null,
     field("Motif de la sortie", reasonBox),

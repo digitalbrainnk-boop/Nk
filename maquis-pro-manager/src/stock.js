@@ -739,7 +739,9 @@ export function correctEntry(ctx, id, body) {
   return tx(() => {
     const cancelled = cancelEntry(ctx, id, { reason: `Correction : ${why}` }, { forCorrection: true });
     const po = e.po_id ? get("SELECT id, status FROM purchase_orders WHERE id = ?", e.po_id) : null;
-    const created = createEntry(ctx, {
+    // La bonne entrée prend la date de l'originale : les bilans et la fiche de stock de ce jour-là
+    // montrent la livraison réelle (l'annulation est elle aussi rattachée à ce jour).
+    const created = createEntry({ ...ctx, at: e.at }, {
       supplier_id: body.supplier_id !== undefined ? body.supplier_id : e.supplier_id,
       po_id: po && ["open", "partial"].includes(po.status) ? po.id : undefined,
       invoice_no: body.invoice_no !== undefined ? body.invoice_no : e.invoice_no,
@@ -764,7 +766,7 @@ export function correctExit(ctx, id, body) {
   if (x.status !== "valid") throw bad("Cette sortie est déjà annulée.");
   return tx(() => {
     const cancelled = cancelExit(ctx, id, { reason: `Correction : ${why}` });
-    const created = createExit(ctx, {
+    const created = createExit({ ...ctx, at: x.at }, {
       reason: body.reason || x.reason,
       lines: body.lines,
       responsible_name: body.responsible_name !== undefined ? body.responsible_name : x.responsible_name,

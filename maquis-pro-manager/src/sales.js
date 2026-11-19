@@ -487,6 +487,11 @@ export function cancelSale(ctx, saleId, body) {
       rectifies: s.doc_no,
     });
     audit(ctx, "vente_annulee", "sale", s.id, `Vente ${s.doc_no} annulée (${money(s.total)}) : ${reason}`, { remboursements: refundDocs, rectificatif: doc });
+    // Vente annulée directement par le gérant alors qu'un caissier l'avait demandé : la demande est close.
+    for (const r of all("SELECT id, requested_by FROM cancel_requests WHERE sale_id = ? AND status = 'pending'", s.id)) {
+      run("UPDATE cancel_requests SET status = 'approved', handled_by = ?, handled_at = ?, note = ? WHERE id = ?", ctx.user.id, t, "Vente annulée directement par le gérant.", r.id);
+      notify({ userIds: [r.requested_by], type: "approval", title: `Annulation faite : ${s.doc_no}`, body: `${ctx.user.full_name} a annulé la vente (${doc}).`, link: `#/ventes/${s.id}` });
+    }
     touchDay(s.business_day, "annulation de vente");
     notify({ roles: ["owner", "manager"], exceptUserId: ctx.user.id, type: "exceptional", severity: "warn", title: "Vente annulée", body: `${ctx.user.full_name} a annulé la vente ${s.doc_no} (${money(s.total)}). Motif : ${reason}`, link: `#/recus/${doc}` });
     signal(["owner", "manager", "cashier", "waiter"], "stock");
@@ -535,9 +540,10 @@ export function decideCancelRequest(ctx, id, approve, body = {}) {
   const note = str(body.note, "Commentaire", { max: 300 });
   const requester = get("SELECT full_name FROM users WHERE id = ?", r.requested_by).full_name;
   return tx(() => {
+    // La demande est close avant l'annulation, pour que cancelSale ne la traite pas une seconde fois.
+    run("UPDATE cancel_requests SET status = ?, handled_by = ?, handled_at = ?, note = ? WHERE id = ?", approve ? "approved" : "refused", ctx.user.id, now(), note, id);
     let result = null;
     if (approve) result = cancelSale(ctx, r.sale_id, { reason: `${r.reason} (demandé par ${requester}, validé par ${ctx.user.full_name})`, refund_session_id: body.refund_session_id });
-    run("UPDATE cancel_requests SET status = ?, handled_by = ?, handled_at = ?, note = ? WHERE id = ?", approve ? "approved" : "refused", ctx.user.id, now(), note, id);
     if (!approve) audit(ctx, "annulation_refusee", "sale", r.sale_id, `Demande d'annulation de ${r.doc_no} refusée${note ? ` : ${note}` : ""}`);
     notify({
       userIds: [r.requested_by],

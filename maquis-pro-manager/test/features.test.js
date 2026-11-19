@@ -14,6 +14,7 @@ const P = {};
 let supplier;
 let W1;
 let W2;
+let lateExit; // sortie du 19 novembre, corrigée le lendemain par le propriétaire
 const stockOf = async (pid) => (await A.manager.ok("GET", "/api/stock")).find((p) => p.id === pid).stock;
 
 before(async () => {
@@ -398,6 +399,7 @@ test("entrées et sorties : le gérant enregistre et voit, seul le propriétaire
   assert.equal((await A.manager.post(`/api/exits/${x.id}/cancel`, { reason: "erreur" })).status, 403);
   const cx = await A.owner.ok("POST", `/api/exits/${x.id}/correct`, { correction_reason: "Seulement 2 cassées", reason: "broken", lines: [{ product_id: P.castel.id, extra_units: 2 }] });
   assert.equal((await A.owner.ok("GET", `/api/exits/${cx.id}`)).lines[0].qty, 2);
+  lateExit = await A.owner.ok("GET", `/api/exits/${cx.id}`);
   // Le propriétaire ne crée toujours ni entrée ni sortie lui-même.
   assert.equal((await A.owner.post("/api/entries", { lines: [{ product_id: P.coca.id, crates: 1 }] })).status, 403);
   assert.equal((await A.owner.post("/api/exits", { reason: "broken", lines: [{ product_id: P.coca.id, extra_units: 1 }] })).status, 403);
@@ -424,6 +426,23 @@ test("demande d'annulation refusée par le gérant ; changement de prix signalé
   assert.equal(sale.cancel_request.status, "refused");
   assert.ok((await A.cashier.ok("GET", "/api/notifications")).items.some((n) => n.title.startsWith("Annulation refusée")));
   assert.equal((await A.manager.post(`/api/cancel-requests/${req.id}/approve`, {})).status, 400); // déjà traitée
+  // Le gérant annule directement une vente dont l'annulation était demandée : la demande est close.
+  const s2 = await A.cashier.ok("POST", "/api/sales", { lines: [{ product_id: P.castel.id, qty: 1 }], payments: [{ method: "Espèces", amount: 750 }] });
+  const req2 = await A.cashier.ok("POST", `/api/sales/${s2.id}/cancel-request`, { reason: "Erreur de boisson" });
+  assert.equal((await A.manager.ok("GET", "/api/manager/home")).approvals.length, 1);
+  await A.manager.ok("POST", `/api/sales/${s2.id}/cancel`, { reason: "Erreur de boisson, vu avec le client" });
+  assert.equal((await A.manager.ok("GET", "/api/manager/home")).approvals.length, 0);
+  const closed = (await A.cashier.ok("GET", "/api/cancel-requests")).find((r) => r.id === req2.id);
+  assert.equal(closed.status, "approved");
+  assert.equal((await A.manager.post(`/api/cancel-requests/${req2.id}/approve`, {})).status, 400);
+  // Une correction faite le lendemain reste rattachée au jour de l'opération d'origine.
+  const cy = await A.owner.ok("POST", `/api/exits/${lateExit.id}/correct`, { correction_reason: "Finalement 3 cassées", lines: [{ product_id: P.castel.id, extra_units: 3 }] });
+  const fixed = await A.owner.ok("GET", `/api/exits/${cy.id}`);
+  assert.equal(lateExit.business_day, "2026-11-19");
+  assert.equal(fixed.business_day, lateExit.business_day);
+  assert.equal(fixed.at, lateExit.at);
+  const st = await A.owner.ok("GET", "/api/stock/statement?from=2026-11-19&to=2026-11-19");
+  assert.equal(st.rows.find((r) => r.product_id === P.castel.id).broken, 3);
   // Le gérant change un prix : le propriétaire est prévenu, l'historique garde l'ancien prix.
   await A.manager.ok("PATCH", `/api/products/${P.castel.id}`, { sale_price: 800 });
   const n = (await A.owner.ok("GET", "/api/notifications")).items.find((x) => x.type === "price");

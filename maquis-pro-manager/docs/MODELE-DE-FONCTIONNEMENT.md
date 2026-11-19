@@ -12,7 +12,7 @@ Pour le voir en vrai, lancez la **démonstration** : `maquis demo` dans Termux, 
 
 | Rôle | Qui | Son appareil | Son travail |
 |---|---|---|---|
-| **Propriétaire** (le patron) | Le patron du maquis, souvent absent | Son téléphone | Il surveille tout, de partout : ventes, caisse, stock, bilans. Il seul corrige ou annule une entrée ou une sortie. Il gère les comptes et les paramètres. |
+| **Propriétaire** (le patron) | Le patron du maquis, souvent absent | Son téléphone | Il surveille tout, de partout : ventes, caisse, stock, bilans. Lui seul corrige ou annule une entrée ou une sortie. Il gère les comptes et les paramètres. |
 | **Gérant** | Le responsable sur place | Une tablette au comptoir | Il tient la caisse, valide les commandes des serveurs, enregistre les livraisons (entrées) et les pertes (sorties), fait l'inventaire et les commandes aux fournisseurs. |
 | **Caissier** *(facultatif)* | Quelqu'un d'autre que le gérant à la caisse | La tablette du comptoir | Il encaisse. Il ne peut pas annuler une vente seul : il le demande au gérant. |
 | **Serveurs** | Chaque serveuse et chaque serveur | Leur téléphone | Ils prennent les commandes à table et les envoient au comptoir. Ils voient leurs propres ventes. |
@@ -23,7 +23,7 @@ Pour le voir en vrai, lancez la **démonstration** : `maquis demo` dans Termux, 
 - **Rien ne s'efface.** Une erreur se corrige par une annulation avec motif, qui crée un document « rectificatif ». L'original reste visible.
 - **Annuler une vente** :
   - le gérant peut le faire ;
-  - le caissier envoie une **demande**, que le gérant **valide ou refuse** ;
+  - le caissier envoie une **demande**, que le gérant **valide ou refuse** depuis son accueil (s'il annule la vente directement, la demande est close automatiquement) ;
   - le propriétaire est prévenu dans les deux cas.
 - **Entrées et sorties de stock** :
   - le gérant les enregistre ;
