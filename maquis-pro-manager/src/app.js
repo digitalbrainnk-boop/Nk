@@ -116,7 +116,18 @@ export function createApp() {
   const id = (req) => int(req.params.id, "Identifiant", { min: 1 });
 
   // ---------- Installation et connexion ----------
-  api.get("/setup", h(() => ({ needs_setup: !get("SELECT 1 FROM users LIMIT 1") })));
+  // En démonstration seulement, l'écran de connexion propose les comptes fictifs.
+  api.get(
+    "/setup",
+    h(() => {
+      const demo = allSettings().demo_mode === true;
+      return {
+        needs_setup: !get("SELECT 1 FROM users LIMIT 1"),
+        demo,
+        ...(demo ? { demo_password: "demo1234", demo_accounts: all("SELECT username, full_name, role FROM users WHERE active = 1 ORDER BY CASE role WHEN 'owner' THEN 0 WHEN 'manager' THEN 1 WHEN 'cashier' THEN 2 ELSE 3 END, full_name").map((u) => ({ ...u, role_label: auth.ROLE_LABELS[u.role] })) } : {}),
+      };
+    }),
+  );
   api.post(
     "/setup",
     h(async (req, res) => {
@@ -172,7 +183,7 @@ export function createApp() {
         user: auth.publicUser(req.user),
         server_time: now(),
         business_day: businessDay(),
-        settings: { maquis_name: s.maquis_name, address: s.address, phone: s.phone, receipt_footer: s.receipt_footer, logo: s.logo ? `/media/logo?v=${encodeURIComponent(s.logo)}` : "", payment_methods: cash.paymentMethods(), expense_categories: s.expense_categories, idle_minutes: s.idle_minutes },
+        settings: { demo: s.demo_mode === true, maquis_name: s.maquis_name, address: s.address, phone: s.phone, receipt_footer: s.receipt_footer, logo: s.logo ? `/media/logo?v=${encodeURIComponent(s.logo)}` : "", payment_methods: cash.paymentMethods(), expense_categories: s.expense_categories, idle_minutes: s.idle_minutes },
         categories: catalog.listCategories(),
         products: catalog.listProducts(role, { includeInactive: role === "manager" || role === "owner" }),
         waiters: all("SELECT id, full_name FROM users WHERE role = 'waiter' AND active = 1 ORDER BY full_name"),
@@ -390,7 +401,12 @@ export function createApp() {
   // Encaissement : le caissier, et le gérant quand il tient lui-même une caisse (jamais le propriétaire).
   api.post("/sales", need("cashier", "manager"), op((req, ctx) => sales.createSale(ctx, req.body)));
   api.post("/sales/:id/payments", need("cashier", "manager"), op((req, ctx) => sales.addSalePayment(ctx, id(req), req.body)));
-  api.post("/sales/:id/cancel", need("cashier", "manager"), h((req) => sales.cancelSale(ctxOf(req), id(req), req.body)));
+  // Annulation d'une vente : le gérant la fait (ou valide la demande d'un caissier).
+  api.post("/sales/:id/cancel", need("manager"), h((req) => sales.cancelSale(ctxOf(req), id(req), req.body)));
+  api.post("/sales/:id/cancel-request", need("cashier"), h((req) => sales.requestCancelSale(ctxOf(req), id(req), req.body)));
+  api.get("/cancel-requests", need("owner", "manager", "cashier"), h((req) => sales.listCancelRequests(ctxOf(req), req.query)));
+  api.post("/cancel-requests/:id/approve", need("manager"), h((req) => sales.decideCancelRequest(ctxOf(req), id(req), true, req.body)));
+  api.post("/cancel-requests/:id/refuse", need("manager"), h((req) => sales.decideCancelRequest(ctxOf(req), id(req), false, req.body)));
   api.get("/credits", need("owner", "manager", "cashier"), h(() => sales.listCredits()));
   // Point des serveurs (journée ou période) : commandes, ventes, crédits, sorties attribuées.
   api.get(

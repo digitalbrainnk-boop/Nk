@@ -293,7 +293,7 @@ test("corrections de la relecture : tables partagées, commandes anciennes, stat
   assert.equal(ws["Ali Traoré"].credit_open, Math.round((2200 * 1400) / 4400)); // 700
   assert.equal(ws["Fatim Zongo"].credit_open, Math.round((2200 * 3000) / 4400)); // 1 500
   // Annuler la vente de la table : les commandes passent « annulées ».
-  await A.cashier.ok("POST", `/api/sales/${sale.id}/cancel`, { reason: "Erreur : mauvaise table" });
+  await A.manager.ok("POST", `/api/sales/${sale.id}/cancel`, { reason: "Erreur : mauvaise table" });
   for (const id of [a.id, b.id]) {
     const o = await A.manager.ok("GET", `/api/orders/${id}`);
     assert.equal(o.status, "cancelled");
@@ -406,4 +406,29 @@ test("entrées et sorties : le gérant enregistre et voit, seul le propriétaire
   for (const who of [A.manager, A.cashier]) assert.ok((await who.ok("GET", "/api/notifications")).items.some((n) => n.type === "order" && n.title === "Nouvelle commande — Table 5"));
   assert.ok(!(await A.owner.ok("GET", "/api/notifications")).items.some((n) => n.type === "order"));
   assert.equal(o.status, "pending");
+});
+
+
+test("demande d'annulation refusée par le gérant ; changement de prix signalé au propriétaire", async () => {
+  at("2026-11-20T19:00:00Z");
+  A.owner = await login("patron", "Patron2026!", "owner");
+  A.manager = await login("gerant", "Gerant2026!b", "manager");
+  A.cashier = await login("caisse", "Caisse26b", "cashier");
+  await A.cashier.post("/api/cash/open", { opening_float: 0 });
+  const s = await A.cashier.ok("POST", "/api/sales", { lines: [{ product_id: P.castel.id, qty: 1 }], payments: [{ method: "Espèces", amount: 750 }] });
+  const req = await A.cashier.ok("POST", `/api/sales/${s.id}/cancel-request`, { reason: "Le client a changé d'avis" });
+  const refused = await A.manager.ok("POST", `/api/cancel-requests/${req.id}/refuse`, { note: "La bouteille est déjà ouverte" });
+  assert.equal(refused.status, "refused");
+  const sale = await A.cashier.ok("GET", `/api/sales/${s.id}`);
+  assert.equal(sale.status, "paid"); // rien n'a changé
+  assert.equal(sale.cancel_request.status, "refused");
+  assert.ok((await A.cashier.ok("GET", "/api/notifications")).items.some((n) => n.title.startsWith("Annulation refusée")));
+  assert.equal((await A.manager.post(`/api/cancel-requests/${req.id}/approve`, {})).status, 400); // déjà traitée
+  // Le gérant change un prix : le propriétaire est prévenu, l'historique garde l'ancien prix.
+  await A.manager.ok("PATCH", `/api/products/${P.castel.id}`, { sale_price: 800 });
+  const n = (await A.owner.ok("GET", "/api/notifications")).items.find((x) => x.type === "price");
+  assert.match(n.body, /vente 750 FCFA → 800 FCFA/);
+  const hist = await A.owner.ok("GET", `/api/products/${P.castel.id}/history`);
+  assert.equal(hist.prices[0].sale_price, 800);
+  assert.equal(hist.prices[1].sale_price, 750);
 });

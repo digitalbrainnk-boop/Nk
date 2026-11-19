@@ -5,7 +5,8 @@ import crypto from "node:crypto";
 import { all, get, run, tx, getDataDir } from "./db.js";
 import { now, businessDay } from "./time.js";
 import { audit } from "./audit.js";
-import { bad, notFound, str, int, pname } from "./util.js";
+import { notify } from "./notify.js";
+import { bad, notFound, str, int, money, pname } from "./util.js";
 
 // ---------- Catégories ----------
 export const listCategories = () => all("SELECT * FROM categories ORDER BY sort, name");
@@ -126,8 +127,13 @@ export function updateProduct(ctx, id, body) {
       `UPDATE products SET name=?, brand=?, category_id=?, reference=?, purchase_price=?, sale_price=?, units_per_crate=?, pack_label=?, min_stock=?, supplier_id=?, active=?, updated_at=? WHERE id=?`,
       f.name, f.brand, f.category_id, f.reference, f.purchase_price, f.sale_price, f.units_per_crate, f.pack_label, f.min_stock, f.supplier_id, active, t, id,
     );
-    if (f.purchase_price !== cur.purchase_price || f.sale_price !== cur.sale_price)
+    if (f.purchase_price !== cur.purchase_price || f.sale_price !== cur.sale_price) {
       run("INSERT INTO price_history (product_id, purchase_price, sale_price, at, user_id) VALUES (?,?,?,?,?)", id, f.purchase_price, f.sale_price, t, ctx.user.id);
+      const parts = [];
+      if (f.sale_price !== cur.sale_price) parts.push(`vente ${money(cur.sale_price)} → ${money(f.sale_price)}`);
+      if (f.purchase_price !== cur.purchase_price) parts.push(`achat ${money(cur.purchase_price)} → ${money(f.purchase_price)}`);
+      notify({ roles: ["owner"], exceptUserId: ctx.user.id, type: "price", severity: "warn", title: `Prix modifié : ${pname(f)}`, body: `${ctx.user.full_name} : ${parts.join(", ")}.`, link: `#/stock/${id}` });
+    }
     const changes = {};
     for (const k of Object.keys(f)) if (f[k] !== cur[k]) changes[k] = { avant: cur[k], apres: f[k] };
     if (active !== cur.active) changes.active = { avant: !!cur.active, apres: !!active };

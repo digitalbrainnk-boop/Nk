@@ -251,9 +251,20 @@ test("annulation traçable d'une vente : stock remis, remboursement et document 
   await A.cashier.ok("POST", "/api/cash/open", { opening_float: 5000 });
   const s = await A.cashier.ok("POST", "/api/sales", { lines: [{ product_id: P.lafi.id, qty: 2 }], payments: [{ method: "Espèces", amount: 1000 }] });
   assert.equal(await stockOf(P.lafi.id), 28);
-  assert.equal((await A.cashier.post(`/api/sales/${s.id}/cancel`, { reason: "" })).status, 400); // motif obligatoire
-  const c = await A.cashier.ok("POST", `/api/sales/${s.id}/cancel`, { reason: "Erreur de saisie, client parti" });
+  // Comme dans les logiciels de caisse : le caissier n'annule pas seul, il demande au gérant.
+  assert.equal((await A.cashier.post(`/api/sales/${s.id}/cancel`, { reason: "Erreur de saisie" })).status, 403);
+  assert.equal((await A.cashier.post(`/api/sales/${s.id}/cancel-request`, { reason: "" })).status, 400); // motif obligatoire
+  const req = await A.cashier.ok("POST", `/api/sales/${s.id}/cancel-request`, { reason: "Erreur de saisie, client parti" });
+  assert.equal(req.status, "pending");
+  assert.equal((await A.cashier.post(`/api/sales/${s.id}/cancel-request`, { reason: "Encore une fois" })).status, 400); // déjà en attente
+  assert.ok((await A.manager.ok("GET", "/api/notifications")).items.some((n) => n.type === "approval"));
+  const pending = await A.manager.ok("GET", "/api/cancel-requests?status=pending");
+  assert.equal(pending.length, 1);
+  assert.equal((await A.owner.post(`/api/cancel-requests/${req.id}/approve`, {})).status, 403);
+  const c = await A.manager.ok("POST", `/api/cancel-requests/${req.id}/approve`, {});
+  assert.equal(c.status, "approved");
   assert.match(c.doc_no, /^ANN-/);
+  assert.ok((await A.cashier.ok("GET", "/api/notifications")).items.some((n) => n.title.startsWith("Annulation validée")));
   assert.equal(c.refunds.length, 1);
   assert.equal(await stockOf(P.lafi.id), 30);
   const original = await A.owner.ok("GET", `/api/documents/${s.doc_no}`);

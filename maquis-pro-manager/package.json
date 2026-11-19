@@ -11,7 +11,8 @@
     "rapports": "node --env-file-if-exists=.env --disable-warning=ExperimentalWarning scripts/rapports.js",
     "sauvegarde": "node --env-file-if-exists=.env --disable-warning=ExperimentalWarning scripts/sauvegarde.js",
     "restaurer": "node --env-file-if-exists=.env --disable-warning=ExperimentalWarning scripts/restaurer.js",
-    "acces": "node --env-file-if-exists=.env --disable-warning=ExperimentalWarning scripts/acces.js"
+    "acces": "node --env-file-if-exists=.env --disable-warning=ExperimentalWarning scripts/acces.js",
+    "demo": "node --disable-warning=ExperimentalWarning scripts/demo.js"
   },
   "engines": {
     "node": ">=22.16"

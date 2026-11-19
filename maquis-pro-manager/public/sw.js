@@ -1,6 +1,6 @@
 // Service worker : l'application s'ouvre même sans internet, les dernières données consultées
 // restent lisibles, et les notifications push arrivent même application fermée.
-const VERSION = "mpm-v4";
+const VERSION = "mpm-v5";
 const SHELL = [
   "/",
   "/index.html",

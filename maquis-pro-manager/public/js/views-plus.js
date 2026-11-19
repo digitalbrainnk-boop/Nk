@@ -277,6 +277,46 @@ export async function viewManagerHome(main) {
   main.replaceChildren(
     pageHead(mgr ? `Bonjour ${S.user.full_name.split(" ")[0]}` : "Accueil du gérant", `Journée commerciale du ${dayShort(d.today)} (de 03 h 00 à 03 h 00)`),
     myCash,
+    d.approvals?.length
+      ? card(
+          h("div", { class: "cardhead" }, h("h2", null, "À valider"), chip(`${d.approvals.length} demande(s)`, "warn")),
+          h(
+            "div",
+            { class: "list" },
+            d.approvals.map((r) =>
+              h(
+                "div",
+                { class: "item" },
+                h("div", { class: "ic warn" }, icon("alert")),
+                h("div", { class: "grow" }, h("div", { class: "t" }, `Annuler la vente ${r.doc_no} (${money(r.total)})`), h("div", { class: "d" }, `${r.requested_by_name} · ${datetime(r.at)} — ${r.reason}`)),
+                mgr
+                  ? h(
+                      "div",
+                      { class: "btnrow" },
+                      h("a", { class: "btn sm", href: `#/ventes/${r.sale_id}` }, "Voir"),
+                      h("button", { class: "btn sm primary", on: { click: async () => {
+                        if (!(await confirmBox("Valider l'annulation ?", `La vente ${r.doc_no} sera annulée : boissons remises en stock, ${r.paid ? `${money(r.paid)} remboursés depuis la caisse` : "rien à rembourser"}, document rectificatif créé.`, { ok: "Valider l'annulation" }))) return;
+                        try {
+                          await POST(`/api/cancel-requests/${r.id}/approve`, {});
+                          toast("Annulation validée.", "good");
+                          viewManagerHome(main);
+                        } catch (e) {
+                          fail(e);
+                        }
+                      } } }, "Valider"),
+                      h("button", { class: "btn sm danger", on: { click: async () => {
+                        const note = await confirmBox("Refuser la demande ?", "Le caissier sera prévenu.", { danger: true, ok: "Refuser", reason: "Raison du refus" });
+                        if (!note) return;
+                        await POST(`/api/cancel-requests/${r.id}/refuse`, { note }).catch(fail);
+                        viewManagerHome(main);
+                      } } }, "Refuser"),
+                    )
+                  : null,
+              ),
+            ),
+          ),
+        )
+      : null,
     quick,
     h(
       "div",

@@ -98,7 +98,7 @@ export async function viewDashboard(main) {
             { label: "Nom", get: (u) => h("div", null, h("b", null, u.full_name), h("div", { class: "small muted" }, ROLE_LABELS[u.role])) },
             { label: "Ventes", r: true, get: (u) => (u.sales ? `${num(u.sales)} · ${money(u.sales_amount)}` : "—") },
             { label: "Commandes", r: true, get: (u) => (u.role === "waiter" ? num(u.orders) : "—") },
-            { label: "Vu", r: true, get: (u) => (u.last_seen ? datetime(u.last_seen) : "jamais") },
+            { label: "Vu", r: true, get: (u) => (u.last_seen ? datetime(u.last_seen).replace(/\/\d{4} à /, " ") : "jamais") },
           ],
           d.staff,
         ),

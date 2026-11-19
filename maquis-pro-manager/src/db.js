@@ -469,6 +469,19 @@ CREATE TABLE IF NOT EXISTS purchase_order_lines (
   received_qty INTEGER NOT NULL DEFAULT 0
 );
 
+-- Demandes d'annulation de vente faites par un caissier, validées ou refusées par le gérant.
+CREATE TABLE IF NOT EXISTS cancel_requests (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  sale_id INTEGER NOT NULL REFERENCES sales(id),
+  requested_by INTEGER NOT NULL REFERENCES users(id),
+  reason TEXT NOT NULL,
+  at INTEGER NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','approved','refused')),
+  handled_by INTEGER,
+  handled_at INTEGER,
+  note TEXT NOT NULL DEFAULT ''
+);
+
 -- Anti-doublons de la synchronisation hors connexion (un identifiant par opération).
 CREATE TABLE IF NOT EXISTS sync_ops (
   user_id INTEGER NOT NULL,
@@ -497,7 +510,7 @@ const APPEND_ONLY = [
   "price_history",
 ];
 // Tables d'opérations : jamais supprimées ; seuls le statut et les champs d'annulation évoluent.
-const NO_DELETE = ["entries", "exits", "sales", "expenses", "orders", "cash_sessions", "inventories", "reports", "users", "products", "purchase_orders", "purchase_order_lines"];
+const NO_DELETE = ["entries", "exits", "sales", "expenses", "orders", "cash_sessions", "inventories", "reports", "users", "products", "purchase_orders", "purchase_order_lines", "cancel_requests"];
 const FROZEN_COLUMNS = {
   entries: ["doc_no", "at", "business_day", "supplier_id", "total_amount", "paid_amount", "user_id"],
   exits: ["doc_no", "at", "business_day", "reason", "user_id"],

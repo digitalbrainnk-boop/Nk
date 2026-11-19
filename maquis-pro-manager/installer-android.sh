@@ -49,6 +49,8 @@ cat > "$PREFIX/bin/maquis" <<'EOS'
 # maquis maj      installe la dernière version (les données sont conservées)
 # maquis arret    arrête l'application
 # maquis zero     recommence le test à zéro (les anciennes données sont mises de côté, pas effacées)
+# maquis demo     version de DÉMONSTRATION (maquis fictif, une semaine d'activité) à part des vraies données
+# maquis demo refaire   recrée la démonstration à zéro
 APP="$HOME/maquis-source/maquis-pro-manager"
 DONNEES="$HOME/maquis-donnees"
 PORT=3100
@@ -71,6 +73,45 @@ case "$1" in
     fi
     mkdir -p "$DONNEES"
     exec bash "$0" ;;
+  demo)
+    DEMO="$HOME/maquis-demo"; DPORT=3200
+    pkill -f "maquis-pro-manager/scripts/demo.js" 2>/dev/null; pkill -f "cloudflared tunnel --url http://localhost:$DPORT" 2>/dev/null
+    sleep 1
+    mkdir -p "$DEMO"
+    cd "$APP" || exit 1
+    termux-wake-lock 2>/dev/null || true
+    OPT=""; [ "$2" = "refaire" ] && OPT="--refaire"
+    echo "Préparation de la démonstration…"
+    DATA_DIR="$DEMO" PORT=$DPORT node --disable-warning=ExperimentalWarning "$APP/scripts/demo.js" $OPT >> "$DEMO/serveur.log" 2>&1 &
+    SERVEUR=$!
+    trap 'kill $SERVEUR $TUNNEL 2>/dev/null; echo; echo "Démonstration arrêtée."' EXIT
+    for i in $(seq 1 90); do curl -fs "http://localhost:$DPORT/health" >/dev/null 2>&1 && break; sleep 1; done
+    if ! curl -fs "http://localhost:$DPORT/health" >/dev/null 2>&1; then
+      echo "❌ La démonstration n'a pas démarré :"; tail -20 "$DEMO/serveur.log" 2>/dev/null; exit 1
+    fi
+    L=""
+    if command -v cloudflared >/dev/null 2>&1; then
+      : > "$DEMO/tunnel.log"
+      cloudflared tunnel --url "http://localhost:$DPORT" --no-autoupdate >> "$DEMO/tunnel.log" 2>&1 &
+      TUNNEL=$!
+      for i in $(seq 1 40); do L=$(grep -o 'https://[-a-z0-9]*\.trycloudflare\.com' "$DEMO/tunnel.log" 2>/dev/null | head -1); [ -n "$L" ] && break; sleep 1; done
+    fi
+    clear
+    echo "========= MAQUIS PRO MANAGER — DÉMONSTRATION (données fictives) ========="
+    echo
+    echo " Sur CE téléphone :  http://localhost:$DPORT"
+    [ -n "$L" ] && echo " Sur les autres appareils :  $L"
+    echo
+    echo " Comptes (mot de passe pour tous : demo1234)"
+    echo "   patron    propriétaire        gerant    gérant (tient la caisse)"
+    echo "   caissier  caissier            awa, ali, fatim   serveurs"
+    echo
+    echo " Vos vraies données (commande « maquis ») ne sont pas touchées."
+    echo " Recréer la démo à zéro : maquis demo refaire.  CTRL + C pour arrêter."
+    echo "========================================================================="
+    (sleep 2; termux-open-url "${L:-http://localhost:$DPORT}" 2>/dev/null) &
+    wait $SERVEUR
+    exit ;;
   maj)
     pkill -f "maquis-pro-manager/serveur.js"; pkill -f "cloudflared tunnel --url http://localhost:$PORT"
     curl -fsSL "https://raw.githubusercontent.com/digitalbrainnk-boop/Nk/${MAQUIS_BRANCHE:-ccr-98ef2a93-v667hk}/maquis-pro-manager/installer-android.sh" | bash

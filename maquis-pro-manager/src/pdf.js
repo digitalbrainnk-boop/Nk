@@ -237,6 +237,7 @@ function vbars(doc, items, { height = 110, valueLabel = (v) => num(v) } = {}) {
 }
 
 function footer(doc, text) {
+  if (allSettings().demo_mode === true) text = `DÉMONSTRATION — DONNÉES FICTIVES · ${text}`;
   const range = doc.bufferedPageRange();
   for (let i = range.start; i < range.start + range.count; i++) {
     doc.switchToPage(i);

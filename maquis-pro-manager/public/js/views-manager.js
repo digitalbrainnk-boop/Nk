@@ -906,7 +906,8 @@ export async function viewSales(main) {
 export async function viewSale(main, id) {
   main.replaceChildren(loader());
   const s = await GET(`/api/sales/${id}`);
-  const canCancel = s.status !== "cancelled" && (S.user.role === "manager" || S.user.role === "cashier");
+  const canCancel = s.status !== "cancelled" && S.user.role === "manager";
+  const pendingReq = s.cancel_request?.status === "pending" ? s.cancel_request : null;
   main.replaceChildren(
     pageHead(`Vente ${s.doc_no}`, `${datetime(s.at)} · ${s.status_label}`, [], S.user.role === "waiter" ? "#/mes-commandes" : "#/ventes"),
     s.status === "cancelled" ? h("div", { class: "banner bad" }, icon("alert"), `Annulée le ${datetime(s.cancelled_at)} : ${s.cancel_reason}`) : null,
@@ -919,7 +920,22 @@ export async function viewSale(main, id) {
     ),
     card("Paiements", table([{ label: "Date", get: (p) => datetime(p.at) }, { label: "Mode", get: (p) => p.method }, { label: "Type", get: (p) => (p.kind === "credit" ? "Règlement de crédit" : "À la vente") }, { label: "Montant", r: true, get: (p) => money(p.amount) }, { label: "Reçu", get: (p) => (p.doc_no ? h("a", { href: `#/recus/${p.doc_no}` }, p.doc_no) : "") }], s.payments)),
     docsCard(s.documents),
+    pendingReq ? h("div", { class: "banner warn mt" }, icon("clock"), h("div", null, h("b", null, "Annulation demandée, en attente du gérant. "), `${pendingReq.requested_by_name} : ${pendingReq.reason}`)) : null,
+    s.cancel_request?.status === "refused" ? h("div", { class: "banner bad mt" }, icon("x"), h("div", null, h("b", null, "Demande d'annulation refusée par le gérant. "), s.cancel_request.note || "")) : null,
     canCancel ? cancelSaleButton(s, () => viewSale(main, id)) : null,
+    S.user.role === "cashier" && s.status !== "cancelled" && !pendingReq
+      ? h("div", { class: "mt" }, h("button", { class: "btn", on: { click: async () => {
+          const reason = await confirmBox("Demander l'annulation au gérant", "Comme dans les logiciels de caisse, une vente encaissée ne s'annule qu'avec l'accord du gérant. Il reçoit votre demande et la valide ou la refuse.", { ok: "Envoyer la demande", reason: "Motif (ex. erreur de boisson, client parti)" });
+          if (!reason) return;
+          try {
+            await POST(`/api/sales/${s.id}/cancel-request`, { reason });
+            toast("Demande envoyée au gérant.", "good");
+            viewSale(main, id);
+          } catch (e) {
+            fail(e);
+          }
+        } } }, icon("alert"), "Demander l'annulation au gérant"))
+      : null,
   );
 }
 

@@ -13,6 +13,8 @@ export const NOTIF_TYPES = {
   purchase: "Commande fournisseur et réception",
   exit: "Nouvelle sortie (offerte, cassée, perdue…)",
   order: "Nouvelle commande d'un serveur (à encaisser)",
+  approval: "Demande à valider (annulation de vente)",
+  price: "Changement de prix d'une boisson",
   sale: "Nouvelle vente",
   expense: "Nouvelle dépense",
   cash_variance: "Écart de caisse",

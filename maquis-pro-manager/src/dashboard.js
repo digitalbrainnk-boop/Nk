@@ -101,6 +101,10 @@ export function managerHome(ctx) {
       low: stock.filter((x) => x.low && !x.out).map((x) => ({ id: x.id, name: `${x.brand} — ${x.name}`, label: x.label })),
       out: stock.filter((x) => x.out).map((x) => ({ id: x.id, name: `${x.brand} — ${x.name}` })),
     },
+    approvals: all(
+      `SELECT r.id, r.sale_id, r.reason, r.at, s.doc_no, s.total, s.paid, u.full_name AS requested_by_name FROM cancel_requests r
+       JOIN sales s ON s.id = r.sale_id JOIN users u ON u.id = r.requested_by WHERE r.status = 'pending' ORDER BY r.at`,
+    ),
     purchase_orders: get("SELECT COUNT(*) AS n FROM purchase_orders WHERE status IN ('open','partial')").n,
     inventory_draft: get("SELECT id FROM inventories WHERE status = 'draft'")?.id || null,
     latest_documents: searchDocuments(ctx.user, { limit: 10, from: today }),

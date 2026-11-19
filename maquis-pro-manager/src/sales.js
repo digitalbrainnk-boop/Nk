@@ -330,6 +330,7 @@ export function getSale(ctx, id) {
   s.documents = documentsFor("sale", id);
   s.status_label = SALE_STATUS[s.status];
   s.remaining = s.status === "cancelled" ? 0 : s.total - s.paid;
+  s.cancel_request = get("SELECT r.*, u.full_name AS requested_by_name FROM cancel_requests r JOIN users u ON u.id = r.requested_by WHERE r.sale_id = ? ORDER BY r.id DESC LIMIT 1", s.id) || null;
   if (ctx.user.role === "waiter" || ctx.user.role === "cashier") for (const l of s.lines) delete l.unit_cost;
   return s;
 }
@@ -414,7 +415,8 @@ export function cancelSale(ctx, saleId, body) {
   if (!s) throw notFound("Vente introuvable.");
   if (s.status === "cancelled") throw bad("Cette vente est déjà annulée.");
   const own = openSessionOf(ctx.user.id);
-  if (ctx.user.role === "cashier" && !(own && own.id === s.session_id)) throw forbidden("Un caissier ne peut annuler que les ventes de sa caisse en cours. Demandez au gérant.");
+  // Comme dans les logiciels de caisse : le caissier n'annule pas seul, il demande au gérant.
+  if (ctx.user.role !== "manager") throw forbidden("L'annulation d'une vente doit être validée par le gérant : utilisez « Demander l'annulation ».");
   const payments = all("SELECT * FROM payments WHERE sale_id = ?", s.id);
   // Caisse qui rembourse : celle de la vente si elle est encore ouverte ; sinon (gérant) une caisse
   // ouverte qu'il désigne, ou la seule caisse ouverte. Une caisse fermée n'est jamais modifiée.
@@ -489,5 +491,62 @@ export function cancelSale(ctx, saleId, body) {
     notify({ roles: ["owner", "manager"], exceptUserId: ctx.user.id, type: "exceptional", severity: "warn", title: "Vente annulée", body: `${ctx.user.full_name} a annulé la vente ${s.doc_no} (${money(s.total)}). Motif : ${reason}`, link: `#/recus/${doc}` });
     signal(["owner", "manager", "cashier", "waiter"], "stock");
     return { doc_no: doc, refunds: refundDocs };
+  });
+}
+
+// ---------- Demandes d'annulation (caissier → gérant) ----------
+export function requestCancelSale(ctx, saleId, body) {
+  const reason = str(body.reason, "Motif", { required: true, min: 5, max: 300 });
+  const s = get("SELECT s.*, u.full_name AS cashier_name FROM sales s JOIN users u ON u.id = s.cashier_id WHERE s.id = ?", saleId);
+  if (!s) throw notFound("Vente introuvable.");
+  if (s.status === "cancelled") throw bad("Cette vente est déjà annulée.");
+  if (get("SELECT 1 FROM cancel_requests WHERE sale_id = ? AND status = 'pending'", saleId)) throw bad("Une demande d'annulation est déjà en attente pour cette vente.");
+  return tx(() => {
+    const id = Number(run("INSERT INTO cancel_requests (sale_id, requested_by, reason, at) VALUES (?,?,?,?)", saleId, ctx.user.id, reason, now()).lastInsertRowid);
+    audit(ctx, "annulation_demandee", "sale", saleId, `Annulation de la vente ${s.doc_no} (${money(s.total)}) demandée : ${reason}`);
+    notify({ roles: ["manager"], type: "approval", severity: "warn", title: `Annulation demandée : ${s.doc_no}`, body: `${ctx.user.full_name} demande d'annuler la vente ${s.doc_no} (${money(s.total)}). Motif : ${reason}`, link: "#/gerant" });
+    return { id, status: "pending" };
+  });
+}
+
+export function listCancelRequests(ctx, { status } = {}) {
+  const where = [];
+  const p = [];
+  if (["pending", "approved", "refused"].includes(status)) {
+    where.push("r.status = ?");
+    p.push(status);
+  }
+  if (ctx.user.role === "cashier") {
+    where.push("r.requested_by = ?");
+    p.push(ctx.user.id);
+  }
+  return all(
+    `SELECT r.*, s.doc_no, s.total, s.paid, s.status AS sale_status, u.full_name AS requested_by_name, hu.full_name AS handled_by_name
+     FROM cancel_requests r JOIN sales s ON s.id = r.sale_id JOIN users u ON u.id = r.requested_by LEFT JOIN users hu ON hu.id = r.handled_by
+     ${where.length ? "WHERE " + where.join(" AND ") : ""} ORDER BY r.id DESC LIMIT 100`,
+    ...p,
+  );
+}
+
+export function decideCancelRequest(ctx, id, approve, body = {}) {
+  const r = get("SELECT r.*, s.doc_no FROM cancel_requests r JOIN sales s ON s.id = r.sale_id WHERE r.id = ?", id);
+  if (!r) throw notFound("Demande introuvable.");
+  if (r.status !== "pending") throw bad("Cette demande a déjà été traitée.");
+  const note = str(body.note, "Commentaire", { max: 300 });
+  const requester = get("SELECT full_name FROM users WHERE id = ?", r.requested_by).full_name;
+  return tx(() => {
+    let result = null;
+    if (approve) result = cancelSale(ctx, r.sale_id, { reason: `${r.reason} (demandé par ${requester}, validé par ${ctx.user.full_name})`, refund_session_id: body.refund_session_id });
+    run("UPDATE cancel_requests SET status = ?, handled_by = ?, handled_at = ?, note = ? WHERE id = ?", approve ? "approved" : "refused", ctx.user.id, now(), note, id);
+    if (!approve) audit(ctx, "annulation_refusee", "sale", r.sale_id, `Demande d'annulation de ${r.doc_no} refusée${note ? ` : ${note}` : ""}`);
+    notify({
+      userIds: [r.requested_by],
+      type: "approval",
+      severity: approve ? "info" : "warn",
+      title: approve ? `Annulation validée : ${r.doc_no}` : `Annulation refusée : ${r.doc_no}`,
+      body: approve ? `${ctx.user.full_name} a validé l'annulation (${result.doc_no}).` : `${ctx.user.full_name} a refusé${note ? ` : ${note}` : "."}`,
+      link: `#/ventes/${r.sale_id}`,
+    });
+    return { status: approve ? "approved" : "refused", ...(result || {}) };
   });
 }

@@ -18,6 +18,31 @@ const deviceId = () => {
 // ---------- Connexion et installation ----------
 export function viewLogin(root, { onDone }) {
   const err = h("div", { class: "banner bad hidden" });
+  const demoBox = h("div");
+  // Version de démonstration : les comptes fictifs sont proposés (un toucher remplit le formulaire).
+  GET("/api/setup")
+    .then((st) => {
+      if (!st?.demo) return;
+      demoBox.replaceChildren(
+        h(
+          "div",
+          { class: "card mb", style: { borderColor: "var(--warn)" } },
+          h("div", { class: "flex between" }, h("b", null, "Démonstration"), h("span", { class: "chip warn" }, "données fictives")),
+          h("p", { class: "small text-2" }, `Touchez un compte pour le remplir (mot de passe : ${st.demo_password}).`),
+          h(
+            "div",
+            { class: "list" },
+            st.demo_accounts.map((a) =>
+              h("button", { type: "button", class: "item", style: { background: "none", border: 0, borderBottom: "1px solid var(--border)", width: "100%", textAlign: "left", font: "inherit", color: "inherit", cursor: "pointer" }, on: { click: () => {
+                form.querySelector("[name=username]").value = a.username;
+                form.querySelector("[name=password]").value = st.demo_password;
+              } } }, h("div", { class: "grow" }, h("div", { class: "t" }, a.full_name), h("div", { class: "d" }, `${a.role_label} · identifiant « ${a.username} »`))),
+            ),
+          ),
+        ),
+      );
+    })
+    .catch(() => {});
   const form = h(
     "form",
     { class: "card form", on: { submit: async (e) => {
@@ -49,7 +74,7 @@ export function viewLogin(root, { onDone }) {
       h("p", null, "Propriétaire : sur le téléphone ou l'ordinateur qui fait tourner l'application, tapez « maquis acces » dans Termux (ou « npm run acces » sur un ordinateur). La liste des identifiants s'affiche ; « maquis acces votre-identifiant » donne un mot de passe provisoire."),
     ),
   );
-  root.replaceChildren(h("div", { class: "auth" }, h("div", { class: "box" }, h("div", { class: "logo" }, "MP"), h("h1", null, "MAQUIS PRO MANAGER"), h("p", { class: "tag" }, "Stocks, ventes, caisse et bilans de votre maquis"), form)));
+  root.replaceChildren(h("div", { class: "auth" }, h("div", { class: "box" }, h("div", { class: "logo" }, "MP"), h("h1", null, "MAQUIS PRO MANAGER"), h("p", { class: "tag" }, "Stocks, ventes, caisse et bilans de votre maquis"), demoBox, form)));
 }
 
 export function viewSetup(root, { onDone }) {

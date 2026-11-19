@@ -27,6 +27,7 @@ But : vérifier vous-même chaque fonction dans les conditions réelles (vrais t
 | `maquis maj` | installe la dernière version corrigée (les données de test sont gardées) |
 | `maquis arret` | arrête l'application |
 | `maquis zero` | recommence le test à zéro (anciennes données mises de côté, pas effacées) |
+| `maquis demo` | lance la **démonstration** (maquis fictif rempli, à part des vraies données), pour découvrir ou présenter |
 
 Pour que le test dure toute la nuit :
 - laissez Termux ouvert, le téléphone **branché** ;

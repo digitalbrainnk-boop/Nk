@@ -31,6 +31,15 @@ Application de gestion d'un maquis : stocks, entrées et sorties de boissons, co
 | **Billetage** à la fermeture de caisse (billets et pièces) | ✅ |
 | **Rentabilité par boisson** (marge, marge par bouteille, bénéfice net après pertes) et **point des serveurs** | ✅ Tableau de bord, bilans PDF et Excel |
 
+## Démonstration (exemplaire à montrer)
+
+Un maquis fictif avec une semaine d'activité, pour découvrir l'application et la présenter au propriétaire, au gérant et aux serveurs :
+- `maquis demo` dans Termux ;
+- `DEMO.bat` sur Windows ;
+- `npm run demo` ailleurs.
+
+Les comptes sont proposés sur l'écran de connexion (mot de passe : `demo1234`). La démonstration est séparée des vraies données et marquée « DÉMONSTRATION » partout. Le fonctionnement conseillé (qui fait quoi, journée type) est dans [docs/MODELE-DE-FONCTIONNEMENT.md](docs/MODELE-DE-FONCTIONNEMENT.md).
+
 ## Tester avant la mise en ligne
 
 Sans hébergeur : l'application tourne sur un téléphone Android (Termux) ou un ordinateur Windows, avec un lien https temporaire et gratuit pour les autres téléphones de test. Dans Termux :
@@ -61,10 +70,11 @@ Mise en ligne (o2switch, serveur Docker) et tâche planifiée de 03 h 00 : voir 
 npm test
 ```
 
-39 tests automatiques sur un vrai serveur et une vraie base. Ils couvrent les 18 tests obligatoires du cahier des charges (scénario d'une semaine dans un maquis : entrées, ventes, casses, crédits, caisse, reçus, permissions, bilans de 03 h 00 et du lundi, hors connexion, sauvegarde et restauration), ainsi que la sécurité. Le détail est dans [docs/DOCUMENTATION-TECHNIQUE.md](docs/DOCUMENTATION-TECHNIQUE.md#tests).
+42 tests automatiques sur un vrai serveur et une vraie base. Ils couvrent les 18 tests obligatoires du cahier des charges (scénario d'une semaine dans un maquis : entrées, ventes, casses, crédits, caisse, reçus, permissions, bilans de 03 h 00 et du lundi, hors connexion, sauvegarde et restauration), ainsi que la sécurité. Le détail est dans [docs/DOCUMENTATION-TECHNIQUE.md](docs/DOCUMENTATION-TECHNIQUE.md#tests).
 
 ## Documentation
 
+- [Modèle de fonctionnement](docs/MODELE-DE-FONCTIONNEMENT.md) : qui fait quoi, journée type, contrôles.
 - [Tester avant la mise en ligne](docs/TESTER-AVANT-MISE-EN-LIGNE.md) : installation de test et liste de vérifications.
 - [Guide d'utilisation](docs/GUIDE-UTILISATION.md) : propriétaire, gérant, caissier, serveur.
 - [Installation et mise en ligne](docs/INSTALLATION.md).

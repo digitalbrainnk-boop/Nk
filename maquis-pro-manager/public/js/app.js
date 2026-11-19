@@ -266,7 +266,12 @@ async function start() {
   main = h("main", { id: "main" });
   bottom = h("nav", { class: "bottomnav", "aria-label": "Navigation principale" });
   side = h("nav", { class: "sidenav", "aria-label": "Menu" });
-  root.replaceChildren(topbar, h("div", { class: "layout" }, side, main), bottom);
+  root.replaceChildren(
+    S.boot.settings.demo ? h("div", { class: "demo-ribbon" }, "DÉMONSTRATION — données fictives pour découvrir l'application") : null,
+    topbar,
+    h("div", { class: "layout" }, side, main),
+    bottom,
+  );
   await refreshQueueCount();
   if (!S.user.must_change_password) {
     connectEvents();

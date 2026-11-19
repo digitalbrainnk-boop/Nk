@@ -23,6 +23,8 @@ La **journée commerciale** va de 03 h 00 à 02 h 59 le lendemain : une vente fa
 | Enregistrer entrées, sorties, inventaires, commandes fournisseurs | ❌ | ✅ | ❌ | ❌ |
 | Voir les entrées et les sorties | ✅ | ✅ | ❌ | ❌ |
 | **Corriger ou annuler** une entrée ou une sortie déjà enregistrée | ✅ | ❌ (il signale l'erreur au propriétaire) | ❌ | ❌ |
+| Annuler une vente | ❌ (prévenu) | ✅ | demande au gérant | ❌ |
+| Changer un prix | ❌ (prévenu de chaque changement) | ✅ | ❌ | ❌ |
 | Prendre les commandes des clients | ❌ | ❌ | ❌ | ✅ |
 
 Le propriétaire **voit tout ce que fait le gérant**, sur les mêmes écrans. Il **n'encaisse pas et ne valide pas les commandes à sa place**. En revanche, **seul le propriétaire peut corriger ou annuler une entrée ou une sortie** une fois enregistrée : le gérant les enregistre et les consulte, mais ne peut plus y toucher. Ce n'est pas qu'une question d'affichage : le serveur refuse toute modification venant du compte propriétaire. Le gérant, lui, **ne voit pas l'espace du propriétaire**.
