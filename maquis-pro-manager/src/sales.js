@@ -76,6 +76,13 @@ export function createOrder(ctx, body) {
       search: [table_label, customer_name, ...lines.flatMap((l) => [l.product.name, l.product.brand])],
     });
     audit(ctx, "commande_creee", "order", id, `Commande ${order_no} (${table_label || "sans table"}) : ${money(total)}`);
+    notify({
+      roles: ["cashier", "manager"],
+      type: "order",
+      title: `Nouvelle commande${table_label ? ` — ${table_label}` : ""}`,
+      body: `${ctx.user.full_name} : ${lines.map((l) => `${l.qty} ${pname(l.product)}`).join(", ")} (${money(total)})`,
+      link: "#/commandes",
+    });
     signal(["cashier", "manager", "owner"], "orders", { id, order_no });
     return getOrder(id);
   });

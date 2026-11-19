@@ -321,11 +321,16 @@ export function createApp() {
   api.get("/entries", need("owner", "manager"), h((req) => stock.listEntries(req.query)));
   api.get("/entries/:id", need("owner", "manager"), h((req) => stock.getEntry(id(req))));
   api.post("/entries", need("manager"), op((req, ctx) => stock.createEntry(ctx, req.body)));
-  api.post("/entries/:id/cancel", need("manager"), h((req) => stock.cancelEntry(ctxOf(req), id(req), req.body)));
+  // Le gérant enregistre les entrées et sorties ; seul le propriétaire peut les annuler ou les corriger.
+  api.post("/entries/:id/cancel", need("owner"), h((req) => stock.cancelEntry(ctxOf(req), id(req), req.body)));
+  api.post("/entries/:id/correct", need("owner"), h((req) => stock.correctEntry(ctxOf(req), id(req), req.body)));
+  api.post("/entries/:id/report", need("manager"), h((req) => stock.reportError(ctxOf(req), "entry", id(req), req.body)));
   api.get("/exits", need("owner", "manager"), h((req) => stock.listExits(req.query)));
   api.get("/exits/:id", need("owner", "manager"), h((req) => stock.getExit(id(req))));
   api.post("/exits", need("manager"), op((req, ctx) => stock.createExit(ctx, req.body)));
-  api.post("/exits/:id/cancel", need("manager"), h((req) => stock.cancelExit(ctxOf(req), id(req), req.body)));
+  api.post("/exits/:id/cancel", need("owner"), h((req) => stock.cancelExit(ctxOf(req), id(req), req.body)));
+  api.post("/exits/:id/correct", need("owner"), h((req) => stock.correctExit(ctxOf(req), id(req), req.body)));
+  api.post("/exits/:id/report", need("manager"), h((req) => stock.reportError(ctxOf(req), "exit", id(req), req.body)));
   api.get("/inventories", need("owner", "manager"), h(() => stock.listInventories()));
   api.get("/inventories/:id", need("owner", "manager"), h((req) => stock.getInventory(id(req))));
   api.post("/inventories", need("manager"), h((req) => stock.createInventory(ctxOf(req), req.body)));

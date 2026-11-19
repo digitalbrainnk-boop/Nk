@@ -114,7 +114,7 @@ test("11. le propriétaire consulte tout mais ne peut modifier aucune opération
     ["/api/orders", { lines: [{ product_id: P.brakina.id, qty: 1 }] }],
     ["/api/expenses", { category: "Glace", description: "test", amount: 100 }],
     ["/api/cash/movements", { kind: "withdrawal", amount: 100, reason: "test" }],
-    ["/api/entries/1/cancel", { reason: "falsification" }],
+    ["/api/sales/1/cancel", { reason: "falsification" }],
   ]) {
     assert.equal((await A.owner.post(url, body)).status, 403, url);
   }

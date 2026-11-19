@@ -497,3 +497,25 @@ export function productName(p) {
 export function photo(p, cls = "") {
   return p.photo ? h("img", { src: `/media/products/${p.photo}`, alt: "", loading: "lazy", class: cls }) : h("span", null, (p.brand || "?").slice(0, 2).toUpperCase());
 }
+
+// Petit signal sonore (nouvelle commande à encaisser). Les navigateurs ne jouent un son qu'après
+// un premier toucher de l'écran : c'est le cas dès que la personne a utilisé l'application.
+let audioCtx;
+export function beep() {
+  try {
+    audioCtx ||= new (window.AudioContext || window.webkitAudioContext)();
+    const t = audioCtx.currentTime;
+    for (const [f, d] of [[880, 0], [1320, 0.18]]) {
+      const o = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      o.frequency.value = f;
+      g.gain.setValueAtTime(0.0001, t + d);
+      g.gain.exponentialRampToValueAtTime(0.25, t + d + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + d + 0.16);
+      o.connect(g).connect(audioCtx.destination);
+      o.start(t + d);
+      o.stop(t + d + 0.17);
+    }
+    navigator.vibrate?.(150);
+  } catch {}
+}

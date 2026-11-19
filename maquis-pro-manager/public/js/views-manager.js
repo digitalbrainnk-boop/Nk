@@ -265,17 +265,21 @@ export async function viewEntries(main) {
   load().catch(fail);
 }
 
-export async function viewEntryForm(main, poId = null) {
+export async function viewEntryForm(main, poId = null, correctId = null) {
   const po = poId ? await GET(`/api/purchase-orders/${poId}`) : null;
+  const orig = correctId ? await GET(`/api/entries/${correctId}`) : null;
   const initial = po
     ? po.lines
         .filter((l) => l.remaining > 0)
         .map((l) => ({ product_id: l.product_id, crates: l.units_per_crate > 1 ? Math.floor(l.remaining / l.units_per_crate) : 0, extra: l.units_per_crate > 1 ? l.remaining % l.units_per_crate : l.remaining, upc: l.units_per_crate, cost: l.unit_cost }))
-    : [];
+    : orig
+      ? orig.lines.map((l) => ({ product_id: l.product_id, crates: l.crates, extra: l.extra_units, upc: l.units_per_crate, cost: l.unit_cost }))
+      : [];
+  const why = orig ? h("textarea", { name: "correction_reason", rows: 2, required: true, minlength: 5, placeholder: "Ex. 8 casiers livrés et non 10" }) : null;
   const total = h("b");
   const qtyEl = h("b");
   const lines = crateLines({ withCost: true, onChange: () => upd(), initial });
-  const paid = input("paid_amount", { type: "number", min: 0, value: 0, inputmode: "numeric" });
+  const paid = input("paid_amount", { type: "number", min: 0, value: orig ? orig.paid_amount : 0, inputmode: "numeric" });
   const rest = h("b");
   const upd = () => {
     qtyEl.textContent = `${num(lines.qty())} bouteilles`;
@@ -292,6 +296,19 @@ export async function viewEntryForm(main, poId = null) {
       if (!body.lines.length) return toast("Ajoutez au moins une boisson.", "bad");
       const btn = form.querySelector("button[type=submit]");
       btn.disabled = true;
+      if (orig) {
+        try {
+          const r = await POST(`/api/entries/${orig.id}/correct`, { ...body, po_id: undefined, correction_reason: d.correction_reason });
+          await refreshBoot().catch(() => {});
+          toast(`Entrée corrigée : ${orig.doc_no} annulée, remplacée par ${r.doc_no}.`, "good");
+          go(`#/recus/${r.doc_no}`);
+        } catch (err) {
+          fail(err);
+        } finally {
+          btn.disabled = false;
+        }
+        return;
+      }
       try {
         const r = await POST("/api/entries", body, { offline: `Entrée de ${num(lines.qty())} bouteilles` });
         await refreshBoot().catch(() => {});
@@ -311,15 +328,19 @@ export async function viewEntryForm(main, poId = null) {
     po
       ? h("div", { class: "banner info" }, icon("truck"), h("div", null, h("b", null, `Réception de la commande ${po.doc_no} — ${po.supplier}`), h("div", null, "Les quantités restant à recevoir sont déjà remplies : corrigez-les selon ce qui est réellement livré. Les écarts seront signalés.")))
       : null,
-    h("div", { class: "row" }, po ? null : field("Fournisseur", select("supplier_id", [{ value: "", label: "Non précisé" }, ...(S.boot.suppliers || []).map((s) => ({ value: s.id, label: s.name }))], "")), field("Numéro de facture", input("invoice_no"))),
+    orig
+      ? h("div", { class: "banner warn" }, icon("clip"), h("div", null, h("b", null, `Correction de l'entrée ${orig.doc_no} du ${datetime(orig.at)} (enregistrée par ${orig.user_name})`), h("div", null, "Mettez les bonnes quantités et les bons prix. L'entrée d'origine sera annulée par un document rectificatif et remplacée par celle-ci ; le gérant sera prévenu.")))
+      : null,
+    orig ? field("Motif de la correction (obligatoire)", why) : null,
+    h("div", { class: "row" }, po ? null : field("Fournisseur", select("supplier_id", [{ value: "", label: "Non précisé" }, ...(S.boot.suppliers || []).map((s) => ({ value: s.id, label: s.name }))], orig?.supplier_id ?? "")), field("Numéro de facture", input("invoice_no", { value: orig?.invoice_no || "" }))),
     lines.el,
     h("div", { class: "card" }, h("div", { class: "totals" }, h("div", null, h("span", null, "Quantité totale reçue"), qtyEl), h("div", { class: "b" }, h("span", null, "Montant total"), total))),
     h("div", { class: "row" }, field("Montant payé maintenant", paid), field("Mode de paiement", select("payment_method", S.boot.settings.payment_methods, "Espèces"))),
     h("div", { class: "totals" }, h("div", null, h("span", null, "Reste à payer au fournisseur"), rest)),
     field("Observation", h("textarea", { name: "observation", rows: 2 })),
-    h("button", { class: "btn primary lg", type: "submit" }, icon("check"), "Valider l'entrée"),
+    h("button", { class: "btn primary lg", type: "submit" }, icon("check"), orig ? "Enregistrer la correction" : "Valider l'entrée"),
   );
-  main.replaceChildren(pageHead(po ? "Réception d'une commande" : "Nouvelle entrée de boissons", "Le stock augmente dès la validation ; un reçu est créé automatiquement.", [], po ? `#/achats/${po.id}` : "#/entrees"), card(null, form));
+  main.replaceChildren(pageHead(orig ? `Corriger l'entrée ${orig.doc_no}` : po ? "Réception d'une commande" : "Nouvelle entrée de boissons", orig ? "Seul le propriétaire peut corriger une entrée." : "Le stock augmente dès la validation ; un reçu est créé automatiquement.", [], orig ? `#/entrees/${orig.id}` : po ? `#/achats/${po.id}` : "#/entrees"), card(null, form));
   upd();
 }
 
@@ -335,8 +356,51 @@ export async function viewEntry(main, id) {
       h("div", { class: "mt" }, table([{ label: "Boisson", get: (l) => `${productName(l)}` }, { label: "Casiers", r: true, get: (l) => num(l.crates) }, { label: "Btl/casier", r: true, get: (l) => l.units_per_crate }, { label: "Btl sup.", r: true, get: (l) => num(l.extra_units) }, { label: "Qté", r: true, get: (l) => h("b", null, num(l.qty)) }, { label: "Prix", r: true, get: (l) => money(l.unit_cost) }, { label: "Montant", r: true, get: (l) => money(l.line_total) }], e.lines)),
     ),
     docsCard(e.documents),
-    isManager() && e.status === "valid" ? cancelButton(`/api/entries/${id}/cancel`, "Annuler cette entrée", "Le stock sera diminué d'autant et un document rectificatif sera créé. L'entrée d'origine reste visible.", () => viewEntry(main, id)) : null,
+    reportsCard(e.reports),
+    e.status === "valid" ? opActions("entry", e, () => viewEntry(main, id)) : null,
   );
+}
+
+// Entrées et sorties : le gérant les enregistre ; seul le propriétaire les corrige ou les annule.
+function opActions(kind, op, done) {
+  const base = kind === "entry" ? "entrees" : "sorties";
+  const api = kind === "entry" ? "entries" : "exits";
+  const what = kind === "entry" ? "cette entrée" : "cette sortie";
+  if (S.user.role === "owner")
+    return h(
+      "div",
+      { class: "card mt" },
+      h("h3", null, "Correction (propriétaire)"),
+      h("p", { class: "small muted" }, "Corriger remplace l'opération par la bonne (l'originale est annulée par un document rectificatif). Annuler la supprime de ses effets. Tout reste tracé et le gérant est prévenu."),
+      h(
+        "div",
+        { class: "btnrow mt" },
+        h("a", { class: "btn primary", href: `#/${base}/corriger/${op.id}` }, icon("clip"), `Corriger ${what}`),
+        (() => {
+          const c = cancelButton(`/api/${api}/${op.id}/cancel`, `Annuler ${what}`, kind === "entry" ? "Le stock sera diminué d'autant et un document rectificatif sera créé. L'entrée d'origine reste visible." : "Les bouteilles seront remises en stock et un document rectificatif sera créé.", done);
+          c.classList.remove("mt");
+          return c;
+        })(),
+      ),
+    );
+  if (S.user.role === "manager")
+    return h("div", { class: "mt" }, h("button", { class: "btn", on: { click: async () => {
+      const msg = h("textarea", { name: "message", rows: 3, required: true, minlength: 5, placeholder: "Ex. j'ai saisi 10 casiers au lieu de 8" });
+      const ok = await modal("Signaler une erreur au propriétaire", h("div", { class: "form" }, h("p", { class: "text-2" }, `Une ${kind === "entry" ? "entrée" : "sortie"} enregistrée ne peut plus être modifiée par le gérant. Expliquez l'erreur : le propriétaire est prévenu et fera la correction.`), field("Explication", msg)), [
+        { label: "Retour", class: "ghost" },
+        { label: "Envoyer au propriétaire", class: "primary", submit: true, onClick: async () => {
+          await POST(`/api/${api}/${op.id}/report`, { message: msg.value.trim() });
+          toast("Le propriétaire a été prévenu.", "good");
+          return true;
+        } },
+      ]);
+      if (ok) done();
+    } } }, icon("alert"), "Signaler une erreur au propriétaire"));
+  return null;
+}
+
+function reportsCard(reports) {
+  return reports?.length ? h("div", { class: "banner warn mt" }, icon("alert"), h("div", null, h("b", null, "Erreurs signalées par le gérant :"), reports.map((r) => h("div", null, `${datetime(r.at)} — ${r.summary.replace(/^Erreur signalée sur [^:]+: /, "")}`)))) : null;
 }
 
 function docsCard(docs) {
@@ -398,14 +462,15 @@ export async function viewExits(main) {
   load().catch(fail);
 }
 
-export function viewExitForm(main) {
-  let reason = "broken";
+export async function viewExitForm(main, correctId = null) {
+  const orig = correctId ? await GET(`/api/exits/${correctId}`) : null;
+  let reason = orig?.reason || "broken";
   const reasonBox = h("div", { class: "tabs" });
   const renderReasons = () => reasonBox.replaceChildren(...EXIT_REASONS.map(([k, l]) => h("button", { type: "button", class: reason === k ? "on" : "", on: { click: () => ((reason = k), renderReasons()) } }, l)));
   renderReasons();
   const qtyEl = h("b");
-  const lines = crateLines({ onChange: () => (qtyEl.textContent = `${num(lines.qty())} bouteilles`) });
-  qtyEl.textContent = "0 bouteille";
+  const lines = crateLines({ onChange: () => (qtyEl.textContent = `${num(lines.qty())} bouteilles`), initial: orig ? orig.lines.map((l) => ({ product_id: l.product_id, crates: l.crates, extra: l.extra_units, upc: l.units_per_crate })) : [] });
+  qtyEl.textContent = orig ? `${num(lines.qty())} bouteilles` : "0 bouteille";
   const form = h(
     "form",
     { class: "form", on: { submit: async (e) => {
@@ -413,6 +478,17 @@ export function viewExitForm(main) {
       const d = formData(form);
       const body = { reason, lines: lines.get(), responsible_name: d.responsible_name, waiter_id: d.waiter_id || null, observation: d.observation };
       if (!body.lines.length) return toast("Ajoutez au moins une boisson.", "bad");
+      if (orig) {
+        try {
+          const r = await POST(`/api/exits/${orig.id}/correct`, { ...body, observation: d.observation, correction_reason: d.correction_reason });
+          await refreshBoot().catch(() => {});
+          toast(`Sortie corrigée : ${orig.doc_no} annulée, remplacée par ${r.doc_no}.`, "good");
+          go(`#/recus/${r.doc_no}`);
+        } catch (err) {
+          fail(err);
+        }
+        return;
+      }
       try {
         const r = await POST("/api/exits", body, { offline: `Sortie (${EXIT_REASONS.find((x) => x[0] === reason)[1]}) de ${num(lines.qty())} bouteilles` });
         await refreshBoot().catch(() => {});
@@ -427,14 +503,18 @@ export function viewExitForm(main) {
         fail(err);
       }
     } } },
+    orig
+      ? h("div", { class: "banner warn" }, icon("clip"), h("div", null, h("b", null, `Correction de la sortie ${orig.doc_no} du ${datetime(orig.at)} (enregistrée par ${orig.user_name})`), h("div", null, "La sortie d'origine sera annulée par un document rectificatif et remplacée par celle-ci ; le gérant sera prévenu.")))
+      : null,
+    orig ? field("Motif de la correction (obligatoire)", h("textarea", { name: "correction_reason", rows: 2, required: true, minlength: 5 })) : null,
     field("Motif de la sortie", reasonBox),
     lines.el,
     h("div", { class: "totals" }, h("div", { class: "b" }, h("span", null, "Quantité totale"), qtyEl)),
-    h("div", { class: "row" }, field("Nom du responsable", input("responsible_name", { placeholder: "Qui a cassé, offert, consommé…" })), field("Serveur concerné", select("waiter_id", [{ value: "", label: "Aucun" }, ...(S.boot.waiters || []).map((w) => ({ value: w.id, label: w.full_name }))], ""))),
+    h("div", { class: "row" }, field("Nom du responsable", input("responsible_name", { placeholder: "Qui a cassé, offert, consommé…", value: orig?.responsible_name || "" })), field("Serveur concerné", select("waiter_id", [{ value: "", label: "Aucun" }, ...(S.boot.waiters || []).map((w) => ({ value: w.id, label: w.full_name }))], orig?.waiter_id ?? ""))),
     field("Observation", h("textarea", { name: "observation", rows: 2 }), "Obligatoire pour une perte ou une autre sortie exceptionnelle."),
-    h("button", { class: "btn primary lg", type: "submit" }, icon("check"), "Enregistrer la sortie"),
+    h("button", { class: "btn primary lg", type: "submit" }, icon("check"), orig ? "Enregistrer la correction" : "Enregistrer la sortie"),
   );
-  main.replaceChildren(pageHead("Nouvelle sortie de boissons", "Pour les ventes, utilisez la caisse : elles diminuent déjà le stock.", [], "#/sorties"), card(null, form));
+  main.replaceChildren(pageHead(orig ? `Corriger la sortie ${orig.doc_no}` : "Nouvelle sortie de boissons", orig ? "Seul le propriétaire peut corriger une sortie." : "Pour les ventes, utilisez la caisse : elles diminuent déjà le stock.", [], orig ? `#/sorties/${orig.id}` : "#/sorties"), card(null, form));
 }
 
 export async function viewExit(main, id) {
@@ -445,7 +525,8 @@ export async function viewExit(main, id) {
     x.status === "cancelled" ? h("div", { class: "banner bad" }, icon("alert"), `Annulée le ${datetime(x.cancelled_at)} : ${x.cancel_reason}`) : null,
     card(null, h("div", { class: "kv" }, h("div", null, h("span", null, "Motif"), h("b", null, x.reason_label)), h("div", null, h("span", null, "Responsable"), h("b", null, x.responsible_name || x.user_name)), h("div", null, h("span", null, "Serveur"), h("b", null, x.waiter_name || "—")), h("div", null, h("span", null, "Observation"), h("b", null, x.observation || "—"))), h("div", { class: "mt" }, table([{ label: "Boisson", get: (l) => `${productName(l)}` }, { label: "Casiers", r: true, get: (l) => num(l.crates) }, { label: "Btl", r: true, get: (l) => num(l.extra_units) }, { label: "Qté totale", r: true, get: (l) => h("b", null, num(l.qty)) }], x.lines))),
     docsCard(x.documents),
-    isManager() && x.status === "valid" ? cancelButton(`/api/exits/${id}/cancel`, "Annuler cette sortie", "Les bouteilles seront remises en stock et un document rectificatif sera créé.", () => viewExit(main, id)) : null,
+    reportsCard(x.reports),
+    x.status === "valid" ? opActions("exit", x, () => viewExit(main, id)) : null,
   );
 }
 

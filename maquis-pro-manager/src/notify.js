@@ -12,6 +12,7 @@ export const NOTIF_TYPES = {
   entry: "Nouvelle entrée de marchandises",
   purchase: "Commande fournisseur et réception",
   exit: "Nouvelle sortie (offerte, cassée, perdue…)",
+  order: "Nouvelle commande d'un serveur (à encaisser)",
   sale: "Nouvelle vente",
   expense: "Nouvelle dépense",
   cash_variance: "Écart de caisse",

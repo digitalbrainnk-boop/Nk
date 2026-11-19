@@ -240,6 +240,7 @@ export function getEntry(id) {
   if (!e) throw notFound("Entrée introuvable.");
   e.lines = all("SELECT l.*, p.name, p.brand FROM entry_lines l JOIN products p ON p.id = l.product_id WHERE entry_id = ?", id);
   e.documents = documentsFor("entry", id);
+  e.reports = errorReports("entry", id);
   return e;
 }
 
@@ -257,13 +258,13 @@ function rectification(ctx, { type, original, title, reason, rows, columns, tota
   });
 }
 
-export function cancelEntry(ctx, id, body) {
+export function cancelEntry(ctx, id, body, { forCorrection = false } = {}) {
   const reason = str(body.reason, "Motif de l'annulation", { required: true, min: 5, max: 300 });
   const e = getEntry(id);
   if (e.status !== "valid") throw bad("Cette entrée est déjà annulée.");
   return tx(() => {
     for (const l of e.lines) {
-      if (stockOf(l.product_id) < l.qty) throw conflict(`Impossible d'annuler : une partie de ${pname(l)} est déjà sortie du stock. Faites plutôt une sortie ou un inventaire.`);
+      if (!forCorrection && stockOf(l.product_id) < l.qty) throw conflict(`Impossible d'annuler : une partie de ${pname(l)} est déjà sortie du stock. Corrigez plutôt l'entrée avec les bonnes quantités, ou faites un inventaire.`);
     }
     const t = now();
     run("UPDATE entries SET status = 'cancelled', cancelled_at = ?, cancelled_by = ?, cancel_reason = ? WHERE id = ?", t, ctx.user.id, reason, id);
@@ -280,7 +281,7 @@ export function cancelEntry(ctx, id, body) {
     });
     audit(ctx, "entree_annulee", "entry", id, `Entrée ${e.doc_no} annulée : ${reason}`, { rectificatif: doc });
     touchDay(e.business_day, "annulation d'entrée");
-    notify({ roles: ["owner"], type: "exceptional", severity: "warn", title: "Entrée annulée", body: `${ctx.user.full_name} a annulé l'entrée ${e.doc_no} (${money(e.total_amount)}). Motif : ${reason}`, link: `#/recus/${doc}` });
+    notify({ roles: ["owner", "manager"], exceptUserId: ctx.user.id, type: "exceptional", severity: "warn", title: "Entrée annulée", body: `${ctx.user.full_name} a annulé l'entrée ${e.doc_no} (${money(e.total_amount)}). Motif : ${reason}`, link: `#/recus/${doc}` });
     signal(["owner", "manager", "cashier", "waiter"], "stock");
     return { doc_no: doc };
   });
@@ -382,6 +383,7 @@ export function getExit(id) {
   x.reason_label = EXIT_LABELS[x.reason];
   x.lines = all("SELECT l.*, p.name, p.brand FROM exit_lines l JOIN products p ON p.id = l.product_id WHERE exit_id = ?", id);
   x.documents = documentsFor("exit", id);
+  x.reports = errorReports("exit", id);
   return x;
 }
 
@@ -404,7 +406,7 @@ export function cancelExit(ctx, id, body) {
     });
     audit(ctx, "sortie_annulee", "exit", id, `Sortie ${x.doc_no} annulée : ${reason}`, { rectificatif: doc });
     touchDay(x.business_day, "annulation de sortie");
-    notify({ roles: ["owner"], type: "exceptional", severity: "warn", title: "Sortie annulée", body: `${ctx.user.full_name} a annulé la sortie ${x.doc_no} (${x.reason_label}). Motif : ${reason}`, link: `#/recus/${doc}` });
+    notify({ roles: ["owner", "manager"], exceptUserId: ctx.user.id, type: "exceptional", severity: "warn", title: "Sortie annulée", body: `${ctx.user.full_name} a annulé la sortie ${x.doc_no} (${x.reason_label}). Motif : ${reason}`, link: `#/recus/${doc}` });
     signal(["owner", "manager", "cashier", "waiter"], "stock");
     return { doc_no: doc };
   });
@@ -726,3 +728,72 @@ export function stockStatement(fromDay, toDay) {
   const totals = Object.fromEntries(["opening", "entries", ...STATEMENT_KINDS, "exits", "adjust", "closing", "value", "sale_value"].map((k) => [k, sum(k)]));
   return { from: fromDay, to: toDay, rows, totals, ok: rows.every((r) => r.ok) };
 }
+
+// ---------- Corrections (propriétaire seulement) ----------
+// Corriger = annuler l'opération d'origine (document rectificatif) et enregistrer la bonne,
+// dans une seule transaction. Rien n'est effacé : l'original, l'annulation et la correction restent.
+export function correctEntry(ctx, id, body) {
+  const why = str(body.correction_reason, "Motif de la correction", { required: true, min: 5, max: 300 });
+  const e = getEntry(id);
+  if (e.status !== "valid") throw bad("Cette entrée est déjà annulée.");
+  return tx(() => {
+    const cancelled = cancelEntry(ctx, id, { reason: `Correction : ${why}` }, { forCorrection: true });
+    const po = e.po_id ? get("SELECT id, status FROM purchase_orders WHERE id = ?", e.po_id) : null;
+    const created = createEntry(ctx, {
+      supplier_id: body.supplier_id !== undefined ? body.supplier_id : e.supplier_id,
+      po_id: po && ["open", "partial"].includes(po.status) ? po.id : undefined,
+      invoice_no: body.invoice_no !== undefined ? body.invoice_no : e.invoice_no,
+      paid_amount: body.paid_amount !== undefined ? body.paid_amount : e.paid_amount,
+      payment_method: body.payment_method || e.payment_method,
+      observation: `Correction de ${e.doc_no} : ${why}${body.observation ? ` — ${body.observation}` : ""}`.slice(0, 500),
+      lines: body.lines,
+    });
+    const touched = new Set([...e.lines.map((l) => l.product_id), ...all("SELECT product_id FROM entry_lines WHERE entry_id = ?", created.id).map((l) => l.product_id)]);
+    for (const pid of touched) {
+      const s = stockOf(pid);
+      if (s < 0) throw conflict(`Correction impossible : le stock de ${pname(productRow(pid))} deviendrait négatif (${s}). Des bouteilles sont déjà sorties : vérifiez les quantités ou faites un inventaire.`);
+    }
+    audit(ctx, "entree_corrigee", "entry", id, `Entrée ${e.doc_no} corrigée et remplacée par ${created.doc_no} : ${why}`, { annulation: cancelled.doc_no, remplacement: created.doc_no });
+    return { cancelled_doc: cancelled.doc_no, doc_no: created.doc_no, id: created.id };
+  });
+}
+
+export function correctExit(ctx, id, body) {
+  const why = str(body.correction_reason, "Motif de la correction", { required: true, min: 5, max: 300 });
+  const x = getExit(id);
+  if (x.status !== "valid") throw bad("Cette sortie est déjà annulée.");
+  return tx(() => {
+    const cancelled = cancelExit(ctx, id, { reason: `Correction : ${why}` });
+    const created = createExit(ctx, {
+      reason: body.reason || x.reason,
+      lines: body.lines,
+      responsible_name: body.responsible_name !== undefined ? body.responsible_name : x.responsible_name,
+      waiter_id: body.waiter_id !== undefined ? body.waiter_id : x.waiter_id,
+      observation: `Correction de ${x.doc_no} : ${why}${body.observation ? ` — ${body.observation}` : ""}`.slice(0, 500),
+    });
+    audit(ctx, "sortie_corrigee", "exit", id, `Sortie ${x.doc_no} corrigée et remplacée par ${created.doc_no} : ${why}`, { annulation: cancelled.doc_no, remplacement: created.doc_no });
+    return { cancelled_doc: cancelled.doc_no, doc_no: created.doc_no, id: created.id };
+  });
+}
+
+// Le gérant ne corrige pas lui-même : il signale l'erreur au propriétaire, qui décide.
+export function reportError(ctx, kind, id, body) {
+  const message = str(body.message, "Explication", { required: true, min: 5, max: 500 });
+  const op = kind === "entry" ? getEntry(id) : getExit(id);
+  const what = kind === "entry" ? "l'entrée" : "la sortie";
+  tx(() => {
+    audit(ctx, "erreur_signalee", kind, id, `Erreur signalée sur ${what} ${op.doc_no} : ${message}`);
+    notify({
+      roles: ["owner"],
+      type: "exceptional",
+      severity: "warn",
+      title: `Erreur signalée sur ${what} ${op.doc_no}`,
+      body: `${ctx.user.full_name} : ${message}`,
+      link: kind === "entry" ? `#/entrees/${id}` : `#/sorties/${id}`,
+    });
+  });
+  return { ok: true };
+}
+
+export const errorReports = (kind, id) =>
+  all("SELECT at, user_name, summary FROM audit_log WHERE action = 'erreur_signalee' AND entity = ? AND entity_id = ? ORDER BY id", kind, String(id));

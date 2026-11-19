@@ -149,7 +149,9 @@ test("commande fournisseur : quantités suggérées, bon PDF, réception partiel
   assert.equal(cur.entries.length, 2);
   assert.equal((await A.manager.post("/api/entries", { po_id: po.id, lines: [{ product_id: P.castel.id, crates: 1 }] })).status, 400);
   // Annuler la première livraison remet la commande « reçue en partie ».
-  await A.manager.ok("POST", `/api/entries/${e1.id}/cancel`, { reason: "Livraison saisie en double" });
+  // Le gérant ne peut pas annuler une entrée : seul le propriétaire le peut.
+  assert.equal((await A.manager.post(`/api/entries/${e1.id}/cancel`, { reason: "Livraison saisie en double" })).status, 403);
+  await A.owner.ok("POST", `/api/entries/${e1.id}/cancel`, { reason: "Livraison saisie en double" });
   cur = await A.manager.ok("GET", `/api/purchase-orders/${po.id}`);
   assert.equal(cur.status, "partial");
   assert.equal(cur.lines.find((l) => l.product_id === P.brakina.id).received_qty, 36);
@@ -353,4 +355,55 @@ test("le gérant tient sa caisse ; le propriétaire voit tout sans rien pouvoir 
   const close = await A.manager.ok("POST", "/api/cash/close", { counted: { Espèces: 3250 } });
   assert.equal(close.variance, 0);
   assert.equal((await A.owner.ok("GET", `/api/documents/${close.doc_no}`)).payload.fields.find((f) => f[0] === "Caissier")[1], "Awa Kaboré");
+});
+
+
+test("entrées et sorties : le gérant enregistre et voit, seul le propriétaire corrige ou annule ; alerte de commande", async () => {
+  at("2026-11-19T19:00:00Z");
+  A.owner = await login("patron", "Patron2026!", "owner");
+  A.manager = await login("gerant", "Gerant2026!b", "manager");
+  A.cashier = await login("caisse", "Caisse26b", "cashier");
+  A.waiter = await login("serveur1", "Serveur1b", "waiter");
+  const before = await stockOf(P.coca.id);
+  // Le gérant saisit 10 casiers de Coca (240) au lieu de 8 (192), puis le signale.
+  const e = await A.manager.ok("POST", "/api/entries", { supplier_id: supplier.id, lines: [{ product_id: P.coca.id, crates: 10 }] });
+  for (const url of [`/api/entries/${e.id}/cancel`, `/api/entries/${e.id}/correct`]) assert.equal((await A.manager.post(url, { reason: "test", correction_reason: "test" })).status, 403, url);
+  await A.manager.ok("POST", `/api/entries/${e.id}/report`, { message: "J'ai saisi 10 casiers, il y en avait 8" });
+  assert.ok((await A.owner.ok("GET", "/api/notifications")).items.some((n) => n.title === `Erreur signalée sur l'entrée ${e.doc_no}`));
+  assert.equal((await A.owner.ok("GET", `/api/entries/${e.id}`)).reports.length, 1);
+  // Entre-temps des Coca ont été vendues : il n'en reste que 100. Annuler les 240 est impossible,
+  // mais corriger à 192 (8 casiers) l'est : 100 - 240 + 192 = 52.
+  await A.cashier.post("/api/cash/open", { opening_float: 0 });
+  await A.cashier.ok("POST", "/api/sales", { lines: [{ product_id: P.coca.id, qty: before + 240 - 100 }], payments: [], customer_name: "Grossiste" });
+  assert.equal(await stockOf(P.coca.id), 100);
+  assert.equal((await A.owner.post(`/api/entries/${e.id}/cancel`, { reason: "Erreur de quantité" })).status, 409);
+  const c = await A.owner.ok("POST", `/api/entries/${e.id}/correct`, { correction_reason: "8 casiers livrés, pas 10", lines: [{ product_id: P.coca.id, crates: 8 }] });
+  assert.match(c.cancelled_doc, /^ANN-/);
+  assert.match(c.doc_no, /^ENT-/);
+  assert.equal(await stockOf(P.coca.id), 52);
+  const orig = await A.manager.ok("GET", `/api/entries/${e.id}`);
+  assert.equal(orig.status, "cancelled");
+  assert.match(orig.cancel_reason, /^Correction : 8 casiers/);
+  const repl = await A.manager.ok("GET", `/api/entries/${c.id}`);
+  assert.equal(repl.lines[0].qty, 192);
+  assert.match(repl.observation, new RegExp(`Correction de ${e.doc_no}`));
+  assert.ok((await A.manager.ok("GET", "/api/notifications")).items.some((n) => n.title === "Entrée annulée"));
+  // Une correction qui rendrait le stock négatif est refusée et rien ne change.
+  // (52 - 192 + 1 < 0)
+  const bad = await A.owner.post(`/api/entries/${c.id}/correct`, { correction_reason: "Essai impossible", lines: [{ product_id: P.coca.id, extra_units: 1 }] });
+  assert.equal(bad.status, 409);
+  assert.equal((await A.manager.ok("GET", `/api/entries/${c.id}`)).status, "valid");
+  // Sorties : même règle.
+  const x = await A.manager.ok("POST", "/api/exits", { reason: "broken", lines: [{ product_id: P.castel.id, extra_units: 5 }], observation: "Casier tombé" });
+  assert.equal((await A.manager.post(`/api/exits/${x.id}/cancel`, { reason: "erreur" })).status, 403);
+  const cx = await A.owner.ok("POST", `/api/exits/${x.id}/correct`, { correction_reason: "Seulement 2 cassées", reason: "broken", lines: [{ product_id: P.castel.id, extra_units: 2 }] });
+  assert.equal((await A.owner.ok("GET", `/api/exits/${cx.id}`)).lines[0].qty, 2);
+  // Le propriétaire ne crée toujours ni entrée ni sortie lui-même.
+  assert.equal((await A.owner.post("/api/entries", { lines: [{ product_id: P.coca.id, crates: 1 }] })).status, 403);
+  assert.equal((await A.owner.post("/api/exits", { reason: "broken", lines: [{ product_id: P.coca.id, extra_units: 1 }] })).status, 403);
+  // Nouvelle commande : le gérant et le caissier sont alertés, pas le propriétaire.
+  const o = await A.waiter.ok("POST", "/api/orders", { table_label: "Table 5", lines: [{ product_id: P.castel.id, qty: 1 }] });
+  for (const who of [A.manager, A.cashier]) assert.ok((await who.ok("GET", "/api/notifications")).items.some((n) => n.type === "order" && n.title === "Nouvelle commande — Table 5"));
+  assert.ok(!(await A.owner.ok("GET", "/api/notifications")).items.some((n) => n.type === "order"));
+  assert.equal(o.status, "pending");
 });

@@ -1,5 +1,5 @@
 // Démarrage de l'application : session, navigation selon le rôle, temps réel, mode hors connexion.
-import { S, h, icon, GET, POST, api, on, emit, toast, fail, go, loader, empty, pageHead, card, syncQueue, refreshQueueCount, ROLE_LABELS, ApiError } from "./core.js";
+import { S, h, icon, GET, POST, api, on, emit, toast, fail, go, loader, empty, pageHead, card, syncQueue, refreshQueueCount, ROLE_LABELS, ApiError, beep } from "./core.js";
 import { viewLogin, viewSetup, viewChangePassword, viewReceipts, viewReceipt, viewReports, viewReport, viewNotifications, viewAccount } from "./views-common.js";
 import { viewDashboard, viewUsers, viewDevices, viewLogins, viewAudit, viewSettings, viewBackups } from "./views-owner.js";
 import * as M from "./views-manager.js";
@@ -24,7 +24,7 @@ const NAV = {
     groups: [
       ["Propriétaire", [["#/tableau", "home", "Tableau de bord"], ["#/rapports", "chart", "Rapports"], ["#/recus", "doc", "Reçus"], ["#/notifications", "bell", "Notifications"]]],
       [
-        "Espace du gérant (lecture seule)",
+        "Espace du gérant",
         [
           ["#/gerant", "users", "Accueil du gérant"],
           ["#/caisses", "cash", "Caisses"],
@@ -88,11 +88,11 @@ const ROUTES = {
   stock: [OM, (m, id) => (id ? M.viewProduct(m, id) : M.viewStock(m))],
   produits: [OM, (m) => M.viewProducts(m)],
   mouvements: [OM, (m) => M.viewMovements(m)],
-  entrees: [OM, (m, x, y, z) => (x === "nouvelle" && S.user.role === "manager" ? M.viewEntryForm(m, y === "po" ? z : null) : x ? M.viewEntry(m, x) : M.viewEntries(m))],
+  entrees: [OM, (m, x, y, z) => (x === "nouvelle" && S.user.role === "manager" ? M.viewEntryForm(m, y === "po" ? z : null) : x === "corriger" && S.user.role === "owner" ? M.viewEntryForm(m, null, y) : x && x !== "nouvelle" && x !== "corriger" ? M.viewEntry(m, x) : M.viewEntries(m))],
   achats: [OM, (m, x) => (x === "nouvelle" && S.user.role === "manager" ? X.viewPurchaseOrderForm(m) : x && x !== "nouvelle" ? X.viewPurchaseOrder(m, x) : X.viewPurchaseOrders(m))],
   "fiche-stock": [OM, (m) => X.viewStockStatement(m)],
   "point-serveurs": [["owner", "manager", "cashier"], (m) => X.viewWaiterSummary(m)],
-  sorties: [OM, (m, x) => (x === "nouvelle" && S.user.role === "manager" ? M.viewExitForm(m) : x ? M.viewExit(m, x) : M.viewExits(m))],
+  sorties: [OM, (m, x, y) => (x === "nouvelle" && S.user.role === "manager" ? M.viewExitForm(m) : x === "corriger" && S.user.role === "owner" ? M.viewExitForm(m, y) : x && x !== "nouvelle" && x !== "corriger" ? M.viewExit(m, x) : M.viewExits(m))],
   inventaires: [OM, (m, id) => (id ? M.viewInventory(m, id) : M.viewInventories(m))],
   fournisseurs: [OM, (m, id) => (id ? M.viewSupplier(m, id) : M.viewSuppliers(m))],
   consignes: [OM, (m) => M.viewConsignments(m)],
@@ -176,7 +176,11 @@ async function route() {
     await r[1](main, ...args);
     // Le propriétaire voit les écrans du gérant tels quels, mais sans pouvoir rien modifier.
     if (S.user.role === "owner" && MANAGER_SPACE.has(name))
-      main.prepend(h("div", { class: "banner info" }, icon("shield"), h("div", null, h("b", null, "Espace du gérant — lecture seule. "), "Vous voyez tout ce que le gérant enregistre ; vous ne pouvez rien modifier ni valider à sa place.")));
+      main.prepend(
+        name === "entrees" || name === "sorties"
+          ? h("div", { class: "banner info" }, icon("shield"), h("div", null, h("b", null, "Espace du gérant. "), "Le gérant enregistre les entrées et les sorties ; vous seul pouvez les corriger ou les annuler (avec un motif, tout reste tracé)."))
+          : h("div", { class: "banner info" }, icon("shield"), h("div", null, h("b", null, "Espace du gérant — lecture seule. "), "Vous voyez tout ce que le gérant enregistre ; vous ne validez ni n'encaissez à sa place.")),
+      );
   } catch (e) {
     if (e instanceof ApiError && e.status === 401) return;
     main.replaceChildren(card(null, empty(e.message || "Erreur d'affichage.", "alert"), h("div", { class: "center" }, h("button", { class: "btn", on: { click: route } }, icon("refresh"), "Réessayer"))));
@@ -193,7 +197,8 @@ function connectEvents() {
     const d = JSON.parse(e.data);
     S.unread++;
     renderChrome();
-    toast(d.title, d.severity === "danger" ? "bad" : "");
+    toast(d.notif_type === "order" ? `${d.title} · ${d.body}` : d.title, d.severity === "danger" ? "bad" : d.notif_type === "order" ? "good" : "");
+    if (d.notif_type === "order") beep();
   });
   es.addEventListener("orders", () => {
     emit("orders");

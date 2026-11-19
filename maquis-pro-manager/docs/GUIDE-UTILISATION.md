@@ -21,14 +21,22 @@ La **journée commerciale** va de 03 h 00 à 02 h 59 le lendemain : une vente fa
 | Espace du gérant (accueil, caisses, commandes, stock, entrées, sorties, fournisseurs…) | 👁️ lecture seule | ✅ | — | — |
 | Tenir une caisse, encaisser, vendre, fermer la caisse | ❌ | ✅ | ✅ | ❌ |
 | Enregistrer entrées, sorties, inventaires, commandes fournisseurs | ❌ | ✅ | ❌ | ❌ |
+| Voir les entrées et les sorties | ✅ | ✅ | ❌ | ❌ |
+| **Corriger ou annuler** une entrée ou une sortie déjà enregistrée | ✅ | ❌ (il signale l'erreur au propriétaire) | ❌ | ❌ |
 | Prendre les commandes des clients | ❌ | ❌ | ❌ | ✅ |
 
-Le propriétaire **voit tout ce que fait le gérant**, sur les mêmes écrans, mais **ne peut rien modifier ni valider à sa place**. Ce n'est pas qu'une question d'affichage : le serveur refuse toute modification venant du compte propriétaire. Le gérant, lui, **ne voit pas l'espace du propriétaire**.
+Le propriétaire **voit tout ce que fait le gérant**, sur les mêmes écrans. Il **n'encaisse pas et ne valide pas les commandes à sa place**. En revanche, **seul le propriétaire peut corriger ou annuler une entrée ou une sortie** une fois enregistrée : le gérant les enregistre et les consulte, mais ne peut plus y toucher. Ce n'est pas qu'une question d'affichage : le serveur refuse toute modification venant du compte propriétaire. Le gérant, lui, **ne voit pas l'espace du propriétaire**.
 
 ## Propriétaire
 
 Votre espace sert à **surveiller** : il est en **lecture seule** pour toutes les opérations.
-- **Espace du gérant (lecture seule)** (menu de gauche, ou bouton *Gérant* en bas sur téléphone) : vous voyez l'accueil du gérant tel qu'il le voit (ventes du jour, commandes en attente, caisses ouvertes avec leur montant, mouvements de stock, reçus de la journée), ainsi que chacun de ses écrans. Un bandeau « lecture seule » le rappelle, et aucun bouton d'action n'apparaît. Vous ne pouvez ni modifier ni supprimer une vente, une entrée, une sortie ou une opération de caisse, et personne d'autre ne le peut non plus. Les erreurs se corrigent par une annulation qui laisse une trace.
+- **Corriger une entrée ou une sortie** : ouvrez-la (*Espace du gérant → Entrées* ou *Sorties*). Vous avez deux boutons, avec un motif obligatoire :
+  - *Corriger* : le formulaire s'ouvre avec les quantités enregistrées, vous mettez les bonnes. L'opération d'origine est annulée par un document rectificatif et remplacée par la bonne, dans un seul geste.
+  - *Annuler* : l'opération n'a plus d'effet sur le stock.
+
+  Le gérant est prévenu. Rien n'est effacé : l'original, l'annulation et la correction restent visibles. Une correction qui rendrait le stock négatif est refusée.
+- **Erreurs signalées** : quand le gérant se trompe, il vous le signale depuis l'entrée ou la sortie. Vous recevez une notification, et son message apparaît en jaune sur l'opération.
+- **Espace du gérant** (menu de gauche, ou bouton *Gérant* en bas sur téléphone) : vous voyez l'accueil du gérant tel qu'il le voit (ventes du jour, commandes en attente, caisses ouvertes avec leur montant, mouvements de stock, reçus de la journée), ainsi que chacun de ses écrans. Un bandeau « lecture seule » le rappelle, et aucun bouton d'action n'apparaît. Vous ne pouvez ni modifier ni supprimer une vente, une entrée, une sortie ou une opération de caisse, et personne d'autre ne le peut non plus. Les erreurs se corrigent par une annulation qui laisse une trace.
 
 - **Tableau de bord** : ventes, encaissements, dépenses, bénéfice estimé, sorties, pertes, stock restant, caisses ouvertes, activité du personnel, derniers reçus et derniers rapports. Choisissez *Aujourd'hui*, *Hier*, *7 jours*, *30 jours* ou une période précise.
 - **Rentabilité par boisson** (tableau de bord, et dans le bilan hebdomadaire) : bouteilles vendues, chiffre d'affaires, coût d'achat, marge brute, marge par bouteille, et bénéfice net une fois retirées les pertes, casses et boissons offertes. La période *Ce mois* donne le résultat du mois en cours.
@@ -57,6 +65,8 @@ Votre espace sert à **surveiller** : il est en **lecture seule** pour toutes le
   - les ventes du jour, les commandes en attente, les caisses ouvertes, les alertes de stock, les mouvements et les reçus de la journée.
 
   Les bénéfices et la rentabilité n'y figurent pas : ils restent sur le tableau de bord du propriétaire.
+- **Nouvelle commande** : quand un serveur envoie une commande, votre tablette **sonne** (et vibre sur téléphone). Un message montre la table, le serveur et les boissons ; la commande vous attend dans *Commandes*. Pour être alerté même écran éteint, activez les notifications dans *Mon compte*.
+- **Une erreur dans une entrée ou une sortie ?** Une fois enregistrée, vous ne pouvez plus la modifier ni l'annuler. Ouvrez-la et touchez *Signaler une erreur au propriétaire*, en expliquant l'erreur. Le propriétaire fera la correction.
 - **Tenir la caisse** : si c'est vous qui encaissez, ouvrez *Ma caisse* avec le fonds de caisse.
   - Vous encaissez alors les commandes des serveurs (*Commandes*, avec addition et encaissement de toute une table), les ventes au comptoir (*Vente directe*) et les crédits, exactement comme un caissier.
   - Vous fermez votre caisse avec le comptage, et le billetage si vous le voulez.
@@ -74,7 +84,7 @@ Votre espace sert à **surveiller** : il est en **lecture seule** pour toutes le
 - **Fournisseurs** : achats, paiements et dettes. *Enregistrer un paiement* crée un reçu. *Consignes* suit les casiers et bouteilles consignés (versés, récupérés, remboursés).
 - **Dépenses** : hors caisse, ou payées depuis une caisse ouverte.
 - **Caisses** : situation de chaque caisse. Vous pouvez enregistrer un retrait ou un ajout, et fermer une caisse si le caissier est absent.
-- **Annuler** une entrée, une sortie, une vente ou une dépense : ouvrez l'opération → *Annuler*, avec un **motif obligatoire**. Le stock et la caisse sont corrigés, un **document rectificatif** est créé, et l'original reste visible.
+- **Annuler** une vente ou une dépense : ouvrez l'opération → *Annuler*, avec un **motif obligatoire**. Pour une entrée ou une sortie, seul le propriétaire peut corriger ou annuler (voir ci-dessus). Le stock et la caisse sont corrigés, un **document rectificatif** est créé, et l'original reste visible.
 - **Personnel** : vous pouvez créer et bloquer les comptes des caissiers et des serveurs.
 
 ## Caissier
