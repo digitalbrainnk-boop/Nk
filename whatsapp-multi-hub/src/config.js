@@ -64,7 +64,7 @@ export function loadConfig(env = process.env, overrides = {}) {
     : resolveApiToken(env, dataDir);
 
   return {
-    port: overrides.port ?? readInt(env, "PORT", 3000, { min: 0, max: 65535 }),
+    port: overrides.port ?? readInt(env, "PORT", 3100, { min: 0, max: 65535 }),
     host: env.HOST || "0.0.0.0",
     // Derrière un proxy (Nginx, Caddy, Cloudflare…) : ex. TRUST_PROXY=1 pour lire la vraie IP.
     trustProxy: parseTrustProxy(env.TRUST_PROXY),

@@ -468,7 +468,8 @@ async function onLineAction(action, id) {
         inputMode: "tel",
         confirmLabel: "Recevoir le code",
       });
-      if (phone) applySessionSummary(await api.connect(id, phone));
+      const digits = phone && cleanPhone(phone);
+      if (digits) applySessionSummary(await api.connect(id, digits));
       break;
     }
     case "pause":
@@ -516,11 +517,8 @@ async function onAddLine(event) {
   const data = new FormData(form);
   const label = String(data.get("label") || "").trim();
   const byCode = data.get("method") === "code";
-  const phoneNumber = byCode ? String(data.get("phone") || "").trim() : undefined;
-  if (byCode && !phoneNumber) {
-    toast("Indique le numéro de la ligne pour recevoir un code.", { type: "error" });
-    return;
-  }
+  const phoneNumber = byCode ? cleanPhone(data.get("phone")) : undefined;
+  if (byCode && !phoneNumber) return;
   const button = form.querySelector("button[type=submit]");
   button.disabled = true;
   try {
@@ -535,6 +533,17 @@ async function onAddLine(event) {
   } finally {
     button.disabled = false;
   }
+}
+
+/** Numéro international (indicatif + numéro) ou null avec un message d'aide. */
+function cleanPhone(value) {
+  let digits = String(value || "").replace(/\D/g, "");
+  if (digits.startsWith("00")) digits = digits.slice(2);
+  if (digits.startsWith("0") || digits.length < 8 || digits.length > 15) {
+    toast("Numéro invalide : indicatif du pays + numéro, sans le 0 du début (ex. 33612345678, 22670123456).", { type: "error", duration: 6000 });
+    return null;
+  }
+  return digits;
 }
 
 function togglePhoneField() {
@@ -554,13 +563,8 @@ async function startNewChat() {
     inputMode: "tel",
     confirmLabel: "Ouvrir",
   });
-  if (!value) return;
-  let digits = value.replace(/\D/g, "");
-  if (digits.startsWith("00")) digits = digits.slice(2);
-  if (digits.startsWith("0") || digits.length < 8 || digits.length > 15) {
-    toast("Numéro invalide : indicatif du pays + numéro, sans le 0 (ex. 33612345678).", { type: "error" });
-    return;
-  }
+  const digits = value && cleanPhone(value);
+  if (!digits) return;
   const chatId = `${digits}@s.whatsapp.net`;
   openChat(chatId, { draft: { id: chatId, phone: digits, name: null, isGroup: false } });
 }
@@ -723,7 +727,21 @@ function registerServiceWorker() {
   navigator.serviceWorker.register("./sw.js").catch((err) => console.warn("Service worker non enregistré :", err));
 }
 
+/**
+ * Lien de connexion affiché par le serveur (…/#token=XXXX) : le jeton est
+ * enregistré sur l'appareil puis retiré de la barre d'adresse.
+ */
+function readTokenFromLink() {
+  const match = /^#token=([^&]+)/.exec(location.hash);
+  if (!match) return;
+  settings.token = decodeURIComponent(match[1]);
+  if (!isNative()) settings.serverUrl = "";
+  saveSettings(settings);
+  history.replaceState(null, "", location.pathname + location.search);
+}
+
 function boot() {
+  readTokenFromLink();
   wireEvents();
   setupInstall();
   registerServiceWorker();

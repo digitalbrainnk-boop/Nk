@@ -40,8 +40,12 @@ export class SessionManager extends EventEmitter {
     this.waVersionPromise = null;
   }
 
-  /** Recharge les lignes existantes et reconnecte celles qui étaient reliées. */
-  async init() {
+  /**
+   * Recharge les lignes existantes. Avec resume=false, la reconnexion est faite
+   * plus tard par resumeLinked() (une fois le port HTTP obtenu : on évite ainsi
+   * qu'une 2e copie du serveur coupe les lignes de la 1re).
+   */
+  async init({ resume = true } = {}) {
     fs.mkdirSync(this.config.sessionsDir, { recursive: true });
     const entries = fs.readdirSync(this.config.sessionsDir, { withFileTypes: true });
     for (const entry of entries) {
@@ -55,8 +59,12 @@ export class SessionManager extends EventEmitter {
       }
       this.instantiate(entry.name, dir, meta);
     }
+    this.log.info({ count: this.sessions.size }, "Lignes chargées");
+    if (resume) this.resumeLinked();
+  }
 
-    // Reconnexion échelonnée pour ne pas ouvrir toutes les lignes à la même seconde.
+  /** Reconnecte les lignes déjà reliées, de façon échelonnée. */
+  resumeLinked() {
     let delay = 0;
     for (const session of this.sessions.values()) {
       if (!session.linked || session.meta.autoStart === false) continue;
@@ -65,7 +73,6 @@ export class SessionManager extends EventEmitter {
       }, delay).unref?.();
       delay += 1500;
     }
-    this.log.info({ count: this.sessions.size }, "Lignes chargées");
   }
 
   instantiate(id, dir, meta) {

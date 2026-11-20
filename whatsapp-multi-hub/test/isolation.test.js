@@ -98,6 +98,21 @@ test("un message de la ligne 1 n'est envoyé qu'aux clients de la ligne 1", asyn
   assert.equal(gotA.length, 1);
 });
 
+test("compatibilité hub : join:session ne garde qu'une seule ligne, /init valide l'identifiant", async () => {
+  const c = client();
+  await connected(c);
+  const got = collect(c, "message:new");
+  const state = new Promise((resolve) => c.once("session:state", resolve));
+  c.emit("join:session", "ligne-2");
+  assert.equal((await state).id, "ligne-2");
+  await c.emitWithAck("join:session", "ligne-1");
+  await manager.get("ligne-2").handleMessages([rawMessage({ id: "H2", text: "ligne 2 seulement", jid: "33622222222@s.whatsapp.net" })], "notify");
+  await manager.get("ligne-1").handleMessages([rawMessage({ id: "H1", text: "ligne 1" })], "notify");
+  await wait(200);
+  assert.deepEqual(got.map((e) => e.sessionId), ["ligne-1"]);
+  assert.equal((await call("POST", "/api/sessions/mauvais%20id/init", {})).status, 400);
+});
+
 test("l'API REST ne renvoie que les discussions de la ligne demandée", async () => {
   const one = await call("GET", "/api/sessions/ligne-1/chats");
   const two = await call("GET", "/api/sessions/ligne-2/chats");

@@ -2,6 +2,7 @@
 // ligne (:id) : une requête ne lit ou n'écrit jamais que les données de SA ligne.
 import { Router } from "express";
 import { badRequest } from "../../errors.js";
+import { validateSessionId } from "../../whatsapp/SessionManager.js";
 
 function intParam(value, { min, max, fallback }) {
   if (value === undefined) return fallback;
@@ -24,6 +25,17 @@ export function sessionsRouter(manager) {
     const { id, label, phoneNumber } = body(req);
     const session = await manager.create({ id, label, phoneNumber });
     res.status(201).json({ session: session.summary });
+  });
+
+  // Initialiser une ligne par son identifiant (ex. « ligne-1 ») : création si besoin,
+  // puis connexion (QR, ou code d'appairage si « phoneNumber » est fourni).
+  router.post("/:id/init", async (req, res) => {
+    const id = validateSessionId(req.params.id);
+    const { label, phoneNumber } = body(req);
+    let session = manager.find(id);
+    if (session) await session.start({ phoneNumber });
+    else session = await manager.create({ id, label, phoneNumber });
+    res.json({ ok: true, session: session.summary });
   });
 
   // État d'une ligne (avec le QR code ou le code d'appairage en cours).

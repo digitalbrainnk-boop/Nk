@@ -24,17 +24,21 @@ export function attachRealtime(io, manager, { auth, logger }) {
     log.debug({ socket: socket.id }, "Client connecté");
 
     // Le client choisit la ligne affichée : il quitte l'ancienne salle avant de rejoindre la nouvelle.
-    socket.on("session:select", (payload, ack) => {
+    // « join:session » (avec l'identifiant seul) est accepté pour compatibilité avec l'API du hub.
+    const select = (payload, ack) => {
       const reply = typeof ack === "function" ? ack : () => {};
-      const sessionId = payload?.sessionId ?? null;
+      const sessionId = (typeof payload === "string" ? payload : payload?.sessionId) || null;
       leaveSessionRooms(socket);
       if (!sessionId) return reply({ ok: true, session: null });
       const session = manager.find(sessionId);
       if (!session) return reply({ ok: false, error: "Ligne introuvable" });
       socket.join(roomOf(sessionId));
       socket.data.sessionId = sessionId;
+      socket.emit("session:state", session.summary);
       reply({ ok: true, session: session.summary });
-    });
+    };
+    socket.on("session:select", select);
+    socket.on("join:session", select);
 
     socket.on("disconnect", (reason) => log.debug({ socket: socket.id, reason }, "Client déconnecté"));
   });
