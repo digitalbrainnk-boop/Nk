@@ -1,0 +1,12 @@
+{
+  "appId": "fr.multilignes.app",
+  "appName": "Multi-Lignes",
+  "webDir": "public",
+  "server": {
+    "androidScheme": "https",
+    "cleartext": true
+  },
+  "android": {
+    "allowMixedContent": true
+  }
+}

@@ -1,0 +1,1057 @@
+/* Multi-Lignes — mobile d'abord, thème clair/sombre automatique.
+   --line = couleur de la ligne active : elle teinte l'interface pour qu'on sache
+   toujours depuis quelle ligne on lit et on répond. */
+
+:root {
+  --bg: #f0f2f5;
+  --surface: #ffffff;
+  --surface-2: #f5f6f8;
+  --text: #111b21;
+  --muted: #5f6f78;
+  --border: #e1e5e9;
+  --brand: #0f766e;
+  --line: #0f766e;
+  --on-line: #ffffff;
+  --ok: #16a34a;
+  --warn: #d97706;
+  --danger: #dc2626;
+  --chat-bg: #efeae2;
+  --bubble-in: #ffffff;
+  --bubble-out: #dcf8c6;
+  --tick-read: #0ea5e9;
+  --radius: 14px;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.08), 0 1px 1px rgb(0 0 0 / 0.04);
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0b141a;
+    --surface: #111b21;
+    --surface-2: #1b262d;
+    --text: #e9edef;
+    --muted: #8a9aa3;
+    --border: #26343c;
+    --chat-bg: #0b141a;
+    --bubble-in: #1f2c33;
+    --bubble-out: #144d3f;
+    --shadow: 0 1px 2px rgb(0 0 0 / 0.4);
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.45 var(--font);
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+:focus-visible {
+  outline: 2px solid var(--line);
+  outline-offset: 2px;
+}
+
+h2,
+h3 {
+  margin: 0;
+  line-height: 1.25;
+}
+
+/* --- Structure ---------------------------------------------------------- */
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh;
+  max-width: 1280px;
+  margin: 0 auto;
+  background: var(--surface);
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: calc(env(safe-area-inset-top) + 10px) 16px 10px;
+  background: var(--surface);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+  font-size: 17px;
+}
+
+.brand img {
+  border-radius: 8px;
+}
+
+.conn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.conn-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--danger);
+}
+
+.conn[data-state="online"] .conn-dot {
+  background: var(--ok);
+}
+
+.conn[data-state="connecting"] .conn-dot {
+  background: var(--warn);
+  animation: pulse 1s infinite alternate;
+}
+
+@keyframes pulse {
+  to {
+    opacity: 0.3;
+  }
+}
+
+/* --- Sélecteur de lignes ---------------------------------------------------- */
+
+.line-tabs {
+  display: flex;
+  gap: 8px;
+  padding: 4px 16px 10px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.line-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.line-tab {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 6px 14px;
+  border: 1.5px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.line-tab .status-dot {
+  box-shadow: 0 0 0 2px var(--surface);
+}
+
+.line-tab.is-active {
+  background: var(--line);
+  border-color: var(--line);
+  color: var(--on-line);
+}
+
+.line-tab.is-active .status-dot {
+  box-shadow: 0 0 0 2px rgb(255 255 255 / 0.85);
+}
+
+/* Sur l'onglet actif (fond = couleur de la ligne), « connectée » s'affiche en blanc. */
+.line-tab.is-active .status-dot[data-status="open"] {
+  background: #fff;
+}
+
+.line-tab.is-active .unread {
+  background: var(--on-line);
+  color: var(--line);
+}
+
+.line-tab-add {
+  padding: 6px 10px;
+  color: var(--muted);
+}
+
+.status-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--muted);
+  flex: none;
+}
+
+.status-dot[data-status="open"] {
+  background: var(--ok);
+}
+
+.status-dot[data-status="connecting"],
+.status-dot[data-status="reconnecting"],
+.status-dot[data-status="qr"],
+.status-dot[data-status="pairing"] {
+  background: var(--warn);
+}
+
+.status-dot[data-status="error"],
+.status-dot[data-status="logged_out"] {
+  background: var(--danger);
+}
+
+.unread {
+  display: inline-grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--line);
+  color: var(--on-line);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+/* --- Vues ----------------------------------------------------------------- */
+
+.views {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  background: var(--bg);
+}
+
+.view {
+  height: 100%;
+  overflow-y: auto;
+}
+
+.page {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 20px 16px 32px;
+}
+
+.page-title {
+  font-size: 22px;
+  margin-bottom: 6px;
+}
+
+.page-intro {
+  margin: 0 0 18px;
+  color: var(--muted);
+}
+
+.card {
+  display: grid;
+  gap: 14px;
+  margin-top: 16px;
+  padding: 18px;
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* --- Boutons et champs ---------------------------------------------------------- */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 42px;
+  padding: 8px 16px;
+  border: 1.5px solid transparent;
+  border-radius: 10px;
+  background: var(--surface-2);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+.btn-small {
+  min-height: 34px;
+  padding: 4px 12px;
+  font-size: 14px;
+}
+
+.btn-primary {
+  background: var(--brand);
+  color: #fff;
+}
+
+.btn-line {
+  background: var(--line);
+  color: var(--on-line);
+}
+
+.btn-danger {
+  background: var(--danger);
+  color: #fff;
+}
+
+.btn-ghost {
+  background: transparent;
+  border-color: var(--border);
+}
+
+.btn-ghost-danger {
+  color: var(--danger);
+}
+
+.icon-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+}
+
+.field {
+  display: grid;
+  gap: 6px;
+}
+
+.field > span:first-child {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.field small {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+input[type="text"],
+input[type="search"],
+input[type="url"],
+input[type="password"],
+input:not([type]),
+textarea {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1.5px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  font-size: 16px; /* évite le zoom automatique sur iPhone */
+}
+
+input:focus,
+textarea:focus {
+  border-color: var(--line);
+  outline: none;
+}
+
+.input-row {
+  display: flex;
+  gap: 8px;
+}
+
+.choice {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.choice legend {
+  margin-bottom: 6px;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.choice label {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.choice small {
+  color: var(--muted);
+}
+
+.settings-status {
+  margin: 0;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.settings-status[data-type="error"] {
+  color: var(--danger);
+}
+
+.settings-status[data-type="ok"] {
+  color: var(--ok);
+}
+
+/* --- Messages : liste des discussions ---------------------------------------- */
+
+.view-messages {
+  display: flex;
+  overflow: hidden;
+}
+
+.chat-pane {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  background: var(--surface);
+}
+
+.line-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  background: var(--surface-2);
+  background: color-mix(in srgb, var(--line) 10%, var(--surface));
+  border-bottom: 1px solid var(--border);
+}
+
+.line-swatch {
+  flex: none;
+  width: 6px;
+  align-self: stretch;
+  min-height: 32px;
+  border-radius: 3px;
+  background: var(--line);
+}
+
+.line-banner-text {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+}
+
+.line-banner-text small {
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status-badge {
+  flex: none;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.status-badge[data-status="open"] {
+  background: rgb(22 163 74 / 0.14);
+  color: var(--ok);
+}
+
+.status-badge[data-status="connecting"],
+.status-badge[data-status="reconnecting"],
+.status-badge[data-status="qr"],
+.status-badge[data-status="pairing"] {
+  background: rgb(217 119 6 / 0.14);
+  color: var(--warn);
+}
+
+.status-badge[data-status="error"],
+.status-badge[data-status="logged_out"] {
+  background: rgb(220 38 38 / 0.12);
+  color: var(--danger);
+}
+
+.list-toolbar {
+  display: flex;
+  gap: 8px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.chat-list {
+  flex: 1;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.chat-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 16px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  text-align: left;
+}
+
+.chat-item:hover,
+.chat-item.is-open {
+  background: var(--surface-2);
+}
+
+.avatar {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: var(--line);
+  color: #fff;
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.chat-main {
+  display: grid;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.chat-top,
+.chat-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.chat-name {
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-top time {
+  flex: none;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.chat-preview {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.empty-state {
+  padding: 32px 20px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.empty-state h3 {
+  margin-bottom: 6px;
+  color: var(--text);
+}
+
+/* --- Messages : conversation ------------------------------------------------ */
+
+.conversation {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  background: var(--chat-bg);
+}
+
+.conversation-empty {
+  display: none;
+}
+
+.conv-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: calc(env(safe-area-inset-top) + 8px) 12px 8px 6px;
+  background: var(--surface);
+  border-bottom: 3px solid var(--line);
+}
+
+.conv-header .avatar {
+  width: 40px;
+  height: 40px;
+  font-size: 14px;
+}
+
+.conv-title {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+}
+
+.conv-title strong,
+.conv-title small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conv-title small {
+  color: var(--muted);
+}
+
+.line-pill {
+  flex: none;
+  max-width: 40%;
+  overflow: hidden;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--line);
+  color: var(--on-line);
+  font-size: 12px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 12px 4px;
+  overscroll-behavior: contain;
+}
+
+.messages-empty {
+  margin: 24px auto;
+  color: var(--muted);
+  text-align: center;
+}
+
+.load-more {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 8px;
+}
+
+.day-sep {
+  display: flex;
+  justify-content: center;
+  margin: 12px 0 8px;
+}
+
+.day-sep span {
+  padding: 4px 12px;
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.msg {
+  display: flex;
+  margin: 3px 0;
+}
+
+.msg.out {
+  justify-content: flex-end;
+}
+
+.bubble {
+  display: grid;
+  gap: 2px;
+  max-width: min(78%, 560px);
+  padding: 7px 10px 5px;
+  border-radius: 10px;
+  background: var(--bubble-in);
+  box-shadow: var(--shadow);
+  overflow-wrap: anywhere;
+}
+
+.msg.in .bubble {
+  border-top-left-radius: 2px;
+}
+
+.msg.out .bubble {
+  border-top-right-radius: 2px;
+  background: var(--bubble-out);
+  /* Les messages envoyés prennent la couleur de la ligne. */
+  background: color-mix(in srgb, var(--line) 22%, var(--surface));
+}
+
+.msg-author {
+  color: var(--line);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.msg-text {
+  white-space: pre-wrap;
+}
+
+.msg-media {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.msg-deleted {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.msg-meta {
+  justify-self: end;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.tick {
+  font-size: 12px;
+  letter-spacing: -3px;
+  margin-right: 2px;
+}
+
+.chat-preview .tick {
+  margin-right: 6px;
+}
+
+.tick-read {
+  color: var(--tick-read);
+}
+
+.tick-error {
+  color: var(--danger);
+  letter-spacing: 0;
+}
+
+.composer {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 8px 10px calc(env(safe-area-inset-bottom) + 8px);
+  background: var(--surface);
+}
+
+.composer textarea {
+  flex: 1;
+  max-height: 160px;
+  border-radius: 22px;
+  padding: 10px 16px;
+  resize: none;
+}
+
+.send-btn {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 46px;
+  height: 46px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--line);
+  color: var(--on-line);
+}
+
+/* --- Lignes ------------------------------------------------------------------ */
+
+.line-cards {
+  display: grid;
+  gap: 14px;
+}
+
+.line-card {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  background: var(--surface);
+  border-radius: var(--radius);
+  border-left: 6px solid var(--line);
+  box-shadow: var(--shadow);
+}
+
+.line-card.is-active {
+  box-shadow: 0 0 0 2px var(--line), var(--shadow);
+}
+
+.line-card-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.line-card-head .line-swatch {
+  display: none;
+}
+
+.line-card-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.line-card-title p {
+  margin: 2px 0 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.line-info,
+.line-error {
+  margin: 0;
+  font-size: 14px;
+}
+
+.line-info {
+  color: var(--warn);
+}
+
+.line-error {
+  color: var(--danger);
+}
+
+.pair-block {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 12px;
+  background: var(--surface-2);
+}
+
+.qr {
+  width: min(260px, 70vw);
+  height: auto;
+  padding: 10px;
+  border-radius: 12px;
+  background: #fff;
+  image-rendering: pixelated;
+}
+
+.pair-code {
+  margin: 0;
+  font: 700 32px/1.2 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  letter-spacing: 3px;
+  user-select: all;
+}
+
+.steps {
+  justify-self: stretch;
+  margin: 0;
+  padding-left: 20px;
+  font-size: 14px;
+}
+
+.line-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.add-line h3 {
+  font-size: 18px;
+}
+
+/* --- Navigation basse ----------------------------------------------------------- */
+
+.bottom-nav {
+  display: flex;
+  padding-bottom: env(safe-area-inset-bottom);
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+}
+
+.bottom-nav button {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  flex: 1;
+  padding: 8px 4px 6px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.bottom-nav button.is-active {
+  color: var(--line);
+}
+
+/* --- Dialogues et notifications -------------------------------------------------- */
+
+.dialog {
+  width: min(420px, calc(100vw - 32px));
+  padding: 0;
+  border: 0;
+  border-radius: 16px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 20px 50px rgb(0 0 0 / 0.3);
+}
+
+.dialog::backdrop {
+  background: rgb(0 0 0 / 0.45);
+}
+
+.dialog form {
+  display: grid;
+  gap: 14px;
+  padding: 20px;
+}
+
+.dialog h2 {
+  font-size: 18px;
+}
+
+.dialog p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.toasts {
+  position: fixed;
+  left: 50%;
+  bottom: calc(env(safe-area-inset-bottom) + 76px);
+  z-index: 50;
+  display: grid;
+  gap: 8px;
+  width: min(480px, calc(100vw - 32px));
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #1f2937;
+  color: #fff;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.25);
+  font-size: 14px;
+  pointer-events: auto;
+}
+
+.toast-error {
+  background: #991b1b;
+}
+
+.toast button {
+  flex: none;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: rgb(255 255 255 / 0.18);
+  color: #fff;
+  font-weight: 700;
+}
+
+/* --- Grand écran : liste + conversation côte à côte ------------------------------- */
+
+@media (min-width: 900px) {
+  .chat-pane {
+    flex: 0 0 380px;
+    border-right: 1px solid var(--border);
+  }
+
+  .conversation {
+    position: static;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .conv-header {
+    padding-top: 8px;
+    padding-left: 16px;
+  }
+
+  #btn-back {
+    display: none;
+  }
+
+  .conversation-empty {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background: var(--chat-bg);
+    color: var(--muted);
+  }
+
+  .composer {
+    padding-bottom: 10px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    scroll-behavior: auto !important;
+  }
+}

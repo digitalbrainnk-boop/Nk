@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+  <title>Multi-Lignes</title>
+  <meta name="description" content="Supervision de plusieurs comptes WhatsApp Business, chacun dans une session isolée.">
+  <meta name="theme-color" content="#0f766e">
+  <meta name="color-scheme" content="light dark">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="icon" href="icons/icon-192.png" type="image/png" sizes="192x192">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Multi-Lignes">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body data-view="messages">
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <img src="icons/icon.svg" alt="" width="28" height="28">
+        <span>Multi-Lignes</span>
+      </div>
+      <span class="conn" id="conn" data-state="offline" role="status">
+        <span class="conn-dot" aria-hidden="true"></span><span class="conn-label">Hors ligne</span>
+      </span>
+    </header>
+
+    <!-- Sélecteur de ligne : une seule ligne affichée à la fois -->
+    <nav class="line-tabs" id="line-tabs" role="tablist" aria-label="Choisir la ligne"></nav>
+
+    <main class="views">
+      <!-- Messages de la ligne active -->
+      <section class="view view-messages" data-view="messages">
+        <div class="chat-pane">
+          <div class="line-banner" id="line-banner" hidden></div>
+          <div class="list-toolbar">
+            <input type="search" id="chat-search" placeholder="Rechercher une discussion" aria-label="Rechercher une discussion">
+            <button type="button" class="btn btn-line" id="btn-new-chat">Nouveau</button>
+          </div>
+          <ul class="chat-list" id="chat-list"></ul>
+        </div>
+
+        <div class="conversation" id="conversation" hidden>
+          <header class="conv-header">
+            <button type="button" class="icon-btn" id="btn-back" aria-label="Retour aux discussions">
+              <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+            </button>
+            <span class="avatar" id="conv-avatar" aria-hidden="true"></span>
+            <div class="conv-title">
+              <strong id="conv-name"></strong>
+              <small id="conv-sub"></small>
+            </div>
+            <span class="line-pill" id="conv-line"></span>
+          </header>
+          <div class="messages" id="messages" aria-live="polite"></div>
+          <form class="composer" id="composer">
+            <textarea id="composer-input" rows="1" maxlength="4096" placeholder="Écrire un message" aria-label="Message"></textarea>
+            <button type="submit" class="send-btn" aria-label="Envoyer">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+            </button>
+          </form>
+        </div>
+        <div class="conversation-empty" id="conversation-empty">
+          <p>Choisis une discussion pour afficher les messages de cette ligne.</p>
+        </div>
+      </section>
+
+      <!-- Gestion des lignes -->
+      <section class="view view-lines" data-view="lines" hidden>
+        <div class="page">
+          <h2 class="page-title">Lignes WhatsApp Business</h2>
+          <p class="page-intro">Chaque ligne a sa propre session, ses propres clés et son propre historique : les conversations ne sont jamais mélangées.</p>
+          <div class="line-cards" id="line-cards"></div>
+
+          <form class="card add-line" id="add-line-form">
+            <h3>Ajouter une ligne</h3>
+            <label class="field">
+              <span>Nom affiché</span>
+              <input name="label" maxlength="40" placeholder="Ex. Ligne 3 — Accueil" autocomplete="off">
+            </label>
+            <fieldset class="choice">
+              <legend>Méthode de connexion</legend>
+              <label><input type="radio" name="method" value="qr" checked> QR code <small>(scanné depuis le téléphone de la ligne)</small></label>
+              <label><input type="radio" name="method" value="code"> Code d'appairage <small>(si tu ne peux pas scanner)</small></label>
+            </fieldset>
+            <label class="field" id="phone-field" hidden>
+              <span>Numéro de la ligne, avec l'indicatif du pays</span>
+              <input name="phone" inputmode="tel" placeholder="33612345678" autocomplete="off">
+            </label>
+            <button type="submit" class="btn btn-primary">Ajouter et connecter</button>
+          </form>
+        </div>
+      </section>
+
+      <!-- Réglages de l'appareil -->
+      <section class="view view-settings" data-view="settings" hidden>
+        <div class="page">
+          <h2 class="page-title">Réglages</h2>
+          <form class="card" id="settings-form">
+            <h3>Connexion au serveur</h3>
+            <label class="field">
+              <span>Adresse du serveur</span>
+              <input name="serverUrl" type="url" inputmode="url" placeholder="https://lignes.mondomaine.fr" autocomplete="off">
+              <small id="server-url-hint">Pré-remplie avec l'adresse de cette page. Change-la seulement si le serveur est ailleurs.</small>
+            </label>
+            <label class="field">
+              <span>Jeton d'accès</span>
+              <span class="input-row">
+                <input name="token" type="password" autocomplete="off" spellcheck="false" placeholder="Affiché dans le terminal du serveur">
+                <button type="button" class="btn btn-ghost btn-small" id="btn-toggle-token">Afficher</button>
+              </span>
+            </label>
+            <button type="submit" class="btn btn-primary">Enregistrer et se connecter</button>
+            <p class="settings-status" id="settings-status" role="status"></p>
+          </form>
+
+          <div class="card">
+            <h3>Application</h3>
+            <button type="button" class="btn btn-line" id="btn-install" hidden>Installer sur l'écran d'accueil</button>
+            <p class="hint" id="install-ios" hidden>Sur iPhone : ouvre cette page dans Safari, bouton Partager → « Sur l'écran d'accueil ».</p>
+            <p class="hint">Le jeton est enregistré uniquement sur cet appareil. Les accusés de lecture ne sont jamais envoyés : consulter une discussion ici ne la marque pas comme lue sur WhatsApp.</p>
+            <button type="button" class="btn btn-ghost btn-ghost-danger" id="btn-forget">Oublier le jeton sur cet appareil</button>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <nav class="bottom-nav" aria-label="Navigation principale">
+      <button type="button" data-nav="messages" class="is-active">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        <span>Messages</span>
+      </button>
+      <button type="button" data-nav="lines">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M12 18h.01"/></svg>
+        <span>Lignes</span>
+      </button>
+      <button type="button" data-nav="settings">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 1v3M12 20v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M1 12h3M20 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12"/></svg>
+        <span>Réglages</span>
+      </button>
+    </nav>
+  </div>
+
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+
+  <script src="vendor/socket.io.min.js"></script>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
