@@ -1,5 +1,5 @@
 // Vue « Messages » : discussions et conversation de la ligne ACTIVE uniquement.
-import { STATUS_LABELS, avatarColor, esc, formatClock, formatDay, formatListTime, formatPhone, initials } from "../ui.js";
+import { STATUS_LABELS, avatarColor, esc, formatBytes, formatClock, formatDay, formatDuration, formatListTime, formatPhone, initials } from "../ui.js";
 
 const TYPE_LABELS = {
   image: "📷 Photo",
@@ -77,18 +77,79 @@ export function renderChatList(root, { chats, loading, filter, openChatId, sessi
     .join("");
 }
 
-function messageBody(m) {
-  if (m.deleted) return '<span class="msg-deleted">🚫 Message supprimé</span>';
-  const label = TYPE_LABELS[m.type];
-  const text = m.text ? `<span class="msg-text">${esc(m.text)}</span>` : "";
-  return `${label ? `<span class="msg-media">${esc(label)}</span>` : ""}${text}`;
+/** Texte avec liens cliquables (http/https uniquement), tout le reste échappé. */
+function linkify(text) {
+  const parts = String(text).split(/(\bhttps?:\/\/[^\s<]+)/g);
+  return parts
+    .map((part, i) => (i % 2 ? `<a href="${esc(part)}" target="_blank" rel="noopener noreferrer">${esc(part)}</a>` : esc(part)))
+    .join("");
 }
 
-export function renderMessages(root, { messages, hasMore, loading, chat }) {
+function mediaBlock(m, mediaUrl) {
+  const media = m.media ?? {};
+  const src = mediaUrl(media.url);
+  const label = TYPE_LABELS[m.type] ?? "Fichier";
+  if (!src) return `<span class="msg-media">${esc(label)}</span>`;
+  const ratio = media.width && media.height ? `aspect-ratio:${media.width}/${media.height};` : "";
+  const thumb = media.thumb ? `background-image:url('${esc(media.thumb)}');` : "";
+  switch (m.type) {
+    case "image":
+      return `<button type="button" class="media-img" data-action="view" data-src="${esc(src)}" style="${ratio}${thumb}" aria-label="Agrandir la photo">
+        <img src="${esc(src)}" alt="Photo" loading="lazy" decoding="async"></button>`;
+    case "sticker":
+      return `<img class="media-sticker" src="${esc(src)}" alt="Autocollant" loading="lazy">`;
+    case "video":
+    case "gif":
+      return `<video class="media-video" src="${esc(src)}" style="${ratio}" ${media.thumb ? `poster="${esc(media.thumb)}"` : ""} controls playsinline preload="none" ${m.type === "gif" ? "loop muted" : ""}></video>`;
+    case "voice":
+    case "audio":
+      return `<div class="media-audio"><span class="media-audio-icon" aria-hidden="true">${m.type === "voice" ? "🎤" : "🎵"}</span>
+        <audio src="${esc(src)}" controls preload="none"></audio>
+        ${media.seconds ? `<small>${esc(formatDuration(media.seconds))}</small>` : ""}</div>`;
+    default: {
+      const ext = (media.fileName?.split(".").pop() || media.mimetype?.split("/").pop() || "").toUpperCase().slice(0, 5);
+      return `<a class="media-doc" href="${esc(src)}" target="_blank" rel="noopener" download="${esc(media.fileName || "fichier")}">
+        <span class="media-doc-icon" aria-hidden="true">📄</span>
+        <span class="media-doc-info"><strong>${esc(media.fileName || "Document")}</strong><small>${esc([ext, formatBytes(media.size)].filter(Boolean).join(" · "))}</small></span>
+        <span class="media-doc-dl" aria-hidden="true">⬇</span></a>`;
+    }
+  }
+}
+
+function messageBody(m, mediaUrl) {
+  if (m.deleted) return '<span class="msg-deleted">🚫 Message supprimé</span>';
+  const parts = [];
+  if (m.media) parts.push(mediaBlock(m, mediaUrl));
+  else if (m.type === "location" && m.location) {
+    parts.push(`<a class="media-loc" href="https://www.google.com/maps?q=${encodeURIComponent(`${m.location.lat},${m.location.lng}`)}" target="_blank" rel="noopener noreferrer">📍 Voir la position</a>`);
+  } else if (TYPE_LABELS[m.type] && m.type !== "image") parts.push(`<span class="msg-media">${esc(TYPE_LABELS[m.type])}</span>`);
+  if (m.text) parts.push(`<span class="msg-text">${linkify(m.text)}</span>`);
+  return parts.join("");
+}
+
+function quoteBlock(m, chat) {
+  if (!m.quoted || m.deleted) return "";
+  const who = m.quoted.fromMe ? "Vous" : chat?.isGroup ? formatPhone(m.quoted.author?.split("@")[0]) || "Participant" : chatTitle(chat);
+  return `<button type="button" class="quote" data-action="goto" data-target="${esc(m.quoted.id)}">
+    <strong>${esc(who)}</strong><span>${esc(m.quoted.text || "Message")}</span></button>`;
+}
+
+function reactionsBlock(m) {
+  const list = Object.entries(m.reactions ?? {});
+  if (!list.length) return "";
+  const counts = new Map();
+  for (const [, emoji] of list) counts.set(emoji, (counts.get(emoji) ?? 0) + 1);
+  const mine = m.reactions?.me;
+  return `<div class="reactions">${[...counts]
+    .map(([emoji, n]) => `<span class="${emoji === mine ? "is-mine" : ""}">${esc(emoji)}${n > 1 ? ` ${n}` : ""}</span>`)
+    .join("")}</div>`;
+}
+
+export function renderMessages(root, { messages, hasMore, loading, chat, pending = [], mediaUrl = (u) => u }) {
   const parts = [];
   if (hasMore) parts.push('<div class="load-more"><button type="button" class="btn btn-ghost btn-small" data-action="load-more">Messages précédents</button></div>');
   if (loading && !messages.length) parts.push('<p class="messages-empty">Chargement…</p>');
-  if (!loading && !messages.length) parts.push('<p class="messages-empty">Aucun message. Écris le premier ci-dessous.</p>');
+  if (!loading && !messages.length && !pending.length) parts.push('<p class="messages-empty">Aucun message. Écris le premier ci-dessous.</p>');
   let lastDay = "";
   for (const m of messages) {
     const day = formatDay(m.timestamp);
@@ -97,10 +158,22 @@ export function renderMessages(root, { messages, hasMore, loading, chat }) {
       lastDay = day;
     }
     const author = chat?.isGroup && !m.fromMe && m.authorName ? `<span class="msg-author">${esc(m.authorName)}</span>` : "";
-    parts.push(`<div class="msg ${m.fromMe ? "out" : "in"}" data-id="${esc(m.id)}">
-      <div class="bubble">${author}${messageBody(m)}
+    const isMedia = m.media && !m.deleted && ["image", "video", "gif", "sticker"].includes(m.type);
+    parts.push(`<div class="msg ${m.fromMe ? "out" : "in"} ${m.reactions ? "has-reactions" : ""}" data-id="${esc(m.id)}">
+      <div class="bubble ${isMedia ? "bubble-media" : ""} ${m.type === "sticker" ? "bubble-sticker" : ""}">
+        <button type="button" class="msg-menu" data-action="menu" aria-label="Actions sur le message">⌄</button>
+        ${author}${quoteBlock(m, chat)}${messageBody(m, mediaUrl)}
         <span class="msg-meta">${m.edited ? "modifié · " : ""}${esc(formatClock(m.timestamp))}${m.fromMe ? (TICKS[m.status] ?? "") : ""}</span>
       </div>
+      ${reactionsBlock(m)}
+    </div>`);
+  }
+  for (const p of pending) {
+    const pct = Math.round((p.progress ?? 0) * 100);
+    parts.push(`<div class="msg out pending" data-pending="${esc(p.tempId)}">
+      <div class="bubble"><span class="msg-media">${esc(p.voice ? "🎤 Message vocal" : `📤 ${p.name}`)}</span>
+        <span class="progress" aria-hidden="true"><span style="width:${pct}%"></span></span>
+        <span class="msg-meta">Envoi… ${pct} %</span></div>
     </div>`);
   }
   root.innerHTML = parts.join("");

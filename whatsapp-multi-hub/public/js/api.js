@@ -48,6 +48,45 @@ export function createApi(getConfig) {
     messages: (id, chatId, { before, limit = 50 } = {}) =>
       request("GET", `/sessions/${enc(id)}/chats/${enc(chatId)}/messages?limit=${limit}${before ? `&before=${before}` : ""}`),
     markRead: (id, chatId) => request("POST", `/sessions/${enc(id)}/chats/${enc(chatId)}/read`, {}),
-    send: (id, to, text) => request("POST", `/sessions/${enc(id)}/messages`, { to, text }),
+    send: (id, to, text, replyTo) => request("POST", `/sessions/${enc(id)}/messages`, { to, text, ...(replyTo ? { replyTo } : {}) }),
+    react: (id, chatId, messageId, emoji) =>
+      request("POST", `/sessions/${enc(id)}/chats/${enc(chatId)}/messages/${enc(messageId)}/react`, { emoji }),
+    deleteMessage: (id, chatId, messageId) => request("DELETE", `/sessions/${enc(id)}/chats/${enc(chatId)}/messages/${enc(messageId)}`),
+    capabilities: () => request("GET", "/sessions/capabilities"),
+
+    /** Adresse complète d'un fichier (les adresses /media/... sont signées par le serveur). */
+    mediaUrl: (path) => (path ? `${getConfig().base}${path}` : ""),
+
+    /**
+     * Envoie un fichier avec suivi de la progression (0 à 1).
+     * XMLHttpRequest plutôt que fetch : seul lui donne la progression de l'envoi.
+     */
+    sendMedia(id, { to, file, caption, replyTo, voice }, onProgress) {
+      const { base, token } = getConfig();
+      const form = new FormData();
+      form.append("to", to);
+      if (caption) form.append("caption", caption);
+      if (replyTo) form.append("replyTo", replyTo);
+      if (voice) form.append("voice", "1");
+      form.append("file", file, file.name || "fichier");
+      return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", `${base}/api/sessions/${enc(id)}/messages/media`);
+        xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+        xhr.upload.onprogress = (e) => e.lengthComputable && onProgress?.(e.loaded / e.total);
+        xhr.onerror = () => reject(new ApiError(0, "network", "Serveur injoignable pendant l'envoi du fichier."));
+        xhr.onload = () => {
+          let data = null;
+          try {
+            data = JSON.parse(xhr.responseText);
+          } catch {
+            // réponse non JSON
+          }
+          if (xhr.status >= 200 && xhr.status < 300) resolve(data);
+          else reject(new ApiError(xhr.status, data?.error?.code ?? "error", data?.error?.message ?? `Erreur ${xhr.status}`));
+        };
+        xhr.send(form);
+      });
+    },
   };
 }

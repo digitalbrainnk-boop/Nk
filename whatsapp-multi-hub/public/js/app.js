@@ -6,7 +6,20 @@
 import { createApi } from "./api.js";
 import { createRealtime } from "./realtime.js";
 import { isNative, loadSettings, saveSettings, serverBase } from "./settings.js";
-import { $, avatarColor, confirmDialog, esc, formatPhone, icons, initials, promptDialog, toast } from "./ui.js";
+import {
+  $,
+  actionSheet,
+  avatarColor,
+  confirmDialog,
+  esc,
+  filePreviewDialog,
+  formatDuration,
+  formatPhone,
+  icons,
+  initials,
+  promptDialog,
+  toast,
+} from "./ui.js";
 import { renderLines } from "./views/lines.js";
 import { chatTitle, renderBanner, renderChatList, renderMessages } from "./views/messages.js";
 
@@ -23,7 +36,11 @@ const emptyLine = (sessionId) => ({
   messages: [],
   hasMore: false,
   loadingMessages: false,
+  replyTo: null, // message auquel on répond
+  pending: [], // fichiers en cours d'envoi
 });
+
+const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 
 const state = {
   view: "messages",
@@ -32,6 +49,8 @@ const state = {
   realtime: null,
   filter: "",
   line: emptyLine(null),
+  caps: { voiceNotes: false, maxUploadBytes: 64 * 1024 * 1024 },
+  recording: null,
 };
 
 const el = {
@@ -49,7 +68,17 @@ const el = {
   messages: $("#messages"),
   composer: $("#composer"),
   input: $("#composer-input"),
-  sendBtn: $("#composer button[type=submit]"),
+  sendBtn: $("#btn-send"),
+  micBtn: $("#btn-mic"),
+  attachBtn: $("#btn-attach"),
+  replyBar: $("#reply-bar"),
+  replyAuthor: $("#reply-author"),
+  replyText: $("#reply-text"),
+  recorder: $("#recorder"),
+  recTime: $("#rec-time"),
+  viewer: $("#viewer"),
+  viewerImg: $("#viewer-img"),
+  viewerDownload: $("#viewer-download"),
   lineCards: $("#line-cards"),
   addForm: $("#add-line-form"),
   settingsForm: $("#settings-form"),
@@ -106,12 +135,27 @@ function currentChat() {
   return chats.get(openChatId) ?? (draftChat?.id === openChatId ? draftChat : null);
 }
 
+const canRecord = () => Boolean(navigator.mediaDevices?.getUserMedia && window.MediaRecorder && window.isSecureContext);
+
 function renderComposer() {
   const session = activeSession();
   const canSend = session?.status === "open";
   el.input.disabled = !canSend;
   el.sendBtn.disabled = !canSend;
-  el.input.placeholder = canSend ? `Répondre depuis ${session.label}` : "Ligne non connectée : envoi impossible";
+  el.attachBtn.disabled = !canSend;
+  el.micBtn.disabled = !canSend;
+  el.input.placeholder = canSend ? "Message" : "Ligne non connectée";
+  // Comme WhatsApp : micro quand le champ est vide, flèche d'envoi sinon.
+  const hasText = el.input.value.trim().length > 0;
+  el.micBtn.hidden = hasText || !canRecord();
+  el.sendBtn.hidden = !el.micBtn.hidden;
+
+  const reply = state.line.replyTo;
+  el.replyBar.hidden = !reply;
+  if (reply) {
+    el.replyAuthor.textContent = reply.author;
+    el.replyText.textContent = reply.text;
+  }
 }
 
 function renderConversation({ scroll } = {}) {
@@ -139,6 +183,8 @@ function renderConversation({ scroll } = {}) {
     hasMore: state.line.hasMore,
     loading: state.line.loadingMessages,
     chat,
+    pending: state.line.pending.filter((p) => p.chatId === openChatId),
+    mediaUrl: api.mediaUrl,
   });
   if (scroll === "bottom" || (scroll !== "keep" && atBottom)) box.scrollTop = box.scrollHeight;
   else if (scroll === "keep") box.scrollTop = box.scrollHeight - fromBottom;
@@ -279,8 +325,10 @@ async function loadOlder() {
 }
 
 function closeConversation() {
+  stopRecording(false);
   state.line.openChatId = null;
   state.line.draftChat = null;
+  state.line.replyTo = null;
   if (history.state?.chat) history.replaceState(null, "");
   renderConversation();
 }
@@ -302,13 +350,14 @@ function addMessage(message) {
 
 async function sendMessage() {
   const text = el.input.value.trim();
-  const { sessionId, openChatId } = state.line;
+  const { sessionId, openChatId, replyTo } = state.line;
   if (!text || !sessionId || !openChatId) return;
   el.sendBtn.disabled = true;
   try {
-    const data = await api.send(sessionId, openChatId, text);
+    const data = await api.send(sessionId, openChatId, text, replyTo?.id);
     if (!isActive(data.sessionId)) return;
     el.input.value = "";
+    state.line.replyTo = null;
     autosize();
     upsertChat(data.chat);
     // Nouvelle discussion : WhatsApp peut renvoyer un identifiant légèrement différent.
@@ -327,6 +376,270 @@ async function sendMessage() {
     renderComposer();
     el.input.focus();
   }
+}
+
+// --- Fichiers, vocaux, réponses, réactions -----------------------------------------
+
+/** Message reçu de l'envoi : on l'ajoute à la conversation ouverte (même ligne, même discussion). */
+function acceptSent(data, chatIdAtStart) {
+  if (!isActive(data.sessionId)) return;
+  upsertChat(data.chat);
+  if (state.line.openChatId === chatIdAtStart && data.chat.id !== chatIdAtStart) {
+    state.line.openChatId = data.chat.id;
+    state.line.draftChat = null;
+  }
+  if (state.line.openChatId === data.chat.id) {
+    state.line.messages = mergeMessages(state.line.messages, [data.message]);
+  }
+  renderConversation({ scroll: "bottom" });
+  renderChats();
+  if (data.notice) toast(data.notice, { duration: 7000 });
+}
+
+/** Envoie des fichiers un par un, avec une bulle de progression pour chacun. */
+async function uploadFiles(files, { caption = "", voice = false } = {}) {
+  const { sessionId, openChatId } = state.line;
+  if (!sessionId || !openChatId) return;
+  const replyTo = state.line.replyTo?.id;
+  state.line.replyTo = null;
+  renderComposer();
+  for (const [index, file] of files.entries()) {
+    if (file.size > state.caps.maxUploadBytes) {
+      toast(`« ${file.name} » est trop lourd (${Math.round(state.caps.maxUploadBytes / 1048576)} Mo maximum).`, { type: "error", duration: 6000 });
+      continue;
+    }
+    const item = { tempId: `up-${Date.now()}-${index}`, chatId: openChatId, name: file.name, voice, progress: 0 };
+    if (!isActive(sessionId)) return;
+    state.line.pending.push(item);
+    renderConversation({ scroll: "bottom" });
+    try {
+      const data = await api.sendMedia(
+        sessionId,
+        { to: openChatId, file, caption: index === 0 ? caption : "", replyTo: index === 0 ? replyTo : undefined, voice },
+        (progress) => {
+          item.progress = progress;
+          const bar = el.messages.querySelector(`[data-pending="${CSS.escape(item.tempId)}"]`);
+          if (bar) {
+            bar.querySelector(".progress span").style.width = `${Math.round(progress * 100)}%`;
+            bar.querySelector(".msg-meta").textContent = `Envoi… ${Math.round(progress * 100)} %`;
+          }
+        },
+      );
+      if (isActive(sessionId)) state.line.pending = state.line.pending.filter((p) => p !== item);
+      acceptSent(data, openChatId);
+    } catch (err) {
+      if (isActive(sessionId)) {
+        state.line.pending = state.line.pending.filter((p) => p !== item);
+        renderConversation();
+      }
+      toastError(err);
+    }
+  }
+}
+
+async function chooseFiles(input) {
+  const files = [...input.files];
+  input.value = "";
+  if (!files.length) return;
+  const caption = await filePreviewDialog(files, { lineLabel: activeSession()?.label ?? "cette ligne" });
+  if (caption === null) return;
+  await uploadFiles(files, { caption });
+}
+
+async function openAttachMenu() {
+  const choice = await actionSheet({
+    title: "Joindre",
+    actions: [
+      { id: "media", label: "Photos et vidéos", icon: icons.image },
+      { id: "camera", label: "Appareil photo", icon: icons.camera },
+      { id: "doc", label: "Document", icon: icons.file },
+    ],
+  });
+  const input = { media: "#file-media", camera: "#file-camera", doc: "#file-doc" }[choice?.action];
+  if (input) $(input).click();
+}
+
+// Vocaux : enregistrés dans le navigateur, convertis au format WhatsApp par le serveur.
+async function startRecording() {
+  if (state.recording) return;
+  if (!canRecord()) return toast("L'enregistrement vocal demande HTTPS (ou localhost) et un navigateur récent.", { type: "error" });
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch {
+    return toast("Micro refusé : autorise le micro pour cette application dans les réglages du navigateur.", { type: "error", duration: 6000 });
+  }
+  const mimeType = ["audio/ogg;codecs=opus", "audio/webm;codecs=opus", "audio/webm", "audio/mp4"].find((t) => MediaRecorder.isTypeSupported(t));
+  const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+  const chunks = [];
+  recorder.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+  recorder.start(250);
+  const startedAt = Date.now();
+  const timer = setInterval(() => {
+    const seconds = (Date.now() - startedAt) / 1000;
+    el.recTime.textContent = formatDuration(seconds);
+    if (seconds > 15 * 60) stopRecording(true); // 15 minutes maximum
+  }, 250);
+  state.recording = { recorder, stream, chunks, timer };
+  el.recTime.textContent = "0:00";
+  el.recorder.hidden = false;
+  el.composer.hidden = true;
+}
+
+function stopRecording(send) {
+  const rec = state.recording;
+  if (!rec) return;
+  state.recording = null;
+  clearInterval(rec.timer);
+  el.recorder.hidden = true;
+  el.composer.hidden = false;
+  rec.recorder.onstop = () => {
+    rec.stream.getTracks().forEach((t) => t.stop());
+    if (!send || !rec.chunks.length) return;
+    const type = rec.recorder.mimeType || "audio/webm";
+    const ext = type.includes("ogg") ? "ogg" : type.includes("mp4") ? "m4a" : "webm";
+    uploadFiles([new File(rec.chunks, `vocal.${ext}`, { type })], { voice: true });
+  };
+  rec.recorder.stop();
+}
+
+function findMessage(id) {
+  return state.line.messages.find((m) => m.id === id) ?? null;
+}
+
+function authorLabel(message) {
+  if (message.fromMe) return "Vous";
+  const chat = currentChat();
+  return chat?.isGroup ? message.authorName || "Participant" : chatTitle(chat);
+}
+
+/** Menu d'un message : réactions rapides, répondre, copier, télécharger, supprimer. */
+async function openMessageMenu(id) {
+  const message = findMessage(id);
+  if (!message || message.deleted) return;
+  const { sessionId, openChatId } = state.line;
+  const open = activeSession()?.status === "open";
+  const actions = [];
+  if (open) actions.push({ id: "reply", label: "Répondre", icon: icons.reply });
+  if (message.text) actions.push({ id: "copy", label: "Copier le texte", icon: icons.copy });
+  if (message.media?.url) actions.push({ id: "download", label: "Télécharger", icon: icons.download });
+  if (open && message.fromMe) actions.push({ id: "delete", label: "Supprimer pour tout le monde", icon: icons.trash, danger: true });
+  const choice = await actionSheet({ emojis: open ? { list: QUICK_REACTIONS, current: message.reactions?.me } : null, actions });
+  if (!choice || !isActive(sessionId) || state.line.openChatId !== openChatId) return;
+  try {
+    if (choice.emoji !== undefined) {
+      const data = await api.react(sessionId, openChatId, id, choice.emoji);
+      if (isActive(data.sessionId)) addMessage(data.message);
+    } else if (choice.action === "reply") {
+      const preview = message.text || { image: "📷 Photo", video: "🎬 Vidéo", voice: "🎤 Message vocal", audio: "🎵 Audio", document: `📄 ${message.media?.fileName ?? "Document"}`, sticker: "Autocollant" }[message.type] || "Message";
+      state.line.replyTo = { id, author: authorLabel(message), text: preview };
+      renderComposer();
+      el.input.focus();
+    } else if (choice.action === "copy") {
+      await navigator.clipboard.writeText(message.text);
+      toast("Texte copié.");
+    } else if (choice.action === "download") {
+      const a = document.createElement("a");
+      a.href = api.mediaUrl(message.media.url);
+      a.download = message.media.fileName || "";
+      a.target = "_blank";
+      a.rel = "noopener";
+      a.click();
+    } else if (choice.action === "delete") {
+      const ok = await confirmDialog({
+        title: "Supprimer pour tout le monde ?",
+        message: "Le message sera remplacé par « Message supprimé » chez le destinataire aussi.",
+        confirmLabel: "Supprimer",
+        danger: true,
+      });
+      if (!ok) return;
+      const data = await api.deleteMessage(sessionId, openChatId, id);
+      if (isActive(data.sessionId)) addMessage(data.message);
+    }
+  } catch (err) {
+    toastError(err);
+  }
+}
+
+function openViewer(src) {
+  el.viewerImg.src = src;
+  el.viewerDownload.href = src;
+  el.viewer.hidden = false;
+  history.pushState({ chat: true, viewer: true }, "");
+}
+
+let ignoreNextPop = false;
+function closeViewer({ fromHistory = false } = {}) {
+  if (el.viewer.hidden) return false;
+  el.viewer.hidden = true;
+  el.viewerImg.removeAttribute("src");
+  if (!fromHistory && history.state?.viewer) {
+    ignoreNextPop = true; // ce retour arrière ne doit pas fermer la conversation
+    history.back();
+  }
+  return true;
+}
+
+function gotoMessage(id) {
+  const target = el.messages.querySelector(`[data-id="${CSS.escape(id)}"]`);
+  if (!target) return toast("Message trop ancien : charge les messages précédents pour le voir.");
+  target.scrollIntoView({ behavior: "smooth", block: "center" });
+  target.classList.add("is-flash");
+  setTimeout(() => target.classList.remove("is-flash"), 1200);
+}
+
+/** Appui long (téléphone) ou clic droit (ordinateur) sur une bulle -> menu du message. */
+function wireMessageGestures() {
+  let timer = null;
+  let startX = 0;
+  let startY = 0;
+  let suppressClick = false;
+  let lastMenuAt = 0;
+  const openMenu = (bubble) => {
+    if (Date.now() - lastMenuAt < 600) return;
+    lastMenuAt = Date.now();
+    const id = bubble.closest("[data-id]")?.dataset.id;
+    if (id) openMessageMenu(id);
+  };
+  el.messages.addEventListener("pointerdown", (event) => {
+    // Nouveau geste : le clic d'un appui long précédent ne doit plus rien bloquer.
+    suppressClick = false;
+    const bubble = event.target.closest(".msg[data-id] .bubble");
+    if (!bubble || event.target.closest("audio, video, a") || event.button > 0) return;
+    startX = event.clientX;
+    startY = event.clientY;
+    timer = setTimeout(() => {
+      timer = null;
+      suppressClick = true;
+      openMenu(bubble);
+    }, 480);
+  });
+  const cancel = () => {
+    clearTimeout(timer);
+    timer = null;
+  };
+  el.messages.addEventListener("pointerup", cancel);
+  el.messages.addEventListener("pointercancel", cancel);
+  el.messages.addEventListener("pointermove", (event) => {
+    if (timer && Math.hypot(event.clientX - startX, event.clientY - startY) > 10) cancel();
+  });
+  el.messages.addEventListener("contextmenu", (event) => {
+    const bubble = event.target.closest(".msg[data-id] .bubble");
+    if (!bubble || event.target.closest("audio, video")) return;
+    event.preventDefault();
+    cancel();
+    openMenu(bubble);
+  });
+  el.messages.addEventListener(
+    "click",
+    (event) => {
+      if (!suppressClick) return;
+      suppressClick = false;
+      event.preventDefault();
+      event.stopPropagation();
+    },
+    true,
+  );
 }
 
 // --- Temps réel ---------------------------------------------------------------
@@ -432,6 +745,10 @@ async function connect() {
     if (err.status === 401 || err.status === 429) return onUnauthorized(err.message);
     toastError(err);
   }
+  api
+    .capabilities()
+    .then((caps) => Object.assign(state.caps, caps))
+    .catch(() => {});
   if (typeof window.io !== "function") {
     toast("Client temps réel introuvable (vendor/socket.io.min.js). Lance « npm install » sur le serveur.", { type: "error", duration: 0 });
   } else {
@@ -641,18 +958,50 @@ function wireEvents() {
   $("#btn-new-chat").addEventListener("click", startNewChat);
   $("#btn-back").addEventListener("click", closeConversation);
   window.addEventListener("popstate", () => {
+    if (ignoreNextPop) {
+      ignoreNextPop = false;
+      return;
+    }
+    if (closeViewer({ fromHistory: true })) return;
     if (state.line.openChatId) closeConversation();
   });
 
   el.messages.addEventListener("click", (event) => {
-    if (event.target.closest('[data-action="load-more"]')) loadOlder();
+    const action = event.target.closest("[data-action]");
+    if (!action) return;
+    const name = action.dataset.action;
+    if (name === "load-more") loadOlder();
+    else if (name === "view") openViewer(action.dataset.src);
+    else if (name === "goto") gotoMessage(action.dataset.target);
+    else if (name === "menu") openMessageMenu(action.closest("[data-id]")?.dataset.id);
+  });
+  wireMessageGestures();
+
+  el.attachBtn.addEventListener("click", openAttachMenu);
+  for (const id of ["#file-media", "#file-camera", "#file-doc"]) $(id).addEventListener("change", (e) => chooseFiles(e.target));
+  el.micBtn.addEventListener("click", startRecording);
+  $("#rec-cancel").addEventListener("click", () => stopRecording(false));
+  $("#rec-send").addEventListener("click", () => stopRecording(true));
+  $("#reply-cancel").addEventListener("click", () => {
+    state.line.replyTo = null;
+    renderComposer();
+  });
+  $("#viewer-close").addEventListener("click", () => closeViewer());
+  el.viewer.addEventListener("click", (event) => {
+    if (event.target === el.viewer || event.target === el.viewerImg) closeViewer();
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") closeViewer();
   });
 
   el.composer.addEventListener("submit", (event) => {
     event.preventDefault();
     sendMessage();
   });
-  el.input.addEventListener("input", autosize);
+  el.input.addEventListener("input", () => {
+    autosize();
+    renderComposer();
+  });
   el.input.addEventListener("keydown", (event) => {
     // Entrée envoie sur ordinateur ; sur téléphone, Entrée fait un retour à la ligne.
     if (event.key === "Enter" && !event.shiftKey && !matchMedia("(pointer: coarse)").matches) {

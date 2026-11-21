@@ -7,7 +7,7 @@ import path from "node:path";
 const STATUS_RANK = { error: 0, pending: 1, sent: 2, delivered: 3, read: 4 };
 const NAME_PRIORITY = { push: 1, verified: 2, contact: 3, group: 3 };
 
-const emptyData = () => ({ version: 1, owner: null, chats: {}, messages: {}, names: {}, lids: {} });
+const emptyData = () => ({ version: 1, owner: null, chats: {}, messages: {}, names: {}, lids: {}, mediaRefs: {} });
 
 function preview(message) {
   const labels = {
@@ -25,14 +25,19 @@ function preview(message) {
   };
   if (message.deleted) return "🚫 Message supprimé";
   const label = labels[message.type];
-  const text = (message.text || "").replace(/\s+/g, " ").trim();
+  const text = (message.text || message.media?.fileName || "").replace(/\s+/g, " ").trim();
   if (label && text) return `${label} · ${text}`.slice(0, 120);
   return (text || label || "Message").slice(0, 120);
 }
 
 export class MessageStore {
-  constructor({ file, maxMessagesPerChat = 200, maxChats = 500, saveDelayMs = 1500, logger }) {
+  /**
+   * @param {(messages: object[]) => void} [opts.onEvict] appelé avec les messages
+   *   retirés de l'historique (pour supprimer leurs fichiers)
+   */
+  constructor({ file, maxMessagesPerChat = 200, maxChats = 500, saveDelayMs = 1500, logger, onEvict }) {
     this.file = file;
+    this.onEvict = onEvict;
     this.maxMessagesPerChat = maxMessagesPerChat;
     this.maxChats = maxChats;
     this.saveDelayMs = saveDelayMs;
@@ -153,8 +158,20 @@ export class MessageStore {
     if (ids.length <= this.maxChats) return;
     const oldest = this.listChats().slice(this.maxChats);
     for (const chat of oldest) {
+      this.evict(this.data.messages[chat.id] ?? []);
       delete this.data.chats[chat.id];
       delete this.data.messages[chat.id];
+    }
+  }
+
+  /** Messages sortis de l'historique : on oublie leurs médias. */
+  evict(messages) {
+    if (!messages.length) return;
+    for (const m of messages) delete this.data.mediaRefs[m.id];
+    try {
+      this.onEvict?.(messages);
+    } catch (err) {
+      this.log?.warn({ err }, "Nettoyage des médias impossible");
     }
   }
 
@@ -175,7 +192,7 @@ export class MessageStore {
     let i = list.length;
     while (i > 0 && list[i - 1].timestamp > message.timestamp) i--;
     list.splice(i, 0, message);
-    if (list.length > this.maxMessagesPerChat) list.splice(0, list.length - this.maxMessagesPerChat);
+    if (list.length > this.maxMessagesPerChat) this.evict(list.splice(0, list.length - this.maxMessagesPerChat));
 
     if (message.timestamp >= chat.lastMessageAt) {
       chat.lastMessageAt = message.timestamp;
@@ -237,10 +254,33 @@ export class MessageStore {
     return { messages: list.slice(start, end), hasMore: start > 0 };
   }
 
+  /** Réaction d'un participant ('me' pour la ligne elle-même) ; emoji vide = retirée. */
+  setReaction(chatId, messageId, sender, emoji) {
+    const message = this.findMessage(chatId, messageId);
+    if (!message || (message.reactions?.[sender] ?? "") === (emoji || "")) return null;
+    const reactions = { ...message.reactions };
+    if (emoji) reactions[sender] = emoji;
+    else delete reactions[sender];
+    return this.patchMessage(chatId, messageId, { reactions: Object.keys(reactions).length ? reactions : undefined });
+  }
+
+  // --- Médias -----------------------------------------------------------------
+
+  setMediaRef(messageId, ref) {
+    if (!ref) return;
+    this.data.mediaRefs[messageId] = ref;
+    this.scheduleSave();
+  }
+
+  getMediaRef(messageId) {
+    return this.data.mediaRefs[messageId] ?? null;
+  }
+
   // --- Persistance ------------------------------------------------------------
 
   clear() {
     const { lids } = this.data;
+    this.evict(Object.values(this.data.messages).flat());
     this.data = { ...emptyData(), lids };
     this.scheduleSave();
   }

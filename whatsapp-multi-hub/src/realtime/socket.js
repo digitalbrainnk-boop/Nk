@@ -13,7 +13,7 @@ function leaveSessionRooms(socket) {
   socket.data.sessionId = null;
 }
 
-export function attachRealtime(io, manager, { auth, logger }) {
+export function attachRealtime(io, manager, { auth, logger, links }) {
   const log = logger.child({ module: "realtime" });
   io.use(auth.socket);
 
@@ -50,8 +50,10 @@ export function attachRealtime(io, manager, { auth, logger }) {
   });
 
   // Contenu des conversations : uniquement vers la salle de la ligne concernée.
-  manager.on("message:new", (payload) => io.to(roomOf(payload.sessionId)).emit("message:new", payload));
-  manager.on("message:update", (payload) => io.to(roomOf(payload.sessionId)).emit("message:update", payload));
+  // Les messages avec fichier reçoivent une adresse signée (voir http/mediaLinks.js).
+  const withLink = (payload) => (links ? { ...payload, message: links.decorate(payload.sessionId, payload.message) } : payload);
+  manager.on("message:new", (payload) => io.to(roomOf(payload.sessionId)).emit("message:new", withLink(payload)));
+  manager.on("message:update", (payload) => io.to(roomOf(payload.sessionId)).emit("message:update", withLink(payload)));
   manager.on("chat:update", (payload) => io.to(roomOf(payload.sessionId)).emit("chat:update", payload));
   manager.on("chats:reset", (payload) => io.to(roomOf(payload.sessionId)).emit("chats:reset", payload));
 }

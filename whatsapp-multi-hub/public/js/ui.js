@@ -146,6 +146,86 @@ export function promptDialog({ title, message = "", label, value = "", placehold
   });
 }
 
+/** Menu d'actions en bas d'écran (style WhatsApp) : réactions rapides + actions. */
+export function actionSheet({ title = "", emojis = null, actions = [] }) {
+  return new Promise((resolve) => {
+    const dialog = document.createElement("dialog");
+    dialog.className = "dialog sheet";
+    const emojiRow = emojis
+      ? `<div class="sheet-emojis">${emojis.list
+          .map((e) => `<button type="button" data-emoji="${esc(e)}" class="${e === emojis.current ? "is-on" : ""}" aria-label="Réagir ${esc(e)}">${esc(e)}</button>`)
+          .join("")}</div>`
+      : "";
+    dialog.innerHTML = `<div class="sheet-body">
+      ${title ? `<p class="sheet-title">${esc(title)}</p>` : ""}
+      ${emojiRow}
+      ${actions
+        .map((a) => `<button type="button" class="sheet-action ${a.danger ? "is-danger" : ""}" data-action="${esc(a.id)}">${a.icon ?? ""}<span>${esc(a.label)}</span></button>`)
+        .join("")}
+      <button type="button" class="sheet-action sheet-cancel" data-cancel>Annuler</button>
+    </div>`;
+    let result = null;
+    dialog.addEventListener("click", (event) => {
+      if (event.target === dialog) return dialog.close(); // clic sur le fond
+      const emoji = event.target.closest("[data-emoji]");
+      const action = event.target.closest("[data-action]");
+      if (emoji) result = { emoji: emoji.dataset.emoji === emojis?.current ? "" : emoji.dataset.emoji };
+      else if (action) result = { action: action.dataset.action };
+      else if (!event.target.closest("[data-cancel]")) return;
+      dialog.close();
+    });
+    dialog.addEventListener("close", () => {
+      dialog.remove();
+      resolve(result);
+    });
+    document.body.append(dialog);
+    dialog.showModal();
+  });
+}
+
+export function formatBytes(bytes) {
+  if (!bytes) return "";
+  if (bytes < 1024) return `${bytes} o`;
+  if (bytes < 1048576) return `${Math.round(bytes / 1024)} Ko`;
+  return `${(bytes / 1048576).toFixed(1).replace(".", ",")} Mo`;
+}
+
+export function formatDuration(seconds) {
+  if (!Number.isFinite(seconds) || seconds < 0) return "";
+  const s = Math.round(seconds);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
+
+/** Aperçu des fichiers choisis + légende ; résout la légende (chaîne) ou null si annulé. */
+export function filePreviewDialog(files, { lineLabel }) {
+  const urls = [];
+  return openDialog((form) => {
+    const items = files
+      .map((file) => {
+        if (file.type.startsWith("image/")) {
+          const url = URL.createObjectURL(file);
+          urls.push(url);
+          return `<li class="preview-item"><img src="${url}" alt=""><span>${esc(file.name)}</span></li>`;
+        }
+        if (file.type.startsWith("video/")) {
+          const url = URL.createObjectURL(file);
+          urls.push(url);
+          return `<li class="preview-item"><video src="${url}" muted playsinline></video><span>${esc(file.name)}</span></li>`;
+        }
+        return `<li class="preview-item"><span class="preview-doc">📄</span><span>${esc(file.name)} · ${esc(formatBytes(file.size))}</span></li>`;
+      })
+      .join("");
+    form.innerHTML = `<h2>Envoyer ${files.length > 1 ? `${files.length} fichiers` : "ce fichier"}</h2>
+      <p>Depuis ${esc(lineLabel)}</p>
+      <ul class="preview-list">${items}</ul>
+      <label class="field"><span>Légende${files.length > 1 ? " (premier fichier)" : ""}</span>
+        <input name="value" maxlength="1024" autocomplete="off" placeholder="Ajouter une légende…">
+      </label>
+      ${dialogButtons("Envoyer")}`;
+    return () => form.elements.value.value.trim();
+  }).finally(() => urls.forEach((u) => URL.revokeObjectURL(u)));
+}
+
 // --- Icônes (SVG en ligne) -------------------------------------------------
 
 const svg = (path, extra = "") =>
@@ -165,4 +245,10 @@ export const icons = {
   unlink: svg('<path d="M18.84 12.25l1.72-1.71a5 5 0 0 0-7.07-7.07l-1.72 1.71M5.17 11.75l-1.71 1.71a5 5 0 0 0 7.07 7.07l1.71-1.71M8 2v3M2 8h3M16 22v-3M22 16h-3"/>'),
   trash: svg('<path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/>'),
   edit: svg('<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/>'),
+  reply: svg('<path d="M9 17l-5-5 5-5"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/>'),
+  copy: svg('<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>'),
+  download: svg('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/>'),
+  image: svg('<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/>'),
+  camera: svg('<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>'),
+  file: svg('<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/>'),
 };

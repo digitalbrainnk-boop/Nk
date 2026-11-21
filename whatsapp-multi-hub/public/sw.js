@@ -1,7 +1,7 @@
 // Service worker : met en cache l'interface pour un démarrage instantané (et hors ligne).
 // Les données (API, Socket.io) ne sont JAMAIS mises en cache : elles restent privées
 // et toujours à jour. Change VERSION à chaque mise à jour de l'interface.
-const VERSION = "1.1.0";
+const VERSION = "1.2.0";
 const CACHE = `multi-lignes-${VERSION}`;
 const SHELL = [
   "./",
@@ -46,7 +46,7 @@ self.addEventListener("fetch", (event) => {
   if (request.method !== "GET") return;
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
-  if (/\/(api|socket\.io)\//.test(url.pathname)) return; // réseau uniquement
+  if (/\/(api|socket\.io|media)\//.test(url.pathname)) return; // réseau uniquement (données privées)
 
   // Pages : réseau d'abord (version à jour), sinon la copie en cache.
   if (request.mode === "navigate") {

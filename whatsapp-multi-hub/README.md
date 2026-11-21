@@ -2,6 +2,36 @@
 
 Une application installable sur ton téléphone (PWA) et son serveur Node.js pour suivre plusieurs comptes WhatsApp Business. Chaque compte est une **ligne** complètement isolée : ses propres clés, son propre historique, son propre flux temps réel.
 
+**Dans chaque ligne, comme dans WhatsApp :**
+- lire les discussions en direct (personnes et groupes), avec photos, vidéos, vocaux, documents, autocollants et positions ;
+- répondre, ou **répondre à un message précis** (citation) ;
+- envoyer des **photos, vidéos et documents** (galerie, appareil photo ou fichiers), avec légende ;
+- enregistrer et envoyer des **messages vocaux** ;
+- **réagir** avec un emoji, copier un texte, télécharger un fichier, **supprimer pour tout le monde** un message envoyé ;
+- voir les accusés (✓ envoyé, ✓✓ distribué, ✓✓ bleu lu), agrandir les photos, ouvrir les liens.
+
+Appui long sur un message (ou clic droit sur ordinateur) : menu des réactions et actions. Trombone 📎 : joindre un fichier. Micro 🎤 : vocal.
+
+Ce que WhatsApp ne permet pas aux appareils connectés de cette façon, et que l'app ne fait donc pas : **appels audio et vidéo**, statuts, et gestion du compte (profil, paramètres).
+
+## Une connexion définitive ?
+
+**Oui : tu relies chaque ligne une seule fois** (QR code ou code à 8 caractères, jamais par e-mail). Les clés sont enregistrées dans `data/sessions/<ligne>/auth/` :
+
+- **Le serveur s'arrête ou le téléphone qui le fait tourner s'éteint** : au redémarrage, chaque ligne se reconnecte **toute seule, sans QR**. Les messages reçus entre-temps arrivent à la reconnexion.
+- **Coupure internet** : nouvel essai automatique, sans fin, jusqu'au retour du réseau.
+- Il faut refaire l'appairage seulement si :
+  - quelqu'un retire l'appareil dans WhatsApp → **Appareils connectés** sur le téléphone de la ligne ;
+  - le téléphone de la ligne reste **plus de 14 jours sans se connecter à internet** (règle de WhatsApp pour tous les appareils connectés) ;
+  - WhatsApp est réinstallé ou le numéro change sur ce téléphone ;
+  - le dossier `data/` est supprimé ;
+  - le serveur reste éteint très longtemps (plusieurs semaines) : WhatsApp finit par retirer les appareils inactifs.
+
+Pour que l'application tourne **en permanence**, deux possibilités :
+
+1. **Sur un téléphone Android** (Termux) : avec l'application **Termux:Boot**, elle redémarre seule quand le téléphone se rallume (voir ci-dessous). Le téléphone doit rester allumé et connecté.
+2. **Sur un serveur Linux (VPS)**, la solution la plus stable : il ne s'éteint jamais, et tu installes l'application sur ton téléphone depuis son adresse HTTPS (voir « Serveur Linux allumé en permanence »).
+
 ---
 
 ## Installer maintenant
@@ -15,9 +45,11 @@ Une application installable sur ton téléphone (PWA) et son serveur Node.js pou
    ```
 3. À la fin, Chrome s'ouvre tout seul, déjà connecté à l'application.
 4. Dans Chrome : menu ⋮ → **Installer l'application** (ou « Ajouter à l'écran d'accueil »). L'icône Multi-Lignes apparaît sur ton écran d'accueil.
-5. Les fois suivantes : ouvre Termux et tape `lignes`, puis touche l'icône.
+5. Les fois suivantes : ouvre Termux et tape `lignes` (si l'application tourne déjà, elle s'ouvre simplement), puis touche l'icône. `lignes stop` l'arrête, `lignes log` affiche son journal.
+6. **Démarrage automatique au rallumage du téléphone** : installe **Termux:Boot** depuis F-Droid (https://f-droid.org/packages/com.termux.boot/) et ouvre-le une fois. C'est tout.
+7. Dans les paramètres Android → Applications → **Termux** → Batterie : choisis **Sans restriction**, sinon Android peut l'endormir.
 
-Termux doit rester ouvert (le téléphone de préférence en charge). Si ton agent IA tourne déjà dans Termux, ouvre une 2e session (glisse depuis le bord gauche → New session) pour taper `lignes`. Les deux applications utilisent des ports différents (3000 et 3100).
+Termux doit rester ouvert en arrière-plan (le téléphone de préférence en charge). Si ton agent IA tourne déjà dans Termux, ouvre une 2e session (glisse depuis le bord gauche → New session) pour taper `lignes`. Les deux applications utilisent des ports différents (3000 et 3100).
 
 ### Sur un ordinateur (Windows ou Mac)
 
@@ -82,7 +114,8 @@ whatsapp-multi-hub/
 ├── server.js                  # point d'entrée (node server.js)
 ├── DEMARRER.bat               # Windows : double-clic
 ├── DEMARRER-Mac.command       # Mac : double-clic
-├── installer-android.sh       # Android (Termux) : installation + commande « lignes »
+├── installer-android.sh       # Android (Termux) : installation, commande « lignes », démarrage auto
+├── deploy/multi-lignes.service # serveur Linux : service systemd
 ├── package.json   .env.example   capacitor.config.json
 ├── scripts/copy-vendor.js     # copie le client Socket.io dans public/vendor
 ├── src/
@@ -90,12 +123,14 @@ whatsapp-multi-hub/
 │   ├── app.js                 # Express (API + PWA) + Socket.io
 │   ├── config.js  logger.js  errors.js
 │   ├── http/auth.js           # jeton (REST + Socket.io), blocage après 10 erreurs
+│   ├── http/mediaLinks.js     # adresses signées des fichiers
 │   ├── http/routes/sessions.js
 │   ├── realtime/socket.js     # salles par ligne
 │   └── whatsapp/
 │       ├── SessionManager.js  # registre des lignes
 │       ├── WhatsAppSession.js # UNE ligne : QR/code, reconnexion, messages
 │       ├── MessageStore.js    # historique d'UNE ligne
+│       ├── media.js           # fichiers : formats, conversion des vocaux
 │       └── messageParser.js  jid.js
 ├── public/                    # la PWA (aucune étape de build)
 │   ├── index.html  manifest.json  sw.js  css/app.css  icons/  vendor/
@@ -123,7 +158,12 @@ Toutes les routes, sauf `/api/health`, exigent l'en-tête `Authorization: Bearer
 | GET | `/api/sessions/:id/chats` | discussions de la ligne |
 | GET | `/api/sessions/:id/chats/:chatId/messages?limit=50&before=<ms>` | messages (pagination) |
 | POST | `/api/sessions/:id/chats/:chatId/read` | remet le compteur « non lus » à zéro, dans l'app seulement |
-| POST | `/api/sessions/:id/messages` | envoyer : `{ to: "33612345678" ou "<jid>", text }` |
+| POST | `/api/sessions/:id/messages` | envoyer un texte : `{ to: "33612345678" ou "<jid>", text, replyTo? }` |
+| POST | `/api/sessions/:id/messages/media` | envoyer un fichier (multipart) : `file`, `to`, `caption?`, `replyTo?`, `voice?` (`1` = note vocale) |
+| POST | `/api/sessions/:id/chats/:chatId/messages/:messageId/react` | réagir : `{ emoji }` (vide = retirer) |
+| DELETE | `/api/sessions/:id/chats/:chatId/messages/:messageId` | supprimer pour tout le monde (messages de la ligne) |
+| GET | `/api/sessions/capabilities` | `{ voiceNotes, maxUploadBytes }` |
+| GET | `/media/:id/:chatId/:messageId?exp&sig` | fichier d'un message, via l'adresse signée fournie dans `message.media.url` |
 
 Exemple :
 
@@ -157,6 +197,37 @@ Connexion : `io(url, { auth: { token } })`.
 - **Application lancée deux fois** : la 2e copie s'arrête avec un message et ne touche pas aux lignes de la 1re.
 - **Arrêt (Ctrl + C)** : les connexions sont fermées **sans** délier les appareils, et l'historique est enregistré.
 
+## Serveur Linux allumé en permanence
+
+Sur un petit serveur Debian/Ubuntu (VPS) avec un nom de domaine pointant vers lui (ex. `lignes.mondomaine.fr`) :
+
+```bash
+# 1. Node.js 22, git, ffmpeg (vocaux) et Caddy (HTTPS automatique)
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo bash -
+sudo apt install -y nodejs git ffmpeg caddy
+
+# 2. L'application, avec un utilisateur dédié
+sudo useradd --system --home /opt/multi-lignes multilignes
+sudo git clone -b ccr-2ad928f4-gleusx https://github.com/digitalbrainnk-boop/Nk.git /opt/multi-lignes
+cd /opt/multi-lignes/whatsapp-multi-hub
+sudo npm install --omit=dev
+# L'application n'écoute que Caddy (pas d'accès direct en http:// depuis internet)
+sudo cp .env.example .env && printf 'TRUST_PROXY=1\nHOST=127.0.0.1\n' | sudo tee -a .env
+sudo mkdir -p data && sudo chown -R multilignes: /opt/multi-lignes
+
+# 3. Démarrage automatique (et redémarrage en cas de problème)
+sudo cp deploy/multi-lignes.service /etc/systemd/system/
+sudo systemctl daemon-reload && sudo systemctl enable --now multi-lignes
+sudo journalctl -u multi-lignes -n 30     # affiche le lien de connexion
+
+# 4. HTTPS : remplace le domaine puis recharge Caddy
+echo 'lignes.mondomaine.fr {
+  reverse_proxy 127.0.0.1:3100
+}' | sudo tee /etc/caddy/Caddyfile && sudo systemctl reload caddy
+```
+
+Ouvre ensuite `https://lignes.mondomaine.fr/#token=<ton jeton>` sur ton téléphone (le jeton est dans `data/api-token.txt`), puis menu ⋮ → **Installer l'application**. Mise à jour : `cd /opt/multi-lignes && sudo git pull && cd whatsapp-multi-hub && sudo npm install --omit=dev && sudo systemctl restart multi-lignes`.
+
 ## Accès depuis internet (HTTPS)
 
 Pour utiliser et installer l'application depuis un téléphone autre que celui qui fait tourner le serveur :
@@ -181,6 +252,7 @@ Dans l'app native, renseigne l'adresse du serveur et le jeton dans **Réglages**
 - **Baileys n'est pas l'API officielle de WhatsApp.** Il se connecte comme un « appareil connecté » (comme WhatsApp Web), ce qui est contraire aux conditions de WhatsApp : le numéro risque d'être restreint. L'alternative officielle est la **WhatsApp Business Platform (Cloud API)** de Meta.
 - **Collaborateurs** : informe les personnes dont la ligne est supervisée. En Europe, le RGPD l'impose, et souvent aussi le droit du travail.
 - **Discrétion** : aucun accusé de lecture n'est envoyé, et la ligne n'apparaît pas « en ligne ».
-- **Médias** : photos, vocaux et documents s'affichent sous forme d'étiquette (📷 Photo + légende) et ne sont pas téléchargés.
+- **Médias** : les fichiers reçus en direct jusqu'à 16 Mo sont téléchargés tout de suite, les autres (et ceux de l'historique) à leur ouverture. Ils sont rangés dans `data/sessions/<ligne>/media/` et supprimés quand leur message sort de l'historique. Envoi : 64 Mo maximum par fichier (`MAX_UPLOAD_MB`). Les adresses des fichiers sont signées et n'ouvrent que ce fichier-là ; un document reçu (HTML, SVG…) est toujours téléchargé, jamais affiché dans la page.
+- **Vocaux** : enregistrés dans le navigateur, puis convertis au format WhatsApp par `ffmpeg` (installé par le script Android et par l'installation Linux). Sans ffmpeg (ex. Windows), ils partent comme fichiers audio. L'enregistrement demande HTTPS ou `localhost`.
 - **Stockage** : un fichier JSON par ligne, limité à 200 messages par discussion et 500 discussions (réglable dans `.env`).
 - **Sécurité** : `data/` contient les clés de chaque compte. Protège ce dossier comme un mot de passe et ne le partage jamais.

@@ -82,6 +82,9 @@ export function loadConfig(env = process.env, overrides = {}) {
     maxMessagesPerChat: readInt(env, "MAX_MESSAGES_PER_CHAT", 200, { min: 10, max: 5000 }),
     maxChatsPerSession: readInt(env, "MAX_CHATS_PER_SESSION", 500, { min: 10, max: 10000 }),
     historySync: readBool(env, "HISTORY_SYNC", true),
+    // Médias : téléchargés tout de suite s'ils sont petits, sinon à l'ouverture.
+    mediaAutoDownloadBytes: readInt(env, "MEDIA_AUTO_DOWNLOAD_MB", 16, { min: 0, max: 2048 }) * 1024 * 1024,
+    maxUploadBytes: readInt(env, "MAX_UPLOAD_MB", 64, { min: 1, max: 2048 }) * 1024 * 1024,
     reconnect: {
       baseDelayMs: readInt(env, "RECONNECT_BASE_DELAY_MS", 2000, { min: 100 }),
       maxDelayMs: readInt(env, "RECONNECT_MAX_DELAY_MS", 120000, { min: 1000 }),

@@ -4,18 +4,21 @@
 import fs from "node:fs";
 import path from "node:path";
 import { EventEmitter } from "node:events";
+import { pipeline } from "node:stream/promises";
 import QRCode from "qrcode";
 import {
   Browsers,
   DisconnectReason,
   WAMessageStubType,
+  downloadMediaMessage,
   makeCacheableSignalKeyStore,
   makeWASocket,
   useMultiFileAuthState,
 } from "baileys";
 import { AppError, badRequest, conflict, notFound } from "../errors.js";
 import { MessageStore } from "./MessageStore.js";
-import { parseContent, parseMessage, statusFromAck } from "./messageParser.js";
+import { buildMediaContent, convertToVoiceNote, extFor, hasFfmpeg, removeQuietly, safeFileId } from "./media.js";
+import { mediaRef, parseContent, parseMessage, parseReaction, previewOf, readMediaRef, statusFromAck } from "./messageParser.js";
 import {
   isGroupJid,
   isIgnoredJid,
@@ -96,11 +99,18 @@ export class WhatsAppSession extends EventEmitter {
     this.getWaVersion = getWaVersion;
     this.log = logger.child({ session: id });
     this.baileysLogger = logger.child({ session: id, module: "baileys" }, { level: config.baileysLogLevel });
+    // Fichiers (photos, vidéos, vocaux, documents) de CETTE ligne uniquement.
+    this.mediaDir = path.join(dir, "media");
+    this.uploadDir = path.join(dir, "tmp");
+    this.downloads = new Map(); // téléchargements en cours (un seul par média)
     this.store = new MessageStore({
       file: path.join(dir, "store.json"),
       maxMessagesPerChat: config.maxMessagesPerChat,
       maxChats: config.maxChatsPerSession,
       logger: this.log,
+      onEvict: (messages) => {
+        for (const m of messages) if (m.media?.file) removeQuietly(path.join(this.mediaDir, m.media.file));
+      },
     });
 
     this.sock = null;
@@ -408,7 +418,12 @@ export class WhatsAppSession extends EventEmitter {
   onOpen(sock) {
     const user = sock.user ?? {};
     const id = jidNormalizedUser(user.id);
-    this.me = { id, phone: jidToPhone(id), name: user.name || user.verifiedName || user.notify || null };
+    this.me = {
+      id,
+      lid: user.lid ? jidNormalizedUser(user.lid) : null,
+      phone: jidToPhone(id),
+      name: user.name || user.verifiedName || user.notify || null,
+    };
     // Si un AUTRE numéro est relié à cette ligne, l'ancien historique est effacé.
     const previousOwner = this.store.owner;
     this.store.setOwner(id);
@@ -525,14 +540,23 @@ export class WhatsAppSession extends EventEmitter {
    */
   async handleMessages(messages = [], type = "notify", { silent = false } = {}) {
     let changed = false;
+    const live = type === "notify" || type === "append";
     for (const raw of messages) {
       try {
         if (isIgnoredJid(raw?.key?.remoteJid)) continue;
+        const reaction = parseReaction(raw);
+        if (reaction) {
+          await this.applyReaction(raw, reaction);
+          continue;
+        }
         const parsed = parseMessage(raw);
         if (!parsed) continue;
         const chatId = await this.chatIdFor(raw.key);
         const isGroup = isGroupJid(chatId);
         if (!parsed.fromMe && raw.pushName && !isGroup) this.store.setName(chatId, raw.pushName, "push");
+        // Identifiant d'origine (@lid) gardé pour répondre / réagir avec la bonne clé.
+        if (raw.key.remoteJid && raw.key.remoteJid !== chatId) parsed.rawJid = raw.key.remoteJid;
+        if (parsed.quoted) parsed.quoted.fromMe = this.isMe(parsed.quoted.author);
 
         const { isNew, chat, message } = this.store.upsertMessage(
           { ...parsed, chatId },
@@ -540,6 +564,13 @@ export class WhatsAppSession extends EventEmitter {
         );
         if (!isNew) continue;
         changed = true;
+        if (message.media && this.store.findMessage(chatId, message.id)) {
+          this.store.setMediaRef(message.id, mediaRef(raw));
+          // Les petits fichiers reçus en direct sont téléchargés tout de suite ;
+          // les autres (et l'historique) seulement quand on les ouvre.
+          const small = !message.media.size || message.media.size <= this.config.mediaAutoDownloadBytes;
+          if (live && small) this.ensureMedia(chatId, message.id).catch(() => {});
+        }
         if (isGroup) this.ensureGroupName(chatId);
         if (!silent) this.emit("message", { chat, message });
       } catch (err) {
@@ -547,6 +578,27 @@ export class WhatsAppSession extends EventEmitter {
       }
     }
     if (changed) this.scheduleSummary();
+  }
+
+  isMe(jid) {
+    const normalized = jid ? jidNormalizedUser(jid) : null;
+    return Boolean(normalized) && (normalized === this.me?.id || normalized === this.me?.lid);
+  }
+
+  /** Réaction (emoji) d'un participant sur un message. */
+  async applyReaction(raw, { targetId, emoji }) {
+    const chatId = await this.chatIdFor(raw.key);
+    const sender = raw.key.fromMe ? "me" : isGroupJid(chatId) ? jidNormalizedUser(raw.key.participant || "") || "?" : chatId;
+    const message = this.store.setReaction(chatId, targetId, sender, emoji);
+    if (message) this.emit("message-update", { chat: this.store.getChat(chatId), message });
+  }
+
+  /** Message supprimé pour tout le monde : on efface aussi son fichier. */
+  markDeleted(chatId, messageId) {
+    const message = this.store.findMessage(chatId, messageId);
+    if (!message) return null;
+    if (message.media?.file) removeQuietly(path.join(this.mediaDir, message.media.file));
+    return this.store.patchMessage(chatId, messageId, { deleted: true, text: "", media: undefined, quoted: undefined });
   }
 
   /** Accusés (envoyé / distribué / lu), suppressions et modifications. */
@@ -557,7 +609,7 @@ export class WhatsAppSession extends EventEmitter {
       let message = null;
 
       if (update.messageStubType === WAMessageStubType.REVOKE) {
-        message = this.store.patchMessage(chatId, key.id, { deleted: true, text: "" });
+        message = this.markDeleted(chatId, key.id);
       } else if (update.message?.editedMessage?.message) {
         const content = parseContent(update.message.editedMessage.message);
         if (content) message = this.store.patchMessage(chatId, key.id, { text: content.text, edited: true });
@@ -619,35 +671,51 @@ export class WhatsAppSession extends EventEmitter {
       .catch((err) => this.log.debug({ err, chatId }, "Nom du groupe indisponible"));
   }
 
-  /** Envoie un message texte depuis CETTE ligne uniquement. */
-  async sendText(to, text) {
-    const body = typeof text === "string" ? text.trim() : "";
-    if (!body) throw badRequest("Message vide.", "empty_message");
-    if (body.length > 4096) throw badRequest("Message trop long (4096 caractères maximum).", "message_too_long");
-    const sock = this.sock;
-    if (!sock || !this.isOpen) throw conflict("Cette ligne n'est pas connectée à WhatsApp.", "session_not_connected");
+  // --- Envoi et actions ------------------------------------------------------
 
+  requireOpen() {
+    if (!this.sock || !this.isOpen) throw conflict("Cette ligne n'est pas connectée à WhatsApp.", "session_not_connected");
+    return this.sock;
+  }
+
+  /** Destinataire (numéro ou identifiant) ; un nouveau numéro est vérifié auprès de WhatsApp. */
+  async resolveTarget(sock, to) {
     const { jid, fromPhone } = resolveRecipient(to);
     if (fromPhone && !this.store.getChat(jid)) {
-      // Nouveau numéro : on vérifie qu'il utilise bien WhatsApp.
       const result = await withTimeout(sock.onWhatsApp(jid), 10000, "Vérification du numéro").catch(() => null);
       if (Array.isArray(result) && !result.some((r) => r.exists)) {
         throw notFound("Ce numéro n'utilise pas WhatsApp.", "not_on_whatsapp");
       }
     }
+    return jid;
+  }
 
-    let sent;
-    try {
-      sent = await sock.sendMessage(jid, { text: body });
-    } catch (err) {
-      this.log.error({ err }, "Échec de l'envoi");
-      throw new AppError(502, `WhatsApp a refusé l'envoi : ${err.message}`, "send_failed");
-    }
-    if (!sent?.key?.id) throw new AppError(502, "WhatsApp n'a pas confirmé l'envoi.", "send_failed");
+  /** Clé WhatsApp d'un message enregistré (pour répondre, réagir, supprimer). */
+  keyFor(message) {
+    return {
+      remoteJid: message.rawJid || message.chatId,
+      id: message.id,
+      fromMe: message.fromMe,
+      ...(message.author ? { participant: message.author } : {}),
+    };
+  }
 
-    // Affiché tout de suite ; l'écho envoyé ensuite par WhatsApp aura le même id (ignoré).
-    const parsed = parseMessage(sent) ?? { id: sent.key.id, fromMe: true, type: "text", text: body, timestamp: Date.now() };
+  /** Message cité minimal (Baileys n'a besoin que de la clé et d'un aperçu). */
+  quotedFor(chatId, messageId) {
+    if (!messageId) return undefined;
+    const message = this.store.findMessage(chatId, messageId);
+    if (!message) throw notFound("Le message auquel tu réponds est introuvable.", "quoted_not_found");
+    return { key: this.keyFor(message), message: { conversation: message.text || previewOf(message) } };
+  }
+
+  /** Enregistre un message qu'on vient d'envoyer et le diffuse tout de suite. */
+  async recordSent(sent, fallback) {
+    // L'écho envoyé ensuite par WhatsApp aura le même id : il sera ignoré.
+    const parsed = parseMessage(sent) ?? { id: sent.key.id, fromMe: true, timestamp: Date.now(), ...fallback };
     const chatId = await this.chatIdFor(sent.key);
+    if (sent.key.remoteJid && sent.key.remoteJid !== chatId) parsed.rawJid = sent.key.remoteJid;
+    if (parsed.quoted) parsed.quoted.fromMe = this.isMe(parsed.quoted.author);
+    if (fallback.media) parsed.media = { ...parsed.media, ...fallback.media };
     const { isNew, chat, message } = this.store.upsertMessage(
       { ...parsed, chatId, status: parsed.status ?? "pending" },
       { isGroup: isGroupJid(chatId), phone: jidToPhone(chatId) },
@@ -655,4 +723,145 @@ export class WhatsAppSession extends EventEmitter {
     if (isNew) this.emit("message", { chat, message });
     return { chat, message };
   }
+
+  async send(sock, jid, content, quoted) {
+    let sent;
+    try {
+      sent = await sock.sendMessage(jid, content, quoted ? { quoted } : undefined);
+    } catch (err) {
+      this.log.error({ err }, "Échec de l'envoi");
+      throw new AppError(502, `WhatsApp a refusé l'envoi : ${err.message}`, "send_failed");
+    }
+    if (!sent?.key?.id) throw new AppError(502, "WhatsApp n'a pas confirmé l'envoi.", "send_failed");
+    return sent;
+  }
+
+  /** Envoie un message texte depuis CETTE ligne uniquement (en réponse à un message si replyTo). */
+  async sendText(to, text, { replyTo } = {}) {
+    const body = typeof text === "string" ? text.trim() : "";
+    if (!body) throw badRequest("Message vide.", "empty_message");
+    if (body.length > 4096) throw badRequest("Message trop long (4096 caractères maximum).", "message_too_long");
+    const sock = this.requireOpen();
+    const jid = await this.resolveTarget(sock, to);
+    const quoted = this.quotedFor(jid, replyTo);
+    const sent = await this.send(sock, jid, { text: body }, quoted);
+    return this.recordSent(sent, { type: "text", text: body });
+  }
+
+  /**
+   * Envoie un fichier (photo, vidéo, document, audio) ou une note vocale.
+   * Le fichier reste disponible dans l'app (copie dans le dossier de la ligne).
+   */
+  async sendMedia({ to, filePath, mimetype, fileName, caption, voice = false, replyTo }) {
+    const sock = this.requireOpen();
+    const jid = await this.resolveTarget(sock, to);
+    const quoted = this.quotedFor(jid, replyTo);
+    const text = typeof caption === "string" ? caption.trim().slice(0, 1024) : "";
+
+    // Les vocaux enregistrés dans l'app sont convertis au format WhatsApp (OGG/Opus).
+    let sendPath = filePath;
+    let sendMime = mimetype;
+    let sendName = fileName;
+    let asVoice = false;
+    let notice = null;
+    if (voice) {
+      if (hasFfmpeg()) {
+        sendPath = `${filePath}.ogg`;
+        try {
+          await convertToVoiceNote(filePath, sendPath);
+          sendMime = "audio/ogg; codecs=opus";
+          asVoice = true;
+        } catch (err) {
+          this.log.warn({ err }, "Conversion du vocal impossible : envoi comme fichier");
+          removeQuietly(sendPath);
+          sendPath = filePath;
+        }
+      }
+      if (!asVoice) {
+        sendName = `vocal${extFor(mimetype)}`;
+        notice = "ffmpeg n'est pas installé sur le serveur : le vocal a été envoyé comme fichier audio.";
+      }
+    }
+
+    try {
+      const { kind, content } = buildMediaContent({ filePath: sendPath, mimetype: sendMime, fileName: sendName, caption: text, voice: asVoice });
+      const sent = await this.send(sock, jid, content, quoted);
+      // Copie locale pour l'affichage (pas besoin de la retélécharger).
+      fs.mkdirSync(this.mediaDir, { recursive: true });
+      const name = `${safeFileId(sent.key.id)}${extFor(sendMime, sendName)}`;
+      await fs.promises.copyFile(sendPath, path.join(this.mediaDir, name));
+      const result = await this.recordSent(sent, { type: kind, text, media: { file: name, mimetype: sendMime, fileName: sendName } });
+      this.store.setMediaRef(sent.key.id, mediaRef(sent));
+      return { ...result, notice };
+    } finally {
+      if (sendPath !== filePath) removeQuietly(sendPath);
+    }
+  }
+
+  /** Réagit (emoji) à un message ; emoji vide = retirer sa réaction. */
+  async react(chatId, messageId, emoji) {
+    const sock = this.requireOpen();
+    const message = this.store.findMessage(chatId, messageId);
+    if (!message) throw notFound("Message introuvable.", "message_not_found");
+    const text = typeof emoji === "string" ? [...emoji].slice(0, 4).join("") : "";
+    await this.send(sock, chatId, { react: { text, key: this.keyFor(message) } });
+    const updated = this.store.setReaction(chatId, messageId, "me", text);
+    if (updated) this.emit("message-update", { chat: this.store.getChat(chatId), message: updated });
+    return updated ?? message;
+  }
+
+  /** Supprime pour tout le monde un message envoyé par cette ligne. */
+  async deleteForEveryone(chatId, messageId) {
+    const sock = this.requireOpen();
+    const message = this.store.findMessage(chatId, messageId);
+    if (!message) throw notFound("Message introuvable.", "message_not_found");
+    if (!message.fromMe) throw new AppError(403, "Seuls les messages envoyés par cette ligne peuvent être supprimés pour tout le monde.", "not_own_message");
+    await this.send(sock, chatId, { delete: this.keyFor(message) });
+    const updated = this.markDeleted(chatId, messageId);
+    if (updated) this.emit("message-update", { chat: this.store.getChat(chatId), message: updated });
+    return updated;
+  }
+
+  // --- Médias reçus -------------------------------------------------------------
+
+  /** Chemin du fichier d'un média ; téléchargé depuis WhatsApp au premier accès. */
+  async ensureMedia(chatId, messageId) {
+    const message = this.store.findMessage(chatId, messageId);
+    if (!message?.media) throw notFound("Média introuvable.", "media_not_found");
+    if (message.media.file) {
+      const existing = path.join(this.mediaDir, message.media.file);
+      if (fs.existsSync(existing)) return { file: existing, message };
+    }
+    if (!this.downloads.has(messageId)) {
+      const job = this.downloadMedia(chatId, message).finally(() => this.downloads.delete(messageId));
+      this.downloads.set(messageId, job);
+    }
+    const file = await this.downloads.get(messageId);
+    return { file, message: this.store.findMessage(chatId, messageId) ?? message };
+  }
+
+  async downloadMedia(chatId, message) {
+    const ref = this.store.getMediaRef(message.id);
+    if (!ref) throw new AppError(410, "Ce média n'est plus disponible.", "media_gone");
+    fs.mkdirSync(this.mediaDir, { recursive: true });
+    const name = `${safeFileId(message.id)}${extFor(message.media.mimetype, message.media.fileName)}`;
+    const target = path.join(this.mediaDir, name);
+    const partial = `${target}.part`;
+    try {
+      const stream = await downloadMediaMessage(readMediaRef(ref), "stream", {}, {
+        logger: this.baileysLogger,
+        reuploadRequest: this.sock?.updateMediaMessage,
+      });
+      await pipeline(stream, fs.createWriteStream(partial));
+      await fs.promises.rename(partial, target);
+    } catch (err) {
+      removeQuietly(partial);
+      this.log.warn({ err: err.message, id: message.id }, "Téléchargement du média impossible");
+      throw new AppError(410, "Ce média n'est plus disponible sur WhatsApp.", "media_gone");
+    }
+    if (this.destroyed) return target;
+    this.store.patchMessage(chatId, message.id, { media: { ...message.media, file: name } });
+    return target;
+  }
 }
+

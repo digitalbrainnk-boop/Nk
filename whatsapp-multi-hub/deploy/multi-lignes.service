@@ -1,0 +1,27 @@
+# Service systemd : Multi-Lignes démarre avec le serveur et redémarre tout seul en cas d'arrêt.
+# Installation (voir README, « Serveur Linux allumé en permanence ») :
+#   sudo cp deploy/multi-lignes.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now multi-lignes
+[Unit]
+Description=Multi-Lignes (supervision WhatsApp Business)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=multilignes
+WorkingDirectory=/opt/multi-lignes/whatsapp-multi-hub
+ExecStart=/usr/bin/env node server.js
+Restart=always
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=15
+# Durcissement : le service ne peut écrire que dans son dossier de données.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/opt/multi-lignes/whatsapp-multi-hub/data
+
+[Install]
+WantedBy=multi-user.target
