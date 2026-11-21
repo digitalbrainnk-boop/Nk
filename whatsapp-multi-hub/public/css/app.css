@@ -1779,3 +1779,38 @@ body.locked .toasts {
   display: grid;
   gap: 14px;
 }
+
+.notif-native {
+  display: grid;
+  gap: 10px;
+}
+
+.notif-help {
+  padding: 12px 12px 12px 30px;
+  border-radius: 12px;
+  background: var(--surface-2);
+  line-height: 1.5;
+}
+
+.notif-help code {
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: var(--surface);
+  font-size: 13px;
+}
+
+.notif-help a {
+  color: var(--line);
+  word-break: break-all;
+}
+
+.notif-web summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.notif-web[open] summary {
+  margin-bottom: 10px;
+}

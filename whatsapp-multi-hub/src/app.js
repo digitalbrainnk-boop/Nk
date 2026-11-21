@@ -7,8 +7,10 @@ import { createAuth } from "./http/auth.js";
 import { createLoginCodes } from "./http/loginCodes.js";
 import { createMediaLinks } from "./http/mediaLinks.js";
 import { authRouter, publicAuthRouter } from "./http/routes/auth.js";
+import { notificationsRouter } from "./http/routes/notifications.js";
 import { pushRouter } from "./http/routes/push.js";
 import { sessionsRouter } from "./http/routes/sessions.js";
+import { TermuxNotifier } from "./notify/termux.js";
 import { PushService } from "./push.js";
 import { attachRealtime } from "./realtime/socket.js";
 
@@ -81,7 +83,7 @@ function errorHandler(logger) {
   };
 }
 
-export function createApp({ config, manager, logger, push: pushService }) {
+export function createApp({ config, manager, logger, push: pushService, notifier: termuxNotifier }) {
   // Le jeton est relu à chaque requête : il peut être changé depuis l'application.
   const auth = createAuth({ getToken: () => config.apiToken, logger });
   const links = createMediaLinks(() => config.apiToken);
@@ -92,6 +94,9 @@ export function createApp({ config, manager, logger, push: pushService }) {
   if (config.trustProxy) app.set("trust proxy", config.trustProxy);
   app.use(securityHeaders);
   const server = http.createServer(app);
+  // Notifications Android natives (Termux:API), avant les notifications Chrome.
+  const notifier =
+    termuxNotifier ?? new TermuxNotifier({ dataDir: config.dataDir, getPort: () => server.address()?.port ?? config.port, logger });
   const io = new SocketServer(server, {
     cors: { origin: config.corsOrigins.includes("*") ? true : config.corsOrigins },
     maxHttpBufferSize: 1e5,
@@ -110,7 +115,8 @@ export function createApp({ config, manager, logger, push: pushService }) {
   api.use(auth.http);
   api.use("/auth", authRouter({ config, loginCodes, io, logger }));
   api.use("/push", pushRouter(push));
-  api.use("/sessions", sessionsRouter(manager, { links, config }));
+  api.use("/notifications", notificationsRouter({ notifier, push }));
+  api.use("/sessions", sessionsRouter(manager, { links, config, notifier }));
   api.use((req, res) => res.status(404).json({ error: { code: "not_found", message: "Route inconnue." } }));
   api.use(errorHandler(logger));
   app.use("/api", api);
@@ -159,12 +165,30 @@ export function createApp({ config, manager, logger, push: pushService }) {
 
   attachRealtime(io, manager, { auth, logger, links });
 
-  // Notification sur les téléphones abonnés à chaque nouveau message reçu.
+  // Nouveau message reçu : notification Android (Termux), sinon notification Chrome.
   manager.on("message:new", ({ sessionId, chat, message, notify }) => {
-    if (!notify || message.fromMe) return;
     const session = manager.find(sessionId);
-    if (session) push.notifyMessage({ session, chat, message }).catch(() => {});
+    if (!session) return;
+    // Tu as répondu (depuis l'app ou le téléphone de la ligne) : la notification disparaît.
+    if (message.fromMe) return void notifier.remove(sessionId, chat.id).catch(() => {});
+    if (!notify) return;
+    deliverNotification(session, chat, message).catch((err) => logger.warn({ err }, "Notification impossible"));
   });
 
-  return { app, server, io, loginCodes, push };
+  async function deliverNotification(session, chat, message) {
+    if (notifier.active) {
+      // Photo reçue : affichée dans la notification si elle arrive à temps.
+      let imagePath;
+      if (message.type === "image" && message.media && notifier.settings.preview) {
+        imagePath = await Promise.race([
+          session.ensureMedia(chat.id, message.id).then((r) => r.file),
+          new Promise((resolve) => setTimeout(resolve, 6000).unref?.()),
+        ]).catch(() => undefined);
+      }
+      if (await notifier.notifyMessage({ session, chat, message, imagePath })) return;
+    }
+    await push.notifyMessage({ session, chat, message });
+  }
+
+  return { app, server, io, loginCodes, push, notifier };
 }

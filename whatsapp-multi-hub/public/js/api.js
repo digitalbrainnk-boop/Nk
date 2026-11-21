@@ -59,6 +59,10 @@ export function createApi(getConfig) {
     pushSubscribe: (subscription, preview) => request("POST", "/push/subscribe", { subscription, preview }),
     pushUnsubscribe: (endpoint) => request("POST", "/push/unsubscribe", { endpoint }),
     pushTest: () => request("POST", "/push/test", {}),
+    notificationsStatus: () => request("GET", "/notifications"),
+    notificationsUpdate: (patch) => request("PUT", "/notifications", patch),
+    notificationsCheck: () => request("POST", "/notifications/check", {}),
+    notificationsTest: () => request("POST", "/notifications/test", {}),
 
     /** Adresse complète d'un fichier (les adresses /media/... sont signées par le serveur). */
     mediaUrl: (path) => (path ? `${getConfig().base}${path}` : ""),

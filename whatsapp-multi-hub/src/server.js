@@ -33,7 +33,7 @@ process.on("uncaughtException", (err) => {
 });
 
 const manager = new SessionManager({ config, logger });
-const { server, io, loginCodes } = createApp({ config, manager, logger });
+const { server, io, loginCodes, notifier } = createApp({ config, manager, logger });
 
 let stopping = false;
 function shutdown(code = 0) {
@@ -103,6 +103,20 @@ server.on("error", (err) => {
 server.listen(config.port, config.host, () => {
   const { port } = server.address();
   manager.resumeLinked();
+  // Dans Termux : vérifie tout de suite que les notifications Android fonctionnent.
+  if (notifier.installed) {
+    notifier.check({ force: true }).then((ok) => {
+      if (!ok) {
+        console.log(
+          "\n  ⚠️  Notifications : l'application « Termux:API » ne répond pas.\n" +
+            "     Installe-la depuis F-Droid (même source que Termux), ouvre-la une fois,\n" +
+            "     puis autorise ses notifications (Paramètres Android → Applications → Termux:API).\n",
+        );
+      }
+    });
+  } else if (notifier.prefix) {
+    console.log("\n  ⚠️  Notifications : tape  pkg install termux-api  puis relance (et installe l'appli Termux:API).\n");
+  }
 
   // Lien à usage unique : le vrai jeton n'apparaît jamais dans une adresse.
   const code = loginCodes.issue();

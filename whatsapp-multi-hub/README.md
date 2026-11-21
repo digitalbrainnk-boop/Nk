@@ -46,10 +46,12 @@ Pour que l'application tourne **en permanence**, deux possibilités :
    ```
 3. À la fin, Chrome s'ouvre tout seul, déjà connecté à l'application.
 4. **Installe l'application** : touche le bandeau « Installe Multi-Lignes » en haut des Messages, ou Réglages → **Installer sur l'écran d'accueil**, ou dans Chrome : menu ⋮ → **Installer l'application**. L'icône Multi-Lignes apparaît sur ton écran d'accueil et dans la liste de tes applications, comme une vraie application (plein écran, sans barre d'adresse).
-5. Dans **Réglages** : active le **code de verrouillage** et les **notifications** (voir « Sécurité » plus bas).
-6. Les fois suivantes : ouvre Termux et tape `lignes` (si l'application tourne déjà, elle s'ouvre simplement), puis touche l'icône. `lignes stop` l'arrête, `lignes log` affiche son journal.
-7. **Démarrage automatique au rallumage du téléphone** : installe **Termux:Boot** depuis F-Droid (https://f-droid.org/packages/com.termux.boot/) et ouvre-le une fois. C'est tout.
-8. Dans les paramètres Android → Applications → **Termux** → Batterie : choisis **Sans restriction**, sinon Android peut l'endormir.
+5. **Notifications** (pour voir les messages arriver, comme WhatsApp) : installe l'application **Termux:API** depuis F-Droid (https://f-droid.org/packages/com.termux.api/), ouvre-la une fois, puis Paramètres Android → Applications → Termux:API → Notifications → **Autoriser**. Dans Multi-Lignes : Réglages → Notifications → **Envoyer une notification de test**.
+   - Termux et Termux:API doivent venir **tous les deux de F-Droid** (des versions de sources différentes ne peuvent pas communiquer).
+6. Dans **Réglages** : active le **code de verrouillage** (voir « Sécurité » plus bas).
+7. Les fois suivantes : ouvre Termux et tape `lignes` (si l'application tourne déjà, elle s'ouvre simplement), puis touche l'icône. `lignes stop` l'arrête, `lignes log` affiche son journal.
+8. **Démarrage automatique au rallumage du téléphone** : installe **Termux:Boot** depuis F-Droid (https://f-droid.org/packages/com.termux.boot/) et ouvre-le une fois. C'est tout.
+9. Dans les paramètres Android → Applications → **Termux** → Batterie : choisis **Sans restriction**, sinon Android peut l'endormir.
 
 **Mettre à jour** : colle de nouveau la ligne du point 2 dans Termux. Tes lignes reliées, ton historique et tes réglages sont conservés.
 
@@ -101,9 +103,19 @@ Ce lien ne contient **pas** le jeton d'accès : c'est un code à usage unique, �
 
 ## Notifications
 
-Réglages → Notifications → **Activer** : une notification arrive à chaque nouveau message, **même application fermée**, avec le nom du contact et la ligne concernée (« Claire Martin · Ligne 1 »). La toucher ouvre directement la bonne discussion sur la bonne ligne. Une seule notification toutes les 5 secondes par discussion, aucune pour l'historique ni pour tes propres messages.
+**Sur le téléphone (Termux) : vraies notifications Android**, affichées par le téléphone lui-même via l'application **Termux:API**. Elles ne passent ni par Chrome ni par Internet.
 
-Il faut que le serveur (Termux) tourne et ait internet : c'est lui qui envoie les notifications, via le service de notification de Chrome.
+- Chaque nouveau message reçu s'affiche, application fermée : « **Claire Martin · Ligne 1 — Accueil** », avec le texte. Les photos s'affichent dans la notification.
+- Plusieurs messages d'une même personne se regroupent (« Claire Martin (3) »), avec les derniers messages, sans resonner à chaque fois.
+- **Répondre** : tape ta réponse directement dans la notification. Elle part depuis la bonne ligne, et un petit message confirme « Message envoyé ✓ ».
+- **Marquer comme lu**, ou toucher la notification pour ouvrir la discussion.
+- La notification disparaît quand tu lis la discussion dans l'app, ou quand tu réponds (depuis l'app ou depuis le téléphone de la ligne).
+- Option dans Réglages : n'afficher que « Nouveau message », sans nom ni texte.
+- Aucune notification pour l'historique, ni pour les messages envoyés par la ligne.
+
+Si Termux:API n'est pas installée ou ne répond pas, Réglages → Notifications l'indique avec les étapes à suivre, et l'application bascule toute seule sur les **notifications Chrome** (méthode de secours, à activer dans le même écran). Hors Termux (ordinateur, serveur en ligne), seules les notifications Chrome existent : elles demandent HTTPS ou `localhost`.
+
+Si une notification n'apparaît pas en bandeau en haut de l'écran : Paramètres Android → Applications → Termux:API → Notifications → choisis « Afficher en pop-up » / priorité haute.
 
 ## Relier une première ligne
 
@@ -141,6 +153,7 @@ whatsapp-multi-hub/
 ├── package.json   .env.example   capacitor.config.json
 ├── scripts/copy-vendor.js     # copie le client Socket.io dans public/vendor
 ├── scripts/termux-run.sh      # relance automatique du serveur en cas de plantage
+├── scripts/notification-action.js # « Répondre » / « Marquer comme lu » depuis une notification
 ├── src/
 │   ├── server.js              # démarrage, lien de connexion, arrêt propre
 │   ├── app.js                 # Express (API + PWA) + Socket.io
@@ -150,7 +163,8 @@ whatsapp-multi-hub/
 │   ├── http/loginCodes.js     # liens de connexion à usage unique
 │   ├── http/routes/auth.js    # connexion des appareils, changement de jeton
 │   ├── http/routes/push.js    # abonnement aux notifications
-│   ├── push.js                # envoi des notifications (Web Push chiffré)
+│   ├── push.js                # notifications Chrome (Web Push chiffré)
+│   ├── notify/termux.js       # notifications Android natives (Termux:API), réponse directe
 │   ├── http/routes/sessions.js
 │   ├── realtime/socket.js     # salles par ligne
 │   └── whatsapp/
@@ -176,7 +190,8 @@ Toutes les routes, sauf `/api/health`, exigent l'en-tête `Authorization: Bearer
 | POST | `/api/auth/exchange` | `{ code }` → `{ token }` : échange d'un code de connexion à usage unique (sans jeton) |
 | POST | `/api/auth/login-code` | nouveau code de connexion (valable 10 min, une fois) |
 | POST | `/api/auth/rotate` | nouveau jeton ; les appareils utilisant l'ancien sont déconnectés |
-| GET/POST | `/api/push/key`, `/api/push/subscribe`, `/api/push/unsubscribe`, `/api/push/test` | notifications |
+| GET/POST | `/api/push/key`, `/api/push/subscribe`, `/api/push/unsubscribe`, `/api/push/test` | notifications Chrome |
+| GET/PUT/POST | `/api/notifications`, `/api/notifications/check`, `/api/notifications/test` | notifications Android (état, réglages, vérification, test) |
 | GET | `/api/sessions` | liste des lignes et de leur état |
 | POST | `/api/sessions` | créer et connecter : `{ label?, id?, phoneNumber? }` |
 | POST | `/api/sessions/:id/init` | créer la ligne `:id` si besoin, puis la connecter : `{ label?, phoneNumber? }` |

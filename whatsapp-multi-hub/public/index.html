@@ -177,12 +177,31 @@
 
           <div class="card" id="card-notifs">
             <h3>Notifications</h3>
-            <div class="setting-row">
-              <div><strong>Nouveaux messages</strong><small id="notif-state">Reçois une notification pour chaque nouveau message, même application fermée.</small></div>
-              <button type="button" class="btn btn-line btn-small" id="btn-notif-toggle">Activer</button>
+            <!-- Notifications Android natives (serveur dans Termux) -->
+            <div class="notif-native" id="notif-native" hidden>
+              <div class="setting-row">
+                <div><strong>Notifications du téléphone</strong><small id="native-state">Vérification…</small></div>
+                <button type="button" class="btn btn-line btn-small" id="btn-native-toggle">Activer</button>
+              </div>
+              <ol class="steps notif-help" id="native-help" hidden>
+                <li>Installe l'application <b>Termux:API</b> depuis <b>F-Droid</b> (la même boutique que Termux) : <a href="https://f-droid.org/packages/com.termux.api/" target="_blank" rel="noopener">f-droid.org/packages/com.termux.api</a></li>
+                <li>Ouvre-la une fois.</li>
+                <li>Paramètres Android → Applications → <b>Termux:API</b> → Notifications → <b>Autoriser</b>.</li>
+                <li>Dans Termux : <code>pkg install termux-api</code> (déjà fait si tu as relancé l'installation).</li>
+                <li>Reviens ici et touche <b>Vérifier</b>.</li>
+              </ol>
+              <button type="button" class="btn btn-ghost btn-small" id="btn-native-check" hidden>Vérifier</button>
             </div>
             <label class="check-row"><input type="checkbox" id="notif-preview" checked> Afficher le nom et le texte du message (sinon : « Nouveau message » seulement)</label>
-            <button type="button" class="btn btn-ghost btn-small" id="btn-notif-test" hidden>Envoyer une notification de test</button>
+            <button type="button" class="btn btn-ghost btn-small" id="btn-notif-test">Envoyer une notification de test</button>
+
+            <details class="notif-web" id="notif-web">
+              <summary>Notifications Chrome <span id="notif-web-hint">(autre méthode)</span></summary>
+              <div class="setting-row">
+                <div><strong>Par Chrome</strong><small id="notif-state">Reçois une notification pour chaque nouveau message, même application fermée.</small></div>
+                <button type="button" class="btn btn-line btn-small" id="btn-notif-toggle">Activer</button>
+              </div>
+            </details>
           </div>
 
           <div class="card">

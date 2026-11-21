@@ -71,6 +71,7 @@ const state = {
   filter: "",
   line: emptyLine(null),
   caps: { voiceNotes: false, maxUploadBytes: 64 * 1024 * 1024 },
+  native: null, // état des notifications Android (Termux:API), fourni par le serveur
   recording: null,
 };
 
@@ -230,6 +231,7 @@ function renderLineContext() {
 }
 
 function showView(view) {
+  if (view === "settings" && state.view !== "settings" && memory.token) renderNotifications().catch(() => {});
   state.view = view;
   document.body.dataset.view = view;
   for (const section of document.querySelectorAll(".view")) section.hidden = section.dataset.view !== view;
@@ -1148,15 +1150,29 @@ function wireEvents() {
 
   // Notifications
   $("#btn-notif-toggle").addEventListener("click", safely(toggleNotifications));
-  $("#btn-notif-test").addEventListener("click", safely(async () => {
-    const { delivered } = await api.pushTest();
-    toast(delivered ? "Notification envoyée ✓ Regarde en haut de l'écran." : "Aucun appareil abonné.");
-  }));
+  $("#btn-native-toggle").addEventListener("click", safely(toggleNativeNotifications));
+  $("#btn-native-check").addEventListener("click", safely(checkNativeNotifications));
+  $("#btn-notif-test").addEventListener("click", safely(testNotifications));
   $("#notif-preview").addEventListener("change", safely(async (e) => {
     settings.notifyPreview = e.target.checked;
     saveSettings(settings);
+    if (state.native?.termux) state.native = await api.notificationsUpdate({ preview: e.target.checked });
     if (await currentSubscription()) await enablePush(api, { preview: settings.notifyPreview });
   }));
+  // Notification touchée alors que l'application est déjà ouverte dans Chrome.
+  window.addEventListener("hashchange", () => {
+    const link = takeLinkFromUrl();
+    if (link.open) openFromNotification(link.open).catch(() => {});
+    else if (link.code && !lockState) {
+      // Nouveau lien « lignes » ouvert dans l'onglet déjà ouvert.
+      api
+        .exchangeLoginCode(link.code)
+        .then(setToken)
+        .then(() => connect())
+        .then(() => toast("Téléphone connecté ✓"))
+        .catch(toastError);
+    }
+  });
   navigator.serviceWorker?.addEventListener("message", (event) => {
     if (event.data?.type === "open-chat") openFromNotification(event.data).catch(() => {});
   });
@@ -1424,9 +1440,49 @@ function renderSecurity() {
 // --- Notifications ------------------------------------------------------------------
 
 async function renderNotifications() {
+  await renderNativeNotifications();
+  await renderWebNotifications();
+}
+
+/** Notifications Android natives (serveur dans Termux, application Termux:API). */
+async function renderNativeNotifications() {
+  if (memory.token) {
+    try {
+      state.native = await api.notificationsStatus();
+    } catch {
+      // serveur injoignable : on garde le dernier état connu
+    }
+  }
+  const status = state.native;
+  const inTermux = Boolean(status?.termux);
+  $("#notif-native").hidden = !inTermux;
+  // Hors Termux (ordinateur, serveur en ligne) : seule la méthode Chrome existe.
+  $("#notif-web").open = !inTermux;
+  $("#notif-web-hint").textContent = inTermux ? "(autre méthode, inutile si celles du téléphone marchent)" : "";
+  if (!inTermux) {
+    $("#notif-preview").checked = settings.notifyPreview !== false;
+    return;
+  }
+  const ready = status.installed && status.working !== false;
+  const toggle = $("#btn-native-toggle");
+  toggle.hidden = !ready;
+  toggle.textContent = status.enabled ? "Désactiver" : "Activer";
+  $("#native-help").hidden = ready;
+  $("#btn-native-check").hidden = ready;
+  $("#notif-preview").checked = status.preview;
+  $("#native-state").textContent = !status.installed
+    ? "Il manque l'outil « termux-api » : suis les étapes ci-dessous."
+    : status.working === false
+      ? "L'application Termux:API ne répond pas : suis les étapes ci-dessous."
+      : !status.enabled
+        ? "Désactivées."
+        : "✅ Actives : chaque nouveau message s'affiche en notification, même application fermée. Réponds directement depuis la notification.";
+}
+
+/** Notifications par Chrome (Web Push) : méthode de secours, ou seule méthode hors Termux. */
+async function renderWebNotifications() {
   const button = $("#btn-notif-toggle");
   const stateText = $("#notif-state");
-  $("#notif-preview").checked = settings.notifyPreview !== false;
   if (!pushSupported()) {
     button.disabled = true;
     stateText.textContent = "Indisponible ici (il faut Chrome, et HTTPS ou localhost).";
@@ -1435,12 +1491,36 @@ async function renderNotifications() {
   const sub = await currentSubscription().catch(() => null);
   const on = Boolean(sub) && Notification.permission === "granted";
   button.textContent = on ? "Désactiver" : "Activer";
-  $("#btn-notif-test").hidden = !on;
   stateText.textContent = on
-    ? "Activées sur ce téléphone : tu es prévenu même application fermée."
+    ? "Activées sur ce téléphone."
     : Notification.permission === "denied"
       ? "Bloquées par Chrome : ⋮ → Paramètres → Paramètres des sites → Notifications → autoriser localhost."
-      : "Reçois une notification pour chaque nouveau message, même application fermée.";
+      : "Notification par Chrome pour chaque nouveau message.";
+}
+
+async function toggleNativeNotifications() {
+  state.native = await api.notificationsUpdate({ enabled: !state.native?.enabled });
+  await renderNotifications();
+  toast(state.native.enabled ? (state.native.working === false ? "Activées, mais Termux:API ne répond pas encore." : "Notifications du téléphone activées 🔔") : "Notifications du téléphone désactivées.");
+}
+
+async function checkNativeNotifications() {
+  state.native = await api.notificationsCheck();
+  await renderNotifications();
+  toast(state.native.working ? "Notifications du téléphone prêtes ✅ Envoie-toi un test." : "Termux:API ne répond toujours pas : vérifie les étapes.", {
+    type: state.native.working ? "info" : "error",
+    duration: 6000,
+  });
+}
+
+async function testNotifications() {
+  const pending = toast("Envoi du test…", { duration: 0 });
+  const result = await api.notificationsTest().finally(() => pending.remove());
+  if (result.status) state.native = result.status;
+  await renderNotifications();
+  if (result.via === "android") toast("Notification envoyée ✓ Regarde en haut de ton écran.");
+  else if (result.delivered) toast("Notification Chrome envoyée ✓");
+  else toast("Aucune notification n'a pu partir : suis les étapes ci-dessus.", { type: "error", duration: 7000 });
 }
 
 async function toggleNotifications() {
@@ -1465,15 +1545,22 @@ async function openFromNotification({ sessionId, chatId }) {
 
 /** Après la première connexion : proposer (une seule fois) les notifications. */
 function suggestNotifications() {
-  if (!pushSupported() || Notification.permission !== "default" || settings.notifSuggested) return;
+  if (settings.notifSuggested) return;
+  const native = state.native;
+  if (native?.termux && native.installed && native.working && native.enabled) return; // déjà en place
   settings.notifSuggested = true;
   saveSettings(settings);
+  if (native?.termux) {
+    toast("Pour recevoir les messages en notification, il reste une étape (Termux:API).", {
+      duration: 12000,
+      action: { label: "Voir", onClick: () => showView("settings") },
+    });
+    return;
+  }
+  if (!pushSupported() || Notification.permission !== "default") return;
   toast("Être prévenu des nouveaux messages, même application fermée ?", {
     duration: 12000,
-    action: {
-      label: "Activer",
-      onClick: () => toggleNotifications().catch(toastError),
-    },
+    action: { label: "Activer", onClick: () => toggleNotifications().catch(toastError) },
   });
 }
 

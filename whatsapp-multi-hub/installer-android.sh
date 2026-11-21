@@ -21,6 +21,8 @@ if ! install_paquets nodejs-lts git; then
 fi
 # ffmpeg : pour envoyer les vocaux enregistrés dans l'app comme de vraies notes vocales
 install_paquets ffmpeg || echo "ffmpeg non installé : les vocaux partiront comme fichiers audio."
+# termux-api : pour afficher les nouveaux messages en vraies notifications Android
+install_paquets termux-api || echo "termux-api non installé : les notifications passeront par Chrome."
 
 if [ -d "$DEPOT/.git" ]; then
   echo "Mise à jour de l'application…"
@@ -85,7 +87,14 @@ echo
 echo "=== Installé ! ==="
 echo "• Les prochaines fois : ouvre Termux et tape  lignes   (lignes stop = arrêter)"
 echo "• Installe l'application : bandeau « Installe Multi-Lignes » ou Chrome → ⋮ → « Installer l'application »."
-echo "• Puis Réglages → active le code de verrouillage 🔒 et les notifications 🔔."
+echo "• Puis Réglages → active le code de verrouillage 🔒."
+echo
+echo "🔔 NOTIFICATIONS (pour voir les messages arriver, comme WhatsApp) :"
+echo "   1. Installe l'application « Termux:API » depuis F-Droid :"
+echo "      https://f-droid.org/packages/com.termux.api/"
+echo "   2. Ouvre-la une fois."
+echo "   3. Paramètres Android → Applications → Termux:API → Notifications → Autoriser."
+echo "   4. Dans l'app Multi-Lignes : Réglages → Notifications → « Envoyer une notification de test »."
 echo "• Démarrage automatique au rallumage du téléphone : installe « Termux:Boot »"
 echo "  depuis F-Droid et ouvre-le une fois. C'est tout."
 echo "• Pense à retirer Termux de l'optimisation de batterie (Paramètres Android → Applis → Termux → Batterie → Sans restriction)."

@@ -1,7 +1,7 @@
 // Service worker : met en cache l'interface pour un démarrage instantané (et hors ligne).
 // Les données (API, Socket.io) ne sont JAMAIS mises en cache : elles restent privées
 // et toujours à jour. Change VERSION à chaque mise à jour de l'interface.
-const VERSION = "1.3.0";
+const VERSION = "1.4.0";
 const CACHE = `multi-lignes-${VERSION}`;
 const SHELL = [
   "./",

@@ -14,7 +14,7 @@ function intParam(value, { min, max, fallback }) {
   return n;
 }
 
-export function sessionsRouter(manager, { links, config }) {
+export function sessionsRouter(manager, { links, config, notifier }) {
   const router = Router();
   const body = (req) => (req.body && typeof req.body === "object" ? req.body : {});
   const out = (session, message) => links.decorate(session.id, message);
@@ -131,6 +131,8 @@ export function sessionsRouter(manager, { links, config }) {
     const session = manager.get(req.params.id);
     const chat = session.store.markRead(req.params.chatId);
     session.scheduleSummary();
+    // Discussion lue : sa notification Android disparaît.
+    notifier?.remove(session.id, req.params.chatId).catch(() => {});
     res.json({ sessionId: session.id, chat });
   });
 
