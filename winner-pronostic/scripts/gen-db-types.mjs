@@ -83,7 +83,10 @@ try {
       select p.proname as name, pg_get_function_identity_arguments(p.oid) as args,
              p.proargnames::text[] as arg_names,
              array(select format_type(t, null) from unnest(p.proargtypes) t)::text[] as arg_types,
-             format_type(p.prorettype, null) as returns, p.pronargdefaults as n_defaults
+             format_type(p.prorettype, null) as returns, p.pronargdefaults as n_defaults,
+             p.proretset as returns_set,
+             coalesce(p.proargmodes::text[], '{}') as arg_modes,
+             coalesce(array(select format_type(t, null) from unnest(p.proallargtypes) t)::text[], '{}') as all_arg_types
       from pg_proc p join pg_namespace n on n.oid = p.pronamespace
       where n.nspname = 'public' and p.prorettype <> 'trigger'::regtype
       order by p.proname`)
@@ -100,7 +103,19 @@ try {
     return udt.startsWith("_") ? `${ts}[]` : ts;
   };
   const fmtType = (formatted) => {
-    const map = { text: "string", integer: "number", boolean: "boolean", uuid: "string", smallint: "number", bigint: "number", numeric: "number", jsonb: "Json", "text[]": "string[]" };
+    const map = {
+      text: "string",
+      integer: "number",
+      boolean: "boolean",
+      uuid: "string",
+      smallint: "number",
+      bigint: "number",
+      numeric: "number",
+      jsonb: "Json",
+      "text[]": "string[]",
+      "timestamp with time zone": "string",
+      date: "string",
+    };
     if (map[formatted]) return map[formatted];
     if (enumNames.has(formatted)) return `Database["public"]["Enums"]["${formatted}"]`;
     return "unknown";
@@ -156,7 +171,15 @@ try {
           .map((t, i) => `${names[i]}${i >= fn.arg_types.length - fn.n_defaults ? "?" : ""}: ${fmtType(t)}`)
           .join("; ")} }`
       : "never";
-    out.push(`      ${fn.name}: { Args: ${args}; Returns: ${fmtType(fn.returns)} };`);
+    let returns = fmtType(fn.returns);
+    const tableCols = fn.arg_modes.map((m, i) => (m === "t" ? i : -1)).filter((i) => i >= 0);
+    if (fn.returns_set && tableCols.length) {
+      // RETURNS TABLE (...) : tableau d'objets
+      returns = `{ ${tableCols.map((i) => `${names[i]}: ${fmtType(fn.all_arg_types[i])} | null`).join("; ")} }[]`;
+    } else if (fn.returns_set) {
+      returns = `${returns}[]`;
+    }
+    out.push(`      ${fn.name}: { Args: ${args}; Returns: ${returns} };`);
   }
   out.push("    };");
   out.push("    Enums: {");

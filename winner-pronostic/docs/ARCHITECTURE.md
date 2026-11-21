@@ -42,7 +42,7 @@ erDiagram
 |---|---|---|
 | `profiles` | 1 ligne par compte (créée automatiquement à l'inscription) | `display_name`, `email`, `phone`, `birth_date` (**contrainte ≥ 18 ans**), `country_code`, `role` (`user`/`admin`), préférences de notifications |
 
-### Données sportives (synchronisées depuis API-Sports, phase 2)
+### Données sportives (synchronisées depuis API-Sports)
 
 Tous les sports partagent les mêmes tables. Les identifiants des fournisseurs ne sont uniques **que par sport** (la ligue 39 du football n'est pas la ligue 39 du basket) : chaque table a un identifiant interne et un couple unique `(sport, external_id)`. Des clés étrangères composites garantissent qu'un événement, sa compétition et ses équipes sont du même sport.
 
@@ -58,7 +58,7 @@ Tous les sports partagent les mêmes tables. Les identifiants des fournisseurs n
 | `api_cache` | Cache des réponses brutes (compos, blessés, H2H) | `cache_key`, `payload`, `expires_at` |
 | `sync_runs` | Journal des tâches cron et du quota API | `job`, `status`, `api_requests` |
 
-### Pronostics, historique et coupons (phases 4 et 5)
+### Pronostics, historique et coupons
 
 | Table | Rôle | Colonnes clés |
 |---|---|---|
@@ -72,7 +72,7 @@ Chaque cote, pronostic et sélection de coupon porte une **période** (`FT` matc
 
 `predictions.probabilities` est un dictionnaire à plat `"période|marché|ligne|sélection" → probabilité` (ex. `"FT|TOTAL|2.5|OVER": 0.53`) ; `predictions.inputs` conserve les explications (facteurs de force, classement, confrontations, buteurs…) affichées dans le rapport.
 
-### Abonnements et paiements (phase 6)
+### Abonnements et paiements (CinetPay)
 
 | Table | Rôle | Colonnes clés |
 |---|---|---|
@@ -99,7 +99,13 @@ Chaque cote, pronostic et sélection de coupon porte une **période** (`FT` matc
 | `is_valid_market()` / `is_valid_selection()` | Cohérence marché / ligne / sélection |
 | `handle_new_user()` | Déclencheur : crée le profil, **refuse les moins de 18 ans** et l'absence d'acceptation des conditions |
 | `protect_published_pick()` | Déclencheur : un pronostic publié ne peut plus être modifié ni supprimé (seul son résultat change) |
-| `rate_limit_hit(clé, limite, fenêtre)` | Limitation de requêtes (serveur uniquement) |
+| `rate_limit_hit(clé, limite, fenêtre)` | Limitation de requêtes et verrou du direct (serveur uniquement) |
+| `activate_subscription(paiement)` | Active ou prolonge Premium après un paiement confirmé : verrou, contrôle du montant, idempotente (serveur uniquement) |
+| `grant_subscription()` / `expire_subscriptions()` | Premium offert par l'admin, expiration quotidienne |
+| `premium_until()` | Date de fin de l'accès Premium de l'utilisateur connecté |
+| `pick_stats(depuis)` | Taux de réussite, cote moyenne et ROI global, par sport, par marché et par compétition (historique public) |
+| `published_pick_counts(de, à)` | Nombre de pronostics publiés (dont Premium) sans en révéler le contenu |
+| `update_team_elo(notes)` | Enregistre les classements Elo recalculés (serveur uniquement) |
 
 ## 2. Règles d'accès (Row Level Security)
 
@@ -125,41 +131,55 @@ Ces règles sont vérifiées automatiquement par [`tests/db/schema.test.ts`](../
 ```
 winner-pronostic/
 ├── README.md                     installation, configuration, déploiement
-├── docs/ARCHITECTURE.md          ce document
-├── .env.example                  variables d'environnement (par phase)
+├── docs/                         architecture, étapes de mise en ligne
+├── .env.example                  variables d'environnement
+├── vercel.json                   tâche planifiée quotidienne
 ├── next.config.ts                Cache Components, en-têtes de sécurité (CSP…)
 ├── public/
-│   ├── sw.js                     service worker (hors ligne, push en phase 7)
+│   ├── sw.js                     service worker (hors ligne, notifications push)
 │   └── icons/                    icônes PWA (192, 512, maskable, Apple)
 ├── scripts/                      génération des types de la base et des icônes
-├── supabase/migrations/          schéma SQL versionné
+├── supabase/migrations/          schéma SQL versionné (3 fichiers)
 ├── tests/
-│   ├── unit/                     validations, sécurité, générateur, analyseur, sports
-│   └── db/                       migrations + RLS sur PostgreSQL
+│   ├── unit/                     validations, sécurité, moteurs, synchro, règlement, CinetPay
+│   └── db/                       migrations, RLS, abonnements, statistiques sur PostgreSQL
 └── src/
     ├── proxy.ts                  rafraîchit la session, protège /compte et /admin
     ├── app/
-    │   ├── page.tsx              accueil sportif (programme multi-sports en phase 2)
-    │   ├── coupons/              « code de X » + analyse de coupon
-    │   ├── match/[id]/           rapport d'analyse complet (Premium)
+    │   ├── page.tsx              programme (aujourd'hui, demain, 7 jours ; filtres sport/pays/compétition ; recherche)
+    │   ├── direct/               matchs en cours (actualisation automatique)
+    │   ├── match/[id]/           fiche match + rapport d'analyse (Premium)
+    │   ├── pronostics/ historique/  pronostics du jour, résultats et taux de réussite
+    │   ├── coupons/              « code de X », analyse de coupon, coupons de la rédaction
+    │   ├── premium/ paiement/    offres, paiement Mobile Money, retour de paiement
+    │   ├── compte/               profil, Premium, alertes, favoris
+    │   ├── admin/                tableau de bord, compétitions, coupons, utilisateurs, paiements, synchro, réglages, outils
+    │   ├── api/cron/             tâches planifiées (quotidienne, fréquente)
+    │   ├── api/webhooks/cinetpay notification de paiement
     │   ├── (auth)/ auth/confirm/ connexion, inscription, code SMS, mot de passe
-    │   ├── compte/ admin/        compte utilisateur, back-office
-    │   ├── direct/ pronostics/   (phases 2 et 4)
-    │   ├── apercu/               galerie de composants (données fictives)
-    │   ├── jeu-responsable/ conditions/ hors-ligne/
-    │   └── api/                  cron/*, webhooks/paiement, push (phases 2, 6, 7)
-    ├── components/
-    │   ├── sport/                cartes de match, onglets sports, confiance, live…
-    │   ├── coupons/              ticket, code de chargement, générateur, analyseur
-    │   ├── admin/ home/ layout/ ui/ auth/ account/ pwa/ brand/
+    │   └── apercu/ jeu-responsable/ conditions/ hors-ligne/
+    ├── components/               sport, programme, match, picks, coupons, premium, account, admin, layout, ui…
     ├── lib/
     │   ├── sports/catalog.ts     sports, fournisseur, normalisation des statuts
-    │   ├── predictions/          marchés, moteurs par sport, forces des équipes, confiance, rapport
-    │   ├── coupons/              générateur (optimisation), analyseur, cotes, périodes, actions
-    │   ├── auth/ security/ validation/ supabase/ env…
-    │   ├── sync/                 synchronisation API-Sports (phase 2)
-    │   └── payments/             CinetPay / FedaPay (phase 6)
+    │   ├── sync/                 client API-Sports, conversion des réponses, écriture en base, étapes planifiées
+    │   ├── predictions/          marchés, moteurs par sport, forces, Elo, historique, calcul/publication, règlement
+    │   ├── coupons/              générateur (optimisation), analyseur, actions
+    │   ├── payments/             CinetPay (initialisation, vérification, x-token), activation
+    │   ├── notifications/        Web Push : coup d'envoi, buts, abonnements
+    │   ├── data/                 lectures pour les pages (programme, fiche match, pronostics, coupons)
+    │   ├── admin/                actions de l'espace admin (contrôlées et journalisées)
+    │   └── auth/ security/ validation/ supabase/ env…
     └── types/database.ts         types générés de la base
+```
+
+### Flux des données
+
+```
+API-Sports ──(cron quotidien)──▶ compétitions, équipes, matchs, classements, cotes
+           ──(toutes les 2 min)─▶ scores en direct, faits de match ──▶ alertes « but »
+matchs terminés ──▶ Elo + forces ──▶ probabilités (predictions) ──▶ meilleur choix + value bet ──▶ prediction_picks (figés)
+scores finaux ──▶ règlement (won / lost / void) des pronostics et des coupons ──▶ pick_stats (historique public)
+/premium ──▶ CinetPay ──▶ notification + page de retour ──▶ vérification API ──▶ activate_subscription
 ```
 
 ## 4. Choix techniques
@@ -169,6 +189,9 @@ winner-pronostic/
 - **Téléphone d'abord** : l'inscription par numéro (code SMS) est proposée en premier, l'e-mail en second.
 - **Validation côté serveur systématique** (zod dans les Server Actions), **RLS** comme deuxième barrière, **limitation des tentatives** partagée en base (SMS coûteux, force brute).
 - **Transparence** : les pronostics publiés sont figés par un déclencheur SQL ; l'historique réglé est public, y compris les pronostics premium.
+- **Quota API économisé** : une seule synchronisation complète par jour, le direct seulement quand des matchs sont en cours (verrou en base, une requête par sport), cache des absences et compositions.
+- **Vercel Hobby** : un cron par jour maximum, d'où Supabase Cron (pg_cron + pg_net) pour l'appel toutes les 2 minutes.
+- **Paiement** : la notification ne sert qu'à identifier la transaction ; le statut est toujours relu à l'API CinetPay avant activation.
 
 ## 5. Codes de chargement 1xBet : ce qui est possible
 

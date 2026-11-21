@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { Suspense } from "react";
 import { StatTile } from "@/components/admin/stat-tile";
 import { PageHeader } from "@/components/layout/page-header";
@@ -63,16 +64,20 @@ async function AdminDashboard() {
             </li>
           ))}
         </ul>
-        <p className="text-xs text-muted">Nombre de compétitions affichées par sport. La gestion complète arrive en phase 7.</p>
+        <p className="text-xs text-muted">Nombre de compétitions affichées par sport.</p>
       </section>
 
-      <section className="rounded-(--radius-card) border border-dashed border-line bg-surface p-4 text-sm text-muted">
-        <p className="font-semibold text-ink">À venir dans l&apos;espace admin</p>
-        <ul className="mt-1 list-disc space-y-0.5 pl-5">
-          <li>Activer/désactiver sports et compétitions</li>
-          <li>Publier le « coupon du jour » et y ajouter le code de chargement 1xBet</li>
-          <li>Suivi des abonnements, paiements et taux de réussite</li>
-        </ul>
+      <section className="grid grid-cols-2 gap-2 text-sm">
+        {[
+          ["/admin/synchro", "🔄 Lancer la synchronisation"],
+          ["/admin/coupons", "🎟️ Publier le coupon du jour"],
+          ["/admin/competitions", "🏆 Choisir les compétitions"],
+          ["/admin/paiements", "💰 Voir les paiements"],
+        ].map(([href, label]) => (
+          <Link key={href} href={href} className="rounded-xl border border-line bg-surface p-3 font-semibold hover:border-brand/50">
+            {label}
+          </Link>
+        ))}
       </section>
     </div>
   );

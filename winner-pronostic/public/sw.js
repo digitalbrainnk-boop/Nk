@@ -4,9 +4,9 @@
  *  - Icônes et images : affichage immédiat depuis le cache, mise à jour en arrière-plan.
  *  - Pages publiques : réseau d'abord, copie en cache pour une consultation hors ligne.
  *  - Pages personnelles (compte, admin, connexion…) et API : jamais mises en cache.
- * Les notifications push seront ajoutées en phase 7.
+ *  - Notifications push : alertes coup d'envoi et buts des équipes favorites.
  */
-const VERSION = "v1";
+const VERSION = "v2";
 const STATIC_CACHE = `wp-static-${VERSION}`;
 const PAGES_CACHE = `wp-pages-${VERSION}`;
 const OFFLINE_URL = "/hors-ligne";
@@ -105,4 +105,42 @@ self.addEventListener("fetch", (event) => {
         .catch(async () => (await caches.match(request)) || (await caches.match(OFFLINE_URL))),
     );
   }
+});
+
+// --- Notifications push -------------------------------------------------------
+self.addEventListener("push", (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch {
+    data = { title: "Winner Pronostic", body: event.data ? event.data.text() : "" };
+  }
+  const url = typeof data.url === "string" && data.url.startsWith("/") ? data.url : "/";
+  event.waitUntil(
+    self.registration.showNotification(data.title || "Winner Pronostic", {
+      body: data.body || "",
+      icon: "/icons/icon-192.png",
+      badge: "/icons/icon-192.png",
+      tag: data.tag,
+      renotify: Boolean(data.tag),
+      vibrate: [80, 40, 80],
+      data: { url },
+    }),
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const url = (event.notification.data && event.notification.data.url) || "/";
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((windows) => {
+      for (const w of windows) {
+        if ("focus" in w) {
+          w.navigate(url);
+          return w.focus();
+        }
+      }
+      return self.clients.openWindow(url);
+    }),
+  );
 });

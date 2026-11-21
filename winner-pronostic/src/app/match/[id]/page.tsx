@@ -2,15 +2,18 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { z } from "zod";
+import { FavoriteButton } from "@/components/match/favorite-button";
+import { Absences, FormStrip, HeadToHead, Incidents, Lineups, MainOdds, Section, SplitCompare, StandingsTable } from "@/components/match/match-sections";
 import { MatchReportView } from "@/components/report/match-report";
 import { PremiumTeaser } from "@/components/report/premium-teaser";
 import { EventCard } from "@/components/sport/event-card";
 import { Alert } from "@/components/ui/alert";
+import { AutoRefresh } from "@/components/ui/auto-refresh";
 import { getSessionUser } from "@/lib/auth/dal";
 import { DEFAULT_TIMEZONE } from "@/lib/constants";
+import { getFavoriteTeamIds, getFootballExtras, getMainOdds, getMatch, getMatchStats } from "@/lib/data/match";
 import { MARKETS, PERIODS, type Market, type Period } from "@/lib/predictions/markets";
 import { buildMatchReport } from "@/lib/predictions/report";
-import { isSportCode } from "@/lib/sports/catalog";
 import { createClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = { title: "Analyse du match" };
@@ -49,104 +52,132 @@ const inputsSchema = z
 
 const when = new Intl.DateTimeFormat("fr-FR", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: DEFAULT_TIMEZONE });
 
-type EventRow = {
-  id: number;
-  sport: string;
-  starts_at: string;
-  status_group: "scheduled" | "live" | "finished" | "postponed" | "cancelled";
-  live_clock: string | null;
-  home_score: number | null;
-  away_score: number | null;
-  competition: { name: string } | null;
-  home: { name: string; logo_url: string | null } | null;
-  away: { name: string; logo_url: string | null } | null;
-};
-
 async function MatchContent({ params }: { params: PageProps<"/match/[id]">["params"] }) {
   const { id } = await params;
   if (!/^\d{1,12}$/.test(id)) notFound();
+  const match = await getMatch(Number(id));
+  if (!match) notFound();
+
   const supabase = await createClient();
-
-  const { data } = await supabase
-    .from("events")
-    .select(
-      `id, sport, starts_at, status_group, live_clock, home_score, away_score,
-       competition:competitions!events_competition_id_sport_fkey(name),
-       home:teams!events_home_team_id_sport_fkey(name, logo_url),
-       away:teams!events_away_team_id_sport_fkey(name, logo_url)`,
-    )
-    .eq("id", Number(id))
-    .maybeSingle();
-  const event = data as unknown as EventRow | null;
-  if (!event || !event.home || !event.away || !isSportCode(event.sport)) notFound();
-  const sport = event.sport;
-
   // La RLS ne renvoie la prédiction qu'aux abonnés premium (ou une fois le match terminé)
-  const [{ data: prediction }, { data: odds }, user] = await Promise.all([
+  const [{ data: prediction }, { data: odds }, user, stats, mainOdds, extras, favorites] = await Promise.all([
     supabase
       .from("predictions")
       .select("expected_home, expected_away, inputs, computed_at")
-      .eq("event_id", event.id)
+      .eq("event_id", match.id)
       .order("computed_at", { ascending: false })
       .limit(1)
       .maybeSingle(),
-    supabase.from("event_odds").select("period, market, line, selection, odd, bookmaker_name").eq("event_id", event.id).limit(3000),
+    supabase.from("event_odds").select("period, market, line, selection, odd, bookmaker_name").eq("event_id", match.id).limit(3000),
     getSessionUser(),
+    getMatchStats(match),
+    getMainOdds(match.id),
+    getFootballExtras(match),
+    getFavoriteTeamIds(),
   ]);
+  const sport = match.sport;
 
   const card = (
     <EventCard
       event={{
-        id: event.id,
+        id: match.id,
         sport,
-        competition: event.competition?.name ?? "",
-        startsAt: event.starts_at,
-        status: event.status_group,
-        clock: event.live_clock,
-        home: { name: event.home.name, logoUrl: event.home.logo_url },
-        away: { name: event.away.name, logoUrl: event.away.logo_url },
-        score: event.home_score !== null && event.away_score !== null ? { home: event.home_score, away: event.away_score } : null,
+        competition: match.competition.name,
+        startsAt: match.startsAt,
+        status: match.status,
+        clock: match.clock,
+        home: { name: match.home.name, logoUrl: match.home.logo },
+        away: { name: match.away.name, logoUrl: match.away.logo },
+        score: match.homeScore !== null && match.awayScore !== null ? { home: match.homeScore, away: match.awayScore } : null,
       }}
     />
   );
 
+  let premiumBlock: React.ReactNode;
   if (!prediction) {
     const { data: premium } = user ? await supabase.rpc("is_premium") : { data: false };
-    return (
-      <div className="space-y-4">
-        {card}
-        {premium ? <Alert tone="info">L&apos;analyse de ce match n&apos;est pas encore disponible. Revenez un peu plus tard.</Alert> : <PremiumTeaser loggedIn={Boolean(user)} />}
-      </div>
+    premiumBlock = premium ? (
+      <Alert tone="info">L&apos;analyse complète de ce match n&apos;est pas encore calculée. Revenez un peu plus tard.</Alert>
+    ) : (
+      <PremiumTeaser loggedIn={Boolean(user)} />
     );
+  } else {
+    const parsed = inputsSchema.safeParse(prediction.inputs ?? {});
+    const inputs = parsed.success ? parsed.data : {};
+    const report = buildMatchReport({
+      sport,
+      teams: { home: match.home.name, away: match.away.name },
+      expected: { home: Number(prediction.expected_home), away: Number(prediction.expected_away) },
+      strength: inputs.strength ?? null,
+      context: { standings: inputs.context?.standings ?? null, h2h: inputs.context?.h2h ?? null },
+      options: { ...inputs.options, corners: inputs.options?.corners ?? null, cards: inputs.options?.cards ?? null },
+      playerNames: inputs.playerNames ?? undefined,
+      odds: (odds ?? [])
+        .filter((o) => (MARKETS as readonly string[]).includes(o.market) && (PERIODS as readonly string[]).includes(o.period))
+        .map((o) => ({
+          period: o.period as Period,
+          market: o.market as Market,
+          line: o.line === null ? null : Number(o.line),
+          selection: o.selection,
+          odd: Number(o.odd),
+          bookmaker: o.bookmaker_name,
+        })),
+    });
+    premiumBlock = <MatchReportView report={report} competition={match.competition.name} startsAt={when.format(new Date(match.startsAt))} />;
   }
 
-  const parsed = inputsSchema.safeParse(prediction.inputs ?? {});
-  const inputs = parsed.success ? parsed.data : {};
-  const report = buildMatchReport({
-    sport,
-    teams: { home: event.home.name, away: event.away.name },
-    expected: { home: Number(prediction.expected_home), away: Number(prediction.expected_away) },
-    strength: inputs.strength ?? null,
-    context: { standings: inputs.context?.standings ?? null, h2h: inputs.context?.h2h ?? null },
-    options: {
-      ...inputs.options,
-      corners: inputs.options?.corners ?? null,
-      cards: inputs.options?.cards ?? null,
-    },
-    playerNames: inputs.playerNames ?? undefined,
-    odds: (odds ?? [])
-      .filter((o) => (MARKETS as readonly string[]).includes(o.market) && (PERIODS as readonly string[]).includes(o.period))
-      .map((o) => ({
-        period: o.period as Period,
-        market: o.market as Market,
-        line: o.line === null ? null : Number(o.line),
-        selection: o.selection,
-        odd: Number(o.odd),
-        bookmaker: o.bookmaker_name,
-      })),
-  });
+  return (
+    <div className="space-y-6">
+      {card}
+      <div className="flex flex-wrap gap-2">
+        <FavoriteButton teamId={match.home.id} name={match.home.name} initial={favorites?.has(match.home.id) ?? false} loggedIn={Boolean(user)} />
+        <FavoriteButton teamId={match.away.id} name={match.away.name} initial={favorites?.has(match.away.id) ?? false} loggedIn={Boolean(user)} />
+      </div>
+      {match.status === "live" ? <AutoRefresh seconds={30} /> : null}
 
-  return <MatchReportView report={report} competition={event.competition?.name} startsAt={when.format(new Date(event.starts_at))} />;
+      {stats.incidents.length ? (
+        <Section title="Faits de match">
+          <Incidents incidents={stats.incidents} />
+        </Section>
+      ) : null}
+
+      <Section title="Cotes" note="Meilleures cotes relevées chez les bookmakers suivis.">
+        <MainOdds match={match} odds={mainOdds} />
+      </Section>
+
+      <Section title="Forme (5 derniers matchs)">
+        <div className="grid gap-2 sm:grid-cols-2">
+          <FormStrip team={match.home.name} form={stats.homeForm} />
+          <FormStrip team={match.away.name} form={stats.awayForm} />
+        </div>
+      </Section>
+
+      <Section title="Domicile / extérieur">
+        <SplitCompare match={match} home={stats.homeSplit} away={stats.awaySplit} />
+      </Section>
+
+      <Section title="Confrontations directes">
+        <HeadToHead games={stats.h2h} home={match.home.name} />
+      </Section>
+
+      <Section title="Classement">
+        <StandingsTable rows={stats.standings} highlight={[match.home.id, match.away.id]} />
+      </Section>
+
+      {extras ? (
+        <>
+          <Section title="Blessés et suspendus">
+            <Absences match={match} injuries={extras.injuries} />
+          </Section>
+          <Section title="Compositions" note="Publiées environ une heure avant le coup d'envoi.">
+            <Lineups match={match} lineups={extras.lineups} />
+          </Section>
+        </>
+      ) : null}
+
+      <div className="border-t border-line pt-6">{premiumBlock}</div>
+    </div>
+  );
 }
 
 export default function MatchPage(props: PageProps<"/match/[id]">) {

@@ -24,6 +24,12 @@ export const RATE_LIMITS = {
   passwordResetByIp: { limit: 5, windowSeconds: 60 * 60 },
   /** Mise à jour du profil, par utilisateur */
   profileUpdate: { limit: 20, windowSeconds: 60 * 60 },
+  /** Démarrage d'un paiement, par utilisateur */
+  checkout: { limit: 6, windowSeconds: 30 * 60 },
+  /** Notifications de paiement, par IP */
+  webhook: { limit: 120, windowSeconds: 60 },
+  /** Actions d'administration, par administrateur */
+  admin: { limit: 120, windowSeconds: 60 * 60 },
   /** Génération de coupons, par utilisateur (même premium) */
   couponGenerate: { limit: 30, windowSeconds: 60 * 60 },
 } satisfies Record<string, RateLimitRule>;

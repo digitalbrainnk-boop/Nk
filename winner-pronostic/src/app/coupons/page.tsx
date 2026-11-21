@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { CouponsTabs } from "@/components/coupons/coupons-tabs";
+import { FeaturedCoupons } from "@/components/coupons/featured-coupons";
 import { PageHeader } from "@/components/layout/page-header";
 
 export const metadata: Metadata = {
@@ -11,7 +13,12 @@ export default function CouponsPage() {
   return (
     <>
       <PageHeader kicker="Coupons" title="Mon code" subtitle="Multi-sports · chance réelle affichée · aucun gain garanti." />
-      <CouponsTabs />
+      <div className="space-y-8">
+        <CouponsTabs />
+        <Suspense fallback={null}>
+          <FeaturedCoupons />
+        </Suspense>
+      </div>
     </>
   );
 }

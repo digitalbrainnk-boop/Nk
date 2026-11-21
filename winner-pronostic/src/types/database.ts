@@ -101,6 +101,8 @@ export type Database = {
           display_order: number;
           created_at: string;
           updated_at: string;
+          season_synced_at: string | null;
+          standings_synced_at: string | null;
         };
         Insert: {
           id?: never;
@@ -118,6 +120,8 @@ export type Database = {
           display_order?: number;
           created_at?: string;
           updated_at?: string;
+          season_synced_at?: string | null;
+          standings_synced_at?: string | null;
         };
         Update: {
           id?: never;
@@ -135,6 +139,8 @@ export type Database = {
           display_order?: number;
           created_at?: string;
           updated_at?: string;
+          season_synced_at?: string | null;
+          standings_synced_at?: string | null;
         };
         Relationships: [
           {
@@ -446,6 +452,8 @@ export type Database = {
           last_synced_at: string;
           created_at: string;
           updated_at: string;
+          odds_synced_at: string | null;
+          settled_at: string | null;
         };
         Insert: {
           id?: never;
@@ -471,6 +479,8 @@ export type Database = {
           last_synced_at?: string;
           created_at?: string;
           updated_at?: string;
+          odds_synced_at?: string | null;
+          settled_at?: string | null;
         };
         Update: {
           id?: never;
@@ -496,6 +506,8 @@ export type Database = {
           last_synced_at?: string;
           created_at?: string;
           updated_at?: string;
+          odds_synced_at?: string | null;
+          settled_at?: string | null;
         };
         Relationships: [
           {
@@ -1209,13 +1221,20 @@ export type Database = {
     };
     Views: { [_ in never]: never };
     Functions: {
+      activate_subscription: { Args: { p_payment_id: string }; Returns: string };
+      expire_subscriptions: { Args: never; Returns: number };
+      grant_subscription: { Args: { p_user_id: string; p_plan_code: string; p_admin_id: string }; Returns: string };
       is_admin: { Args: never; Returns: boolean };
       is_premium: { Args: never; Returns: boolean };
       is_valid_market: { Args: { p_market: string }; Returns: boolean };
       is_valid_period: { Args: { p_period: string }; Returns: boolean };
       is_valid_selection: { Args: { p_market: string; p_line: number; p_selection: string }; Returns: boolean };
+      pick_stats: { Args: { p_since?: string }; Returns: { level: string | null; sport: string | null; market: string | null; competition_id: number | null; competition: string | null; settled: number | null; won: number | null; lost: number | null; void: number | null; win_rate: number | null; avg_odd: number | null; roi: number | null }[] };
+      premium_until: { Args: never; Returns: string };
       prune_rate_limits: { Args: { p_older_than_seconds?: number }; Returns: number };
+      published_pick_counts: { Args: { p_from: string; p_to: string }; Returns: { total: number | null; premium: number | null }[] };
       rate_limit_hit: { Args: { p_key: string; p_limit: number; p_window_seconds: number }; Returns: boolean };
+      update_team_elo: { Args: { p_ratings: Json }; Returns: number };
     };
     Enums: {
       coupon_period: "jour" | "weekend" | "long_terme";

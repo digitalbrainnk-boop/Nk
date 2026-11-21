@@ -1,5 +1,7 @@
 import Link from "next/link";
-import { HomeSports } from "@/components/home/home-sports";
+import { Suspense } from "react";
+import { AdSlot } from "@/components/layout/ad-slot";
+import { Programme, ProgrammeSkeleton } from "@/components/programme/programme";
 import { sportStyle } from "@/components/sport/sport-badge";
 import { ButtonLink } from "@/components/ui/button";
 import { ShieldIcon } from "@/components/ui/icons";
@@ -13,7 +15,7 @@ const STEPS = [
   { n: 3, title: "Copiez votre coupon", text: "Chance réelle affichée, partage WhatsApp et code de chargement quand il est disponible." },
 ];
 
-export default function HomePage() {
+export default function HomePage(props: PageProps<"/">) {
   return (
     <div className="space-y-7">
       {/* Bannière « stade » */}
@@ -62,7 +64,13 @@ export default function HomePage() {
         </div>
       </section>
 
-      <HomeSports />
+      <Suspense fallback={<ProgrammeSkeleton />}>
+        <Programme searchParams={props.searchParams} />
+      </Suspense>
+
+      <Suspense fallback={null}>
+        <AdSlot />
+      </Suspense>
 
       {/* Comment ça marche */}
       <section aria-labelledby="comment" className="space-y-3">

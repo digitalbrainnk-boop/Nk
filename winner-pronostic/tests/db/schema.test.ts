@@ -422,6 +422,68 @@ describeDb("Base de données Supabase (migrations + RLS)", () => {
     });
   });
 
+  describe("exploitation : abonnements et statistiques", () => {
+    it("active un abonnement une seule fois par paiement et prolonge l'abonnement en cours", async () => {
+      const dave = await createUser({ ...validMeta(), display_name: "Dave" });
+      const { rows } = await db.query(
+        `insert into public.payments (user_id, plan_code, provider, provider_transaction_id, amount_xof)
+         values ($1, 'weekly', 'cinetpay', 'tx-dave-1', 1000), ($1, 'monthly', 'cinetpay', 'tx-dave-2', 3000) returning id`,
+        [dave],
+      );
+      const [p1, p2] = rows.map((r) => r.id);
+      const s1 = (await db.query("select public.activate_subscription($1) as id", [p1])).rows[0].id;
+      const again = (await db.query("select public.activate_subscription($1) as id", [p1])).rows[0].id;
+      expect(again).toBe(s1); // notification reçue deux fois : un seul abonnement
+      await db.query("select public.activate_subscription($1)", [p2]);
+      const subs = (
+        await db.query(
+          "select plan_code, round(extract(epoch from ends_at - now()) / 86400) as days from public.subscriptions where user_id = $1 order by ends_at",
+          [dave],
+        )
+      ).rows;
+      expect(subs).toEqual([
+        { plan_code: "weekly", days: "7" },
+        { plan_code: "monthly", days: "37" }, // le mois commence à la fin de la semaine déjà payée
+      ]);
+      const status = (await db.query("select status from public.payments where id = $1", [p1])).rows[0].status;
+      expect(status).toBe("succeeded");
+    });
+
+    it("refuse un montant inférieur au prix de l'offre", async () => {
+      const erin = await createUser({ ...validMeta(), display_name: "Erin" });
+      const { rows } = await db.query(
+        "insert into public.payments (user_id, plan_code, provider, provider_transaction_id, amount_xof) values ($1, 'monthly', 'cinetpay', 'tx-erin', 500) returning id",
+        [erin],
+      );
+      await db.query("begin");
+      await expectError(db, "select public.activate_subscription($1)", [rows[0].id], /AMOUNT_MISMATCH/);
+      await db.query("rollback");
+    });
+
+    it("réserve l'activation et l'abonnement offert au serveur", async () => {
+      await as("authenticated", alice, async (c) => {
+        await expectError(c, "select public.activate_subscription(gen_random_uuid())", [], /permission denied/);
+        await expectError(c, "select public.grant_subscription($1, 'weekly', $1)", [alice], /permission denied/);
+      });
+    });
+
+    it("calcule les taux de réussite par sport, marché et compétition", async () => {
+      await db.query(`
+        insert into public.prediction_picks (prediction_id, event_id, competition_id, sport, period, market, line, selection, probability, best_odd, confidence, is_premium)
+        values ('00000000-0000-0000-0000-000000000002', 101, (select competition_id from public.events where id = 101), 'football', 'FT', 'TOTAL', 1.5, 'OVER', 0.7, 1.5, 4, false),
+               ('00000000-0000-0000-0000-000000000002', 101, (select competition_id from public.events where id = 101), 'football', '1H', '1X2', null, '1', 0.4, 2.5, 2, false);
+        update public.prediction_picks set result = 'won', settled_at = now() where event_id = 101 and period = 'FT' and market = 'TOTAL';
+        update public.prediction_picks set result = 'void', settled_at = now() where event_id = 101 and period = '1H';
+      `);
+      const rows = await as("anon", null, async (c) => (await c.query("select * from public.pick_stats()")).rows);
+      const global = rows.find((r) => r.level === "global");
+      expect(global).toMatchObject({ settled: "2", won: "1", lost: "1", void: "1", win_rate: "0.5000" });
+      const total = rows.find((r) => r.level === "market" && r.market === "TOTAL");
+      expect(total).toMatchObject({ settled: "1", won: "1", roi: "0.5000" });
+      expect(rows.some((r) => r.level === "competition" && r.competition === "Premier League")).toBe(true);
+    });
+  });
+
   describe("coupons, favoris et réglages", () => {
     it("interdit de créer un coupon en direct (création serveur uniquement)", async () => {
       await as("authenticated", alice, async (c) => {
