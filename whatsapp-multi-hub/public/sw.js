@@ -1,7 +1,7 @@
 // Service worker : met en cache l'interface pour un démarrage instantané (et hors ligne).
 // Les données (API, Socket.io) ne sont JAMAIS mises en cache : elles restent privées
 // et toujours à jour. Change VERSION à chaque mise à jour de l'interface.
-const VERSION = "1.2.0";
+const VERSION = "1.3.0";
 const CACHE = `multi-lignes-${VERSION}`;
 const SHELL = [
   "./",
@@ -12,6 +12,8 @@ const SHELL = [
   "./js/api.js",
   "./js/realtime.js",
   "./js/settings.js",
+  "./js/lock.js",
+  "./js/notifications.js",
   "./js/ui.js",
   "./js/views/lines.js",
   "./js/views/messages.js",
@@ -21,6 +23,7 @@ const SHELL = [
   "./icons/icon-512.png",
   "./icons/icon-maskable-512.png",
   "./icons/apple-touch-icon.png",
+  "./icons/badge-96.png",
 ];
 
 self.addEventListener("install", (event) => {
@@ -66,5 +69,51 @@ self.addEventListener("fetch", (event) => {
         .catch(() => cached);
       return cached || network;
     }),
+  );
+});
+
+// --- Notifications (Web Push) ------------------------------------------------------
+
+self.addEventListener("push", (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch {
+    data = { body: event.data?.text() };
+  }
+  event.waitUntil(
+    (async () => {
+      // L'application est ouverte devant toi : elle affiche déjà le message.
+      const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+      if (data.tag !== "test" && windows.some((c) => c.visibilityState === "visible" && c.focused)) return;
+      await self.registration.showNotification(data.title || "Multi-Lignes", {
+        body: data.body || "Nouveau message",
+        tag: data.tag || "multi-lignes",
+        renotify: true,
+        icon: "icons/icon-192.png",
+        badge: "icons/badge-96.png",
+        vibrate: [80, 40, 80],
+        timestamp: Date.now(),
+        data: { sessionId: data.sessionId, chatId: data.chatId },
+      });
+    })(),
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const { sessionId, chatId } = event.notification.data || {};
+  const target = new URL(sessionId ? `./#open=${encodeURIComponent(sessionId)}|${encodeURIComponent(chatId || "")}` : "./", self.registration.scope).href;
+  event.waitUntil(
+    (async () => {
+      const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+      const win = windows.find((c) => new URL(c.url).origin === self.location.origin);
+      if (win) {
+        await win.focus();
+        if (sessionId) win.postMessage({ type: "open-chat", sessionId, chatId });
+        return;
+      }
+      await self.clients.openWindow(target);
+    })(),
   );
 });

@@ -4,6 +4,8 @@
 // mémoire (state.line). Changer de ligne remplace entièrement cet objet, et toute
 // réponse ou événement qui ne porte pas l'identifiant de la ligne active est ignoré.
 import { createApi } from "./api.js";
+import { clearVault, forgetKey, hasVault, lockSupported, lockoutRemaining, openVault, pinLength, resealToken, sealToken } from "./lock.js";
+import { currentSubscription, disablePush, enablePush, pushSupported } from "./notifications.js";
 import { createRealtime } from "./realtime.js";
 import { isNative, loadSettings, saveSettings, serverBase } from "./settings.js";
 import {
@@ -25,7 +27,26 @@ import { chatTitle, renderBanner, renderChatList, renderMessages } from "./views
 
 const DEFAULT_COLOR = "#0f766e";
 const settings = loadSettings();
-const api = createApi(() => ({ base: serverBase(settings), token: settings.token }));
+// Le jeton vit en mémoire ; sur l'appareil, il est soit en clair (sans code), soit chiffré par le code.
+const memory = { token: hasVault() ? "" : settings.token || "" };
+if (hasVault() && settings.token) {
+  settings.token = "";
+  saveSettings(settings);
+}
+settings.lockDelay ??= 60000;
+const api = createApi(() => ({ base: serverBase(settings), token: memory.token }));
+
+/** Enregistre le jeton : chiffré si le code de verrouillage est actif, sinon tel quel. */
+async function setToken(token) {
+  memory.token = token;
+  if (hasVault()) {
+    await resealToken(token);
+    settings.token = "";
+  } else {
+    settings.token = token;
+  }
+  saveSettings(settings);
+}
 
 const emptyLine = (sessionId) => ({
   sessionId,
@@ -79,6 +100,11 @@ const el = {
   viewer: $("#viewer"),
   viewerImg: $("#viewer-img"),
   viewerDownload: $("#viewer-download"),
+  offlineBanner: $("#offline-banner"),
+  installBanner: $("#install-banner"),
+  lock: $("#lock"),
+  lockMsg: $("#lock-msg"),
+  pinDots: $("#pin-dots"),
   lineCards: $("#line-cards"),
   addForm: $("#add-line-form"),
   settingsForm: $("#settings-form"),
@@ -216,9 +242,22 @@ function showView(view) {
   renderLinesView();
 }
 
+let offlineTimer = null;
 function setConn(status) {
   el.conn.dataset.state = status;
   el.conn.querySelector(".conn-label").textContent = { online: "En direct", offline: "Hors ligne", connecting: "Connexion…" }[status];
+  // Bandeau seulement si la coupure dure plus de 4 s (évite les clignotements).
+  // Les tentatives de reconnexion successives ne relancent pas le compte à rebours.
+  if (status === "online" || !memory.token) {
+    clearTimeout(offlineTimer);
+    offlineTimer = null;
+    el.offlineBanner.hidden = true;
+  } else if (!offlineTimer && el.offlineBanner.hidden) {
+    offlineTimer = setTimeout(() => {
+      offlineTimer = null;
+      el.offlineBanner.hidden = !memory.token;
+    }, 4000);
+  }
 }
 
 function setSettingsStatus(message, type = "info") {
@@ -644,12 +683,31 @@ function wireMessageGestures() {
 
 // --- Temps réel ---------------------------------------------------------------
 
+const lastLineToast = new Map();
 function applySessionSummary(summary) {
+  const previous = state.sessions.get(summary.id);
   state.sessions.set(summary.id, summary);
   renderTabs();
   renderLinesView();
   if (summary.id === state.activeId) renderLineContext();
   else updateBadges();
+  // Nouveau message sur une AUTRE ligne : on prévient sans rien en montrer.
+  if (previous && summary.id !== state.activeId && summary.unread > (previous.unread || 0)) {
+    const last = lastLineToast.get(summary.id) ?? 0;
+    if (Date.now() - last > 5000) {
+      lastLineToast.set(summary.id, Date.now());
+      navigator.vibrate?.(40);
+      toast(`Nouveau message sur ${summary.label}`, {
+        action: {
+          label: "Voir",
+          onClick: () => {
+            showView("messages");
+            selectLine(summary.id);
+          },
+        },
+      });
+    }
+  }
 }
 
 function onEvent(name, payload) {
@@ -730,11 +788,17 @@ function onUnauthorized(message) {
   state.realtime?.close();
   state.realtime = null;
   setConn("offline");
+  el.offlineBanner.hidden = true;
   showView("settings");
-  setSettingsStatus(message || "Jeton refusé par le serveur.", "error");
+  setSettingsStatus(
+    message && !/invalide/i.test(message)
+      ? message
+      : "Accès refusé : le jeton a peut-être été changé. Dans Termux, tape « lignes » pour obtenir un nouveau lien de connexion.",
+    "error",
+  );
 }
 
-async function connect() {
+async function connect({ keepView = false } = {}) {
   state.realtime?.close();
   state.realtime = null;
   setConn("connecting");
@@ -754,13 +818,13 @@ async function connect() {
   } else {
     state.realtime = createRealtime({
       base: serverBase(settings),
-      token: settings.token,
+      token: memory.token,
       handlers: { status: setConn, event: onEvent, resync, unauthorized: onUnauthorized },
     });
   }
   const target = state.sessions.has(state.activeId) ? state.activeId : (sortedSessions()[0]?.id ?? null);
   await selectLine(target, { force: true });
-  if (!state.sessions.size) showView("lines");
+  if (!state.sessions.size && !keepView) showView("lines");
 }
 
 // --- Actions ------------------------------------------------------------------
@@ -889,9 +953,11 @@ async function startNewChat() {
 async function onSaveSettings(event) {
   event.preventDefault();
   settings.serverUrl = el.settingsForm.elements.serverUrl.value.trim().replace(/\/+$/, "");
-  settings.token = el.settingsForm.elements.token.value.trim();
+  const typed = el.settingsForm.elements.token.value.trim();
   saveSettings(settings);
   if (!serverBase(settings)) return setSettingsStatus("Indique l'adresse du serveur.", "error");
+  if (typed) await setToken(typed);
+  if (!memory.token) return setSettingsStatus("Ouvre le lien de connexion affiché dans Termux (commande « lignes »).", "error");
   setSettingsStatus("Connexion…");
   try {
     await api.listSessions();
@@ -904,6 +970,9 @@ async function onSaveSettings(event) {
 }
 
 function forgetToken() {
+  disablePush(api).catch(() => {});
+  clearVault();
+  memory.token = "";
   settings.token = "";
   saveSettings(settings);
   state.realtime?.close();
@@ -915,7 +984,9 @@ function forgetToken() {
   renderLineContext();
   renderChats();
   closeConversation();
-  setSettingsStatus("Jeton effacé de cet appareil.");
+  renderSecurity();
+  renderNotifications();
+  setSettingsStatus("Cet appareil est déconnecté. Pour revenir : dans Termux, tape « lignes ».");
 }
 
 function autosize() {
@@ -951,6 +1022,11 @@ function wireEvents() {
   });
 
   el.chatList.addEventListener("click", (event) => {
+    if (event.target.closest('[data-action="go-lines"]')) {
+      showView("lines");
+      el.addForm.elements.label.focus();
+      return;
+    }
     const item = event.target.closest("[data-chat]");
     if (item) openChat(item.dataset.chat);
   });
@@ -1027,14 +1103,79 @@ function wireEvents() {
   el.addForm.addEventListener("submit", onAddLine);
   el.addForm.addEventListener("change", togglePhoneField);
   el.settingsForm.addEventListener("submit", onSaveSettings);
-  $("#btn-forget").addEventListener("click", forgetToken);
+  $("#btn-forget").addEventListener("click", async () => {
+    const ok = await confirmDialog({
+      title: "Déconnecter ce téléphone ?",
+      message: "L'accès est effacé de cet appareil (et le code de verrouillage avec). Les lignes WhatsApp, elles, restent reliées.",
+      confirmLabel: "Déconnecter",
+      danger: true,
+    });
+    if (ok) forgetToken();
+  });
+
+  // Sécurité
+  const safely = (fn) => () => Promise.resolve(fn()).catch(toastError);
+  $("#btn-lock-toggle").addEventListener("click", safely(toggleLock));
+  $("#btn-lock-change").addEventListener("click", safely(changePin));
+  $("#btn-lock-now").addEventListener("click", () => lockNow());
+  $("#btn-lock-top").addEventListener("click", () => lockNow());
+  $("#btn-rotate").addEventListener("click", safely(rotateToken));
+  $("#lock-delay").addEventListener("change", (e) => {
+    settings.lockDelay = Number(e.target.value);
+    saveSettings(settings);
+  });
+  $("#keypad").addEventListener("click", (e) => {
+    const key = e.target.closest("[data-key]")?.dataset.key;
+    if (key) pressLockKey(key);
+  });
+  document.addEventListener("keydown", (e) => {
+    if (!lockState) return;
+    if (/^\d$/.test(e.key)) pressLockKey(e.key);
+    else if (e.key === "Backspace") pressLockKey("back");
+  });
+  $("#lock-forgot").addEventListener("click", async () => {
+    const ok = await confirmDialog({
+      title: "Code oublié ?",
+      message: "Pour ta sécurité, l'accès sera effacé de ce téléphone. Tu pourras te reconnecter tout de suite : dans Termux, tape « lignes ». Tes lignes WhatsApp restent reliées.",
+      confirmLabel: "Effacer et me reconnecter",
+      danger: true,
+    });
+    if (!ok || !lockState) return;
+    endLock(null);
+    forgetToken();
+    showView("settings");
+  });
+
+  // Notifications
+  $("#btn-notif-toggle").addEventListener("click", safely(toggleNotifications));
+  $("#btn-notif-test").addEventListener("click", safely(async () => {
+    const { delivered } = await api.pushTest();
+    toast(delivered ? "Notification envoyée ✓ Regarde en haut de l'écran." : "Aucun appareil abonné.");
+  }));
+  $("#notif-preview").addEventListener("change", safely(async (e) => {
+    settings.notifyPreview = e.target.checked;
+    saveSettings(settings);
+    if (await currentSubscription()) await enablePush(api, { preview: settings.notifyPreview });
+  }));
+  navigator.serviceWorker?.addEventListener("message", (event) => {
+    if (event.data?.type === "open-chat") openFromNotification(event.data).catch(() => {});
+  });
   $("#btn-toggle-token").addEventListener("click", () => {
     const input = el.settingsForm.elements.token;
     input.type = input.type === "password" ? "text" : "password";
   });
 
+  let hiddenAt = 0;
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible" && state.line.openChatId) markRead(state.line.openChatId);
+    if (document.visibilityState === "hidden") {
+      hiddenAt = Date.now();
+      // « Dès que je quitte » : verrouillé avant même l'aperçu des applis récentes.
+      if (hasVault() && settings.lockDelay === 0) lockNow();
+      return;
+    }
+    if (hasVault() && !lockState && Date.now() - hiddenAt >= settings.lockDelay) lockNow();
+    state.realtime?.ensureConnected();
+    if (state.line.openChatId) markRead(state.line.openChatId);
   });
 
   // Compte à rebours des reconnexions dans la vue « Lignes ».
@@ -1045,21 +1186,38 @@ function wireEvents() {
 
 function setupInstall() {
   let deferred = null;
+  const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone;
   const button = $("#btn-install");
+  const showBanner = () => {
+    el.installBanner.hidden = !(deferred && !standalone && !settings.installDismissed);
+  };
   window.addEventListener("beforeinstallprompt", (event) => {
     event.preventDefault();
     deferred = event;
     button.hidden = false;
+    $("#install-help").hidden = true;
+    showBanner();
   });
-  button.addEventListener("click", async () => {
+  const install = async () => {
     if (!deferred) return;
     deferred.prompt();
     await deferred.userChoice.catch(() => null);
     deferred = null;
     button.hidden = true;
+    el.installBanner.hidden = true;
+  };
+  button.addEventListener("click", install);
+  $("#install-banner-btn").addEventListener("click", install);
+  $("#install-banner-close").addEventListener("click", () => {
+    settings.installDismissed = true;
+    saveSettings(settings);
+    el.installBanner.hidden = true;
   });
-  window.addEventListener("appinstalled", () => toast("Application installée ✓"));
-  const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone;
+  window.addEventListener("appinstalled", () => {
+    el.installBanner.hidden = true;
+    toast("Multi-Lignes est installée sur ton écran d'accueil ✓");
+  });
+  if (standalone) $("#install-help").textContent = "L'application est installée sur cet appareil ✓";
   if (/iphone|ipad|ipod/i.test(navigator.userAgent) && !standalone) $("#install-ios").hidden = false;
 }
 
@@ -1080,34 +1238,289 @@ function registerServiceWorker() {
  * Lien de connexion affiché par le serveur (…/#token=XXXX) : le jeton est
  * enregistré sur l'appareil puis retiré de la barre d'adresse.
  */
-function readTokenFromLink() {
-  const match = /^#token=([^&]+)/.exec(location.hash);
-  if (!match) return;
-  settings.token = decodeURIComponent(match[1]);
-  if (!isNative()) settings.serverUrl = "";
-  saveSettings(settings);
-  history.replaceState(null, "", location.pathname + location.search);
+/**
+ * Liens spéciaux : …/#login=CODE (connexion à usage unique), …/#token=JETON
+ * (ancien format), …/#open=LIGNE|DISCUSSION (clic sur une notification).
+ * Ils sont retirés de la barre d'adresse aussitôt lus.
+ */
+function takeLinkFromUrl() {
+  const hash = location.hash;
+  const out = {};
+  let m;
+  if ((m = /^#login=([A-Za-z0-9_-]{10,64})$/.exec(hash))) out.code = m[1];
+  else if ((m = /^#token=([^&]+)$/.exec(hash))) out.token = decodeURIComponent(m[1]);
+  else if ((m = /^#open=([^|]*)\|(.*)$/.exec(hash))) out.open = { sessionId: decodeURIComponent(m[1]), chatId: decodeURIComponent(m[2]) };
+  else if (["#lines", "#settings", "#messages"].includes(hash)) out.view = hash.slice(1);
+  if (out.code || out.token || out.open) history.replaceState(null, "", location.pathname + location.search);
+  if ((out.code || out.token) && !isNative()) {
+    settings.serverUrl = "";
+    saveSettings(settings);
+  }
+  return out;
 }
 
-function boot() {
-  readTokenFromLink();
+// --- Verrouillage -----------------------------------------------------------------
+
+let lockState = null;
+
+function renderPin(message) {
+  if (!lockState) return;
+  const len = pinLength();
+  el.pinDots.innerHTML = Array.from({ length: len }, (_, i) => `<span class="${i < lockState.pin.length ? "is-on" : ""}"></span>`).join("");
+  if (message) el.lockMsg.textContent = message;
+}
+
+/** Affiche l'écran de verrouillage ; résout avec le jeton (ou null si le jeton a été effacé). */
+function showLock() {
+  if (lockState) return lockState.promise;
+  forgetKey();
+  closeViewer();
+  document.body.classList.add("locked");
+  el.lock.hidden = false;
+  let resolve;
+  const promise = new Promise((r) => (resolve = r));
+  lockState = { resolve, promise, pin: "", busy: false };
+  renderPin("Entre ton code pour ouvrir l'application");
+  return promise;
+}
+
+function endLock(token) {
+  document.body.classList.remove("locked");
+  el.lock.hidden = true;
+  const { resolve } = lockState;
+  lockState = null;
+  resolve(token);
+}
+
+async function pressLockKey(key) {
+  if (!lockState || lockState.busy) return;
+  const wait = lockoutRemaining();
+  if (wait) return renderPin(`Trop d'essais : patiente ${Math.ceil(wait / 1000)} s`);
+  if (key === "back") lockState.pin = lockState.pin.slice(0, -1);
+  else if (/^\d$/.test(key) && lockState.pin.length < pinLength()) lockState.pin += key;
+  renderPin();
+  if (lockState.pin.length < pinLength()) return;
+  lockState.busy = true;
+  renderPin("Vérification…");
+  const result = await openVault(lockState.pin);
+  lockState.busy = false;
+  lockState.pin = "";
+  if (result.token) {
+    memory.token = result.token;
+    navigator.vibrate?.(20);
+    return endLock(result.token);
+  }
+  if (result.wiped) {
+    endLock(null);
+    forgetToken();
+    showView("settings");
+    return setSettingsStatus("10 codes faux : par sécurité, l'accès a été effacé de cet appareil. Dans Termux, tape « lignes » pour te reconnecter.", "error");
+  }
+  navigator.vibrate?.([60, 40, 60]);
+  el.pinDots.classList.remove("shake");
+  void el.pinDots.offsetWidth;
+  el.pinDots.classList.add("shake");
+  renderPin(`Code incorrect — encore ${result.left} essai${result.left > 1 ? "s" : ""}`);
+}
+
+async function lockNow() {
+  if (!hasVault() || lockState) return;
+  await showLock();
+}
+
+async function askNewPin() {
+  const first = await promptDialog({
+    title: "Choisis ton code",
+    message: "4 à 8 chiffres. Il sera demandé à chaque ouverture de l'application.",
+    label: "Nouveau code",
+    type: "password",
+    inputMode: "numeric",
+    pattern: "[0-9]{4,8}",
+    confirmLabel: "Continuer",
+  });
+  if (!first) return null;
+  if (!/^\d{4,8}$/.test(first)) {
+    toast("Le code doit contenir 4 à 8 chiffres.", { type: "error" });
+    return null;
+  }
+  const again = await promptDialog({ title: "Confirme ton code", label: "Retape le code", type: "password", inputMode: "numeric", pattern: "[0-9]{4,8}", confirmLabel: "Activer" });
+  if (again !== first) {
+    if (again !== null) toast("Les deux codes ne correspondent pas.", { type: "error" });
+    return null;
+  }
+  return first;
+}
+
+async function checkCurrentPin(title) {
+  const pin = await promptDialog({ title, label: "Code actuel", type: "password", inputMode: "numeric", confirmLabel: "Valider" });
+  if (!pin) return null;
+  const result = await openVault(pin);
+  if (result.token) return result.token;
+  if (result.wiped) forgetToken();
+  toast(result.wiped ? "Trop de codes faux : accès effacé de cet appareil." : `Code incorrect (encore ${result.left} essais).`, { type: "error" });
+  return null;
+}
+
+async function toggleLock() {
+  if (hasVault()) {
+    const token = await checkCurrentPin("Désactiver le verrouillage");
+    if (!token) return;
+    clearVault();
+    await setToken(token);
+    toast("Verrouillage désactivé.");
+  } else {
+    if (!memory.token) return toast("Connecte d'abord l'application à ton serveur.", { type: "error" });
+    const pin = await askNewPin();
+    if (!pin) return;
+    await sealToken(pin, memory.token);
+    settings.token = "";
+    saveSettings(settings);
+    toast("Code activé 🔒 Ton accès est maintenant chiffré sur ce téléphone.");
+  }
+  renderSecurity();
+}
+
+async function changePin() {
+  const token = await checkCurrentPin("Changer le code");
+  if (!token) return;
+  const pin = await askNewPin();
+  if (!pin) return;
+  await sealToken(pin, token);
+  toast("Nouveau code enregistré 🔒");
+}
+
+async function rotateToken() {
+  const ok = await confirmDialog({
+    title: "Déconnecter les autres appareils ?",
+    message: "Un nouveau jeton d'accès est créé. Ce téléphone reste connecté ; tout autre appareil devra se reconnecter avec un nouveau lien (« lignes » dans Termux).",
+    confirmLabel: "Changer le jeton",
+    danger: true,
+  });
+  if (!ok) return;
+  const token = await api.rotateToken();
+  await setToken(token);
+  await connect({ keepView: true });
+  toast("Jeton changé ✓ Les autres appareils sont déconnectés.");
+}
+
+function renderSecurity() {
+  const on = hasVault();
+  const toggle = $("#btn-lock-toggle");
+  toggle.textContent = on ? "Désactiver" : "Activer";
+  toggle.disabled = !lockSupported();
+  $("#lock-state").textContent = !lockSupported()
+    ? "Indisponible ici (il faut HTTPS ou localhost)."
+    : on
+      ? "Activé : ton accès est chiffré sur ce téléphone et l'application se verrouille toute seule."
+      : "Désactivé : n'importe qui tenant ton téléphone déverrouillé peut ouvrir l'application.";
+  $("#lock-options").hidden = !on;
+  $("#btn-lock-top").hidden = !on;
+  $("#lock-delay").value = String(settings.lockDelay);
+  const tokenField = el.settingsForm.elements.token;
+  tokenField.placeholder = on ? "Protégé par ton code de verrouillage" : "Ou ouvre le lien affiché dans Termux";
+  if (on) tokenField.value = "";
+}
+
+// --- Notifications ------------------------------------------------------------------
+
+async function renderNotifications() {
+  const button = $("#btn-notif-toggle");
+  const stateText = $("#notif-state");
+  $("#notif-preview").checked = settings.notifyPreview !== false;
+  if (!pushSupported()) {
+    button.disabled = true;
+    stateText.textContent = "Indisponible ici (il faut Chrome, et HTTPS ou localhost).";
+    return;
+  }
+  const sub = await currentSubscription().catch(() => null);
+  const on = Boolean(sub) && Notification.permission === "granted";
+  button.textContent = on ? "Désactiver" : "Activer";
+  $("#btn-notif-test").hidden = !on;
+  stateText.textContent = on
+    ? "Activées sur ce téléphone : tu es prévenu même application fermée."
+    : Notification.permission === "denied"
+      ? "Bloquées par Chrome : ⋮ → Paramètres → Paramètres des sites → Notifications → autoriser localhost."
+      : "Reçois une notification pour chaque nouveau message, même application fermée.";
+}
+
+async function toggleNotifications() {
+  const sub = await currentSubscription().catch(() => null);
+  if (sub) {
+    await disablePush(api);
+    toast("Notifications désactivées sur ce téléphone.");
+  } else {
+    await enablePush(api, { preview: settings.notifyPreview !== false });
+    toast("Notifications activées 🔔");
+  }
+  await renderNotifications();
+}
+
+async function openFromNotification({ sessionId, chatId }) {
+  if (lockState) await lockState.promise;
+  if (!state.sessions.has(sessionId)) return;
+  showView("messages");
+  await selectLine(sessionId);
+  if (chatId) await openChat(chatId);
+}
+
+/** Après la première connexion : proposer (une seule fois) les notifications. */
+function suggestNotifications() {
+  if (!pushSupported() || Notification.permission !== "default" || settings.notifSuggested) return;
+  settings.notifSuggested = true;
+  saveSettings(settings);
+  toast("Être prévenu des nouveaux messages, même application fermée ?", {
+    duration: 12000,
+    action: {
+      label: "Activer",
+      onClick: () => toggleNotifications().catch(toastError),
+    },
+  });
+}
+
+async function boot() {
+  const link = takeLinkFromUrl();
   wireEvents();
   setupInstall();
   registerServiceWorker();
   el.settingsForm.elements.serverUrl.value = settings.serverUrl || (isNative() ? "" : window.location.origin);
-  el.settingsForm.elements.token.value = settings.token;
+  el.settingsForm.elements.token.value = hasVault() ? "" : memory.token;
   if (isNative()) $("#server-url-hint").textContent = "Adresse publique de ton serveur (HTTPS conseillé), ex. https://lignes.mondomaine.fr";
   setConn("offline");
   renderLineContext();
   renderChats();
-  const start = location.hash.replace("#", "");
-  if (!settings.token || !serverBase(settings)) {
-    showView("settings");
-    setSettingsStatus("Colle le jeton d'accès affiché par le serveur au premier démarrage.");
-    return;
+  renderSecurity();
+  renderNotifications();
+
+  // 1. Code de verrouillage
+  if (hasVault() && !(await showLock())) return;
+
+  // 2. Lien de connexion à usage unique
+  if (link.code) {
+    try {
+      await setToken(await api.exchangeLoginCode(link.code));
+      toast("Téléphone connecté ✓");
+    } catch (err) {
+      if (!memory.token) {
+        showView("settings");
+        return setSettingsStatus(err.message, "error");
+      }
+      toast(err.message, { type: "error", duration: 7000 });
+    }
+  } else if (link.token) {
+    await setToken(link.token);
   }
-  showView(["lines", "settings"].includes(start) ? start : "messages");
-  connect();
+
+  if (!memory.token || !serverBase(settings)) {
+    showView("settings");
+    return setSettingsStatus("Pour connecter ce téléphone : ouvre Termux et tape « lignes ». Le lien de connexion s'ouvrira tout seul.");
+  }
+  showView(link.view ?? "messages");
+  await connect();
+  if (link.open) await openFromNotification(link.open);
+  setTimeout(suggestNotifications, 2500);
 }
 
-boot();
+boot().catch((err) => {
+  console.error(err);
+  toast("Démarrage impossible : recharge la page.", { type: "error", duration: 0, action: { label: "Recharger", onClick: () => location.reload() } });
+});

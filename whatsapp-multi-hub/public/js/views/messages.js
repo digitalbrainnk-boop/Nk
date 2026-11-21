@@ -46,7 +46,8 @@ export function renderBanner(root, session) {
 
 export function renderChatList(root, { chats, loading, filter, openChatId, session }) {
   if (!session) {
-    root.innerHTML = `<li class="empty-state"><h3>Aucune ligne</h3><p>Ajoute une ligne dans l'onglet « Lignes ».</p></li>`;
+    root.innerHTML = `<li class="empty-state"><h3>Bienvenue 👋</h3><p>Relie ton premier compte WhatsApp Business : chaque ligne reste séparée des autres.</p>
+      <button type="button" class="btn btn-line" data-action="go-lines">Ajouter ma première ligne</button></li>`;
     return;
   }
   if (loading) {

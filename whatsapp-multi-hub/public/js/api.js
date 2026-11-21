@@ -16,7 +16,7 @@ export function createApi(getConfig) {
       res = await fetch(`${base}/api${path}`, {
         method,
         headers: {
-          Authorization: `Bearer ${token}`,
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
           ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
         },
         body: body !== undefined ? JSON.stringify(body) : undefined,
@@ -53,6 +53,12 @@ export function createApi(getConfig) {
       request("POST", `/sessions/${enc(id)}/chats/${enc(chatId)}/messages/${enc(messageId)}/react`, { emoji }),
     deleteMessage: (id, chatId, messageId) => request("DELETE", `/sessions/${enc(id)}/chats/${enc(chatId)}/messages/${enc(messageId)}`),
     capabilities: () => request("GET", "/sessions/capabilities"),
+    exchangeLoginCode: (code) => request("POST", "/auth/exchange", { code }).then((d) => d.token),
+    rotateToken: () => request("POST", "/auth/rotate", {}).then((d) => d.token),
+    pushKey: () => request("GET", "/push/key"),
+    pushSubscribe: (subscription, preview) => request("POST", "/push/subscribe", { subscription, preview }),
+    pushUnsubscribe: (endpoint) => request("POST", "/push/unsubscribe", { endpoint }),
+    pushTest: () => request("POST", "/push/test", {}),
 
     /** Adresse complète d'un fichier (les adresses /media/... sont signées par le serveur). */
     mediaUrl: (path) => (path ? `${getConfig().base}${path}` : ""),

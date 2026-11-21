@@ -20,6 +20,7 @@ Ce que WhatsApp ne permet pas aux appareils connectés de cette façon, et que l
 
 - **Le serveur s'arrête ou le téléphone qui le fait tourner s'éteint** : au redémarrage, chaque ligne se reconnecte **toute seule, sans QR**. Les messages reçus entre-temps arrivent à la reconnexion.
 - **Coupure internet** : nouvel essai automatique, sans fin, jusqu'au retour du réseau.
+- **Le serveur plante** : il redémarre tout seul en quelques secondes (`scripts/termux-run.sh`).
 - Il faut refaire l'appairage seulement si :
   - quelqu'un retire l'appareil dans WhatsApp → **Appareils connectés** sur le téléphone de la ligne ;
   - le téléphone de la ligne reste **plus de 14 jours sans se connecter à internet** (règle de WhatsApp pour tous les appareils connectés) ;
@@ -44,12 +45,15 @@ Pour que l'application tourne **en permanence**, deux possibilités :
    curl -fsSL https://raw.githubusercontent.com/digitalbrainnk-boop/Nk/ccr-2ad928f4-gleusx/whatsapp-multi-hub/installer-android.sh | bash
    ```
 3. À la fin, Chrome s'ouvre tout seul, déjà connecté à l'application.
-4. Dans Chrome : menu ⋮ → **Installer l'application** (ou « Ajouter à l'écran d'accueil »). L'icône Multi-Lignes apparaît sur ton écran d'accueil.
-5. Les fois suivantes : ouvre Termux et tape `lignes` (si l'application tourne déjà, elle s'ouvre simplement), puis touche l'icône. `lignes stop` l'arrête, `lignes log` affiche son journal.
-6. **Démarrage automatique au rallumage du téléphone** : installe **Termux:Boot** depuis F-Droid (https://f-droid.org/packages/com.termux.boot/) et ouvre-le une fois. C'est tout.
-7. Dans les paramètres Android → Applications → **Termux** → Batterie : choisis **Sans restriction**, sinon Android peut l'endormir.
+4. **Installe l'application** : touche le bandeau « Installe Multi-Lignes » en haut des Messages, ou Réglages → **Installer sur l'écran d'accueil**, ou dans Chrome : menu ⋮ → **Installer l'application**. L'icône Multi-Lignes apparaît sur ton écran d'accueil et dans la liste de tes applications, comme une vraie application (plein écran, sans barre d'adresse).
+5. Dans **Réglages** : active le **code de verrouillage** et les **notifications** (voir « Sécurité » plus bas).
+6. Les fois suivantes : ouvre Termux et tape `lignes` (si l'application tourne déjà, elle s'ouvre simplement), puis touche l'icône. `lignes stop` l'arrête, `lignes log` affiche son journal.
+7. **Démarrage automatique au rallumage du téléphone** : installe **Termux:Boot** depuis F-Droid (https://f-droid.org/packages/com.termux.boot/) et ouvre-le une fois. C'est tout.
+8. Dans les paramètres Android → Applications → **Termux** → Batterie : choisis **Sans restriction**, sinon Android peut l'endormir.
 
-Termux doit rester ouvert en arrière-plan (le téléphone de préférence en charge). Si ton agent IA tourne déjà dans Termux, ouvre une 2e session (glisse depuis le bord gauche → New session) pour taper `lignes`. Les deux applications utilisent des ports différents (3000 et 3100).
+**Mettre à jour** : colle de nouveau la ligne du point 2 dans Termux. Tes lignes reliées, ton historique et tes réglages sont conservés.
+
+Termux doit rester ouvert en arrière-plan (le téléphone de préférence en charge). Si le serveur plante, il redémarre tout seul en 5 secondes. Si ton agent IA tourne déjà dans Termux, ouvre une 2e session (glisse depuis le bord gauche → New session) pour taper `lignes`. Les deux applications utilisent des ports différents (3000 et 3100).
 
 ### Sur un ordinateur (Windows ou Mac)
 
@@ -72,16 +76,34 @@ Au démarrage, le terminal affiche :
 ```
   ✅ Multi-Lignes est prêt.
 
-  Ouvre ce lien (connexion automatique, rien à recopier) :
-     http://localhost:3100/#token=XXXXXXXX
-
-  Depuis un autre appareil du même Wi-Fi :
-     http://192.168.1.20:3100/#token=XXXXXXXX
+  Ouvre ce lien pour connecter ton téléphone (valable 10 minutes, une seule fois) :
+     http://localhost:3100/#login=XXXXXXXX
 ```
 
-Ouvrir ce lien enregistre le jeton d'accès sur l'appareil, puis le retire de la barre d'adresse. **Garde-le pour toi** : il donne accès à toutes les lignes. Le jeton est conservé dans `data/api-token.txt`. Pour le changer, mets `API_TOKEN=` dans `.env`, ou supprime ce fichier : un nouveau jeton sera créé au prochain démarrage.
+Ce lien ne contient **pas** le jeton d'accès : c'est un code à usage unique, échangé une seule fois contre le jeton, puis retiré de la barre d'adresse. Même retrouvé plus tard dans l'historique de Chrome, il ne vaut plus rien. Besoin d'un nouveau lien ? Dans Termux, tape `lignes`.
 
-> Un navigateur n'accepte d'**installer** l'application qu'en HTTPS ou sur `localhost`. Sur le téléphone qui fait tourner le serveur (Termux), `localhost` suffit. Depuis un autre appareil, l'adresse `http://192.168…` fonctionne dans le navigateur mais ne permet pas l'installation. Pour ça, voir « Accès depuis internet (HTTPS) » plus bas.
+> Un navigateur n'accepte d'**installer** l'application qu'en HTTPS ou sur `localhost`. Sur le téléphone qui fait tourner le serveur (Termux), c'est le cas : tout fonctionne (installation, notifications, micro). Pour l'ouvrir depuis un autre appareil, voir « Accès depuis internet (HTTPS) » plus bas.
+
+## Sécurité
+
+| Protection | Ce qu'elle fait |
+|---|---|
+| **Accès limité au téléphone** | Par défaut, le serveur n'écoute que `127.0.0.1` : aucun autre appareil du Wi-Fi ne peut même le joindre (`HOST=0.0.0.0` dans `.env` pour l'ouvrir au Wi-Fi, le jeton restant exigé). |
+| **Jeton d'accès** | Long, aléatoire, exigé par l'API et le temps réel ; comparaison à temps constant ; une adresse qui se trompe 10 fois est bloquée 15 minutes. |
+| **Liens à usage unique** | Le jeton n'apparaît jamais dans une adresse ni dans le terminal : on se connecte avec un code valable 10 minutes, une seule fois. |
+| **Code de verrouillage** | Réglages → Sécurité. Le jeton est **chiffré** sur le téléphone (AES-256-GCM, clé dérivée du code par PBKDF2, 310 000 itérations) : sans le code, il est illisible. Verrouillage automatique (immédiat, 1, 5 ou 15 min) ; l'écran est masqué aussi dans l'aperçu des applications récentes. Après 5 codes faux, attente imposée ; après 10, l'accès est effacé du téléphone (les lignes WhatsApp restent reliées : `lignes` pour revenir). |
+| **Déconnecter les autres appareils** | Réglages → Sécurité → Changer : nouveau jeton, les autres appareils sont coupés immédiatement, celui-ci reste connecté. |
+| **Fichiers privés** | Clés WhatsApp, historique, médias et jeton sont créés lisibles par toi seul (droits `600` / `700`), chaque ligne dans son dossier. |
+| **Page blindée** | Politique de contenu stricte (aucun script extérieur, page non intégrable par un autre site) ; texte et noms reçus toujours échappés ; documents reçus (HTML, SVG…) téléchargés, jamais affichés ; fichiers servis par adresses signées. |
+| **Notifications chiffrées** | Chiffrées de bout en bout entre ton serveur et ton téléphone : Google ne peut pas les lire. Option pour n'afficher que « Nouveau message ». |
+| **Discrétion** | Aucun accusé de lecture envoyé, la ligne n'apparaît pas « en ligne ». |
+| **Dépendances** | `npm audit` : 0 vulnérabilité (version corrigée de `zod` imposée). |
+
+## Notifications
+
+Réglages → Notifications → **Activer** : une notification arrive à chaque nouveau message, **même application fermée**, avec le nom du contact et la ligne concernée (« Claire Martin · Ligne 1 »). La toucher ouvre directement la bonne discussion sur la bonne ligne. Une seule notification toutes les 5 secondes par discussion, aucune pour l'historique ni pour tes propres messages.
+
+Il faut que le serveur (Termux) tourne et ait internet : c'est lui qui envoie les notifications, via le service de notification de Chrome.
 
 ## Relier une première ligne
 
@@ -118,12 +140,17 @@ whatsapp-multi-hub/
 ├── deploy/multi-lignes.service # serveur Linux : service systemd
 ├── package.json   .env.example   capacitor.config.json
 ├── scripts/copy-vendor.js     # copie le client Socket.io dans public/vendor
+├── scripts/termux-run.sh      # relance automatique du serveur en cas de plantage
 ├── src/
 │   ├── server.js              # démarrage, lien de connexion, arrêt propre
 │   ├── app.js                 # Express (API + PWA) + Socket.io
 │   ├── config.js  logger.js  errors.js
 │   ├── http/auth.js           # jeton (REST + Socket.io), blocage après 10 erreurs
 │   ├── http/mediaLinks.js     # adresses signées des fichiers
+│   ├── http/loginCodes.js     # liens de connexion à usage unique
+│   ├── http/routes/auth.js    # connexion des appareils, changement de jeton
+│   ├── http/routes/push.js    # abonnement aux notifications
+│   ├── push.js                # envoi des notifications (Web Push chiffré)
 │   ├── http/routes/sessions.js
 │   ├── realtime/socket.js     # salles par ligne
 │   └── whatsapp/
@@ -134,7 +161,7 @@ whatsapp-multi-hub/
 │       └── messageParser.js  jid.js
 ├── public/                    # la PWA (aucune étape de build)
 │   ├── index.html  manifest.json  sw.js  css/app.css  icons/  vendor/
-│   └── js/ app.js api.js realtime.js settings.js ui.js views/{lines,messages}.js
+│   └── js/ app.js api.js realtime.js settings.js ui.js lock.js notifications.js views/{lines,messages}.js
 ├── test/                      # npm test
 └── data/                      # créé au démarrage, ignoré par git : NE PAS PARTAGER
 ```
@@ -146,6 +173,10 @@ Toutes les routes, sauf `/api/health`, exigent l'en-tête `Authorization: Bearer
 | Méthode | Route | Rôle |
 |---|---|---|
 | GET | `/api/health` | vérification (sans jeton) |
+| POST | `/api/auth/exchange` | `{ code }` → `{ token }` : échange d'un code de connexion à usage unique (sans jeton) |
+| POST | `/api/auth/login-code` | nouveau code de connexion (valable 10 min, une fois) |
+| POST | `/api/auth/rotate` | nouveau jeton ; les appareils utilisant l'ancien sont déconnectés |
+| GET/POST | `/api/push/key`, `/api/push/subscribe`, `/api/push/unsubscribe`, `/api/push/test` | notifications |
 | GET | `/api/sessions` | liste des lignes et de leur état |
 | POST | `/api/sessions` | créer et connecter : `{ label?, id?, phoneNumber? }` |
 | POST | `/api/sessions/:id/init` | créer la ligne `:id` si besoin, puis la connecter : `{ label?, phoneNumber? }` |
@@ -226,13 +257,13 @@ echo 'lignes.mondomaine.fr {
 }' | sudo tee /etc/caddy/Caddyfile && sudo systemctl reload caddy
 ```
 
-Ouvre ensuite `https://lignes.mondomaine.fr/#token=<ton jeton>` sur ton téléphone (le jeton est dans `data/api-token.txt`), puis menu ⋮ → **Installer l'application**. Mise à jour : `cd /opt/multi-lignes && sudo git pull && cd whatsapp-multi-hub && sudo npm install --omit=dev && sudo systemctl restart multi-lignes`.
+Le journal (`journalctl`) affiche un lien de connexion à usage unique : remplace `http://localhost:3100` par `https://lignes.mondomaine.fr`, ouvre-le sur ton téléphone, puis menu ⋮ → **Installer l'application**. Mise à jour : `cd /opt/multi-lignes && sudo git pull && cd whatsapp-multi-hub && sudo npm install --omit=dev && sudo systemctl restart multi-lignes`.
 
 ## Accès depuis internet (HTTPS)
 
 Pour utiliser et installer l'application depuis un téléphone autre que celui qui fait tourner le serveur :
 
-- **Essai rapide** : `cloudflared tunnel --url http://localhost:3100`, puis ouvre l'adresse `https://…` donnée, suivie de `/#token=<ton jeton>`.
+- **Essai rapide** : `cloudflared tunnel --url http://localhost:3100`, puis ouvre l'adresse `https://…` donnée, suivie de `/#login=<code>` (code obtenu avec `lignes` ou affiché au démarrage).
 - **Serveur permanent** (VPS) : place l'application derrière Caddy ou Nginx avec HTTPS (Let's Encrypt), mets `TRUST_PROXY=1` dans `.env`, et laisse passer les WebSockets (`/socket.io/`). Lance-la avec un superviseur : `pm2 start server.js --name multi-lignes`.
 
 ## Application native (Capacitor)

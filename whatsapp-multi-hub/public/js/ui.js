@@ -134,12 +134,12 @@ export async function confirmDialog({ title, message, confirmLabel = "Confirmer"
 }
 
 /** Demande une valeur ; résout la chaîne saisie ou null si annulé. */
-export function promptDialog({ title, message = "", label, value = "", placeholder = "", inputMode = "text", confirmLabel = "Valider", required = true }) {
+export function promptDialog({ title, message = "", label, value = "", placeholder = "", inputMode = "text", confirmLabel = "Valider", required = true, type = "text", pattern = "" }) {
   return openDialog((form) => {
     form.innerHTML = `<h2>${esc(title)}</h2>
       ${message ? `<p>${esc(message)}</p>` : ""}
       <label class="field"><span>${esc(label)}</span>
-        <input name="value" value="${esc(value)}" placeholder="${esc(placeholder)}" inputmode="${esc(inputMode)}" autocomplete="off" ${required ? "required" : ""}>
+        <input name="value" type="${esc(type)}" value="${esc(value)}" placeholder="${esc(placeholder)}" inputmode="${esc(inputMode)}" autocomplete="off" ${pattern ? `pattern="${esc(pattern)}"` : ""} ${required ? "required" : ""}>
       </label>
       ${dialogButtons(confirmLabel)}`;
     return () => form.elements.value.value.trim();
@@ -251,4 +251,5 @@ export const icons = {
   image: svg('<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/>'),
   camera: svg('<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>'),
   file: svg('<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/>'),
+  lock: svg('<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>'),
 };

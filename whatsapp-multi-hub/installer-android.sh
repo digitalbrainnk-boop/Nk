@@ -36,7 +36,7 @@ npm install --no-audit --no-fund --omit=dev
 [ -f .env ] || cp .env.example .env
 
 # Commande « lignes » : démarre l'application, ou l'ouvre si elle tourne déjà.
-#   lignes        démarrer / ouvrir
+#   lignes        démarrer / ouvrir (avec un lien de connexion à usage unique)
 #   lignes stop   arrêter
 #   lignes log    voir le journal du démarrage automatique
 cat > "$PREFIX/bin/lignes" <<'EOS'
@@ -44,23 +44,27 @@ cat > "$PREFIX/bin/lignes" <<'EOS'
 APP="$HOME/multi-lignes/whatsapp-multi-hub"
 cd "$APP" || { echo "Multi-Lignes n'est pas installé."; exit 1; }
 PORT=$(grep -E '^PORT=[0-9]+' .env 2>/dev/null | cut -d= -f2); PORT=${PORT:-3100}
-lien() {
-  TOKEN=$(grep -E '^API_TOKEN=.+' .env 2>/dev/null | cut -d= -f2-)
-  [ -n "$TOKEN" ] || TOKEN=$(cat data/api-token.txt 2>/dev/null)
-  echo "http://localhost:$PORT/#token=$TOKEN"
-}
 case "$1" in
-  stop) pkill -f "$APP/server.js" && echo "Multi-Lignes arrêté (les lignes restent reliées)." || echo "Multi-Lignes n'était pas lancé."; exit 0 ;;
+  stop)
+    pkill -f "$APP/scripts/termux-run.sh" 2>/dev/null
+    if pkill -f "$APP/server.js"; then echo "Multi-Lignes arrêté (les lignes restent reliées)."; else echo "Multi-Lignes n'était pas lancé."; fi
+    exit 0 ;;
   log) tail -n 60 -f data/server.log; exit 0 ;;
 esac
 if curl -fsS "http://127.0.0.1:$PORT/api/health" >/dev/null 2>&1; then
+  # Déjà lancé : on demande un lien de connexion à usage unique au serveur.
+  TOKEN=$(grep -E '^API_TOKEN=.+' .env 2>/dev/null | cut -d= -f2-)
+  [ -n "$TOKEN" ] || TOKEN=$(cat data/api-token.txt 2>/dev/null)
+  CODE=$(curl -fsS -X POST -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:$PORT/api/auth/login-code" | sed -n 's/.*"code":"\([^"]*\)".*/\1/p')
+  URL="http://localhost:$PORT/"
+  [ -n "$CODE" ] && URL="http://localhost:$PORT/#login=$CODE"
   echo "Multi-Lignes tourne déjà : ouverture de l'application."
-  termux-open-url "$(lien)" 2>/dev/null || echo "Ouvre : $(lien)"
+  termux-open-url "$URL" 2>/dev/null || echo "Ouvre : $URL"
   exit 0
 fi
 termux-wake-lock 2>/dev/null || true
 echo "Multi-Lignes démarre : Chrome va s'ouvrir. Laisse Termux ouvert (Ctrl + C pour arrêter)."
-OPEN_BROWSER=1 exec node "$APP/server.js"
+OPEN_BROWSER=1 exec sh "$APP/scripts/termux-run.sh"
 EOS
 chmod +x "$PREFIX/bin/lignes"
 
@@ -73,14 +77,15 @@ APP="$HOME/multi-lignes/whatsapp-multi-hub"
 cd "$APP" || exit 0
 # Journal limité à ~5 Mo
 [ -f data/server.log ] && [ "$(wc -c < data/server.log)" -gt 5000000 ] && mv data/server.log data/server.log.old
-nohup node "$APP/server.js" >> data/server.log 2>&1 &
+nohup sh "$APP/scripts/termux-run.sh" >> data/server.log 2>&1 &
 EOS
 chmod +x "$HOME/.termux/boot/multi-lignes"
 
 echo
 echo "=== Installé ! ==="
 echo "• Les prochaines fois : ouvre Termux et tape  lignes   (lignes stop = arrêter)"
-echo "• Dans Chrome : menu ⋮ → « Installer l'application »."
+echo "• Installe l'application : bandeau « Installe Multi-Lignes » ou Chrome → ⋮ → « Installer l'application »."
+echo "• Puis Réglages → active le code de verrouillage 🔒 et les notifications 🔔."
 echo "• Démarrage automatique au rallumage du téléphone : installe « Termux:Boot »"
 echo "  depuis F-Droid et ouvre-le une fois. C'est tout."
 echo "• Pense à retirer Termux de l'optimisation de batterie (Paramètres Android → Applis → Termux → Batterie → Sans restriction)."

@@ -10,6 +10,12 @@ import { SessionManager } from "./whatsapp/SessionManager.js";
 
 // .env est lu depuis le dossier du projet, quel que soit le dossier de lancement.
 dotenv.config({ path: path.join(ROOT_DIR, ".env"), quiet: true });
+// Tous les fichiers créés (clés WhatsApp, historique, médias) ne sont lisibles que par toi.
+if (process.platform !== "win32") process.umask(0o077);
+
+// Codes de sortie lus par le script de relance (scripts/termux-run.sh) :
+// 0 = arrêt normal, 3 = déjà lancé ailleurs (inutile de relancer), autre = relancer.
+const EXIT_ALREADY_RUNNING = 3;
 
 const config = loadConfig();
 const logger = createLogger(config.logLevel);
@@ -27,7 +33,7 @@ process.on("uncaughtException", (err) => {
 });
 
 const manager = new SessionManager({ config, logger });
-const { server, io } = createApp({ config, manager, logger });
+const { server, io, loginCodes } = createApp({ config, manager, logger });
 
 let stopping = false;
 function shutdown(code = 0) {
@@ -86,11 +92,11 @@ await manager.init({ resume: false });
 server.on("error", (err) => {
   if (err.code === "EADDRINUSE") {
     logger.fatal(
-      `Le port ${config.port} est déjà utilisé. L'application tourne peut-être déjà : ouvre http://localhost:${config.port} — sinon change PORT dans .env.`,
+      `Le port ${config.port} est déjà utilisé. L'application tourne peut-être déjà (tape « lignes » pour l'ouvrir) — sinon change PORT dans .env.`,
     );
-  } else {
-    logger.fatal({ err }, "Le serveur HTTP n'a pas pu démarrer");
+    process.exit(EXIT_ALREADY_RUNNING);
   }
+  logger.fatal({ err }, "Le serveur HTTP n'a pas pu démarrer");
   process.exit(1);
 });
 
@@ -98,29 +104,29 @@ server.listen(config.port, config.host, () => {
   const { port } = server.address();
   manager.resumeLinked();
 
-  const link = (host) => `http://${host}:${port}/#token=${encodeURIComponent(config.apiToken)}`;
+  // Lien à usage unique : le vrai jeton n'apparaît jamais dans une adresse.
+  const code = loginCodes.issue();
+  const link = (host) => `http://${host}:${port}/#login=${code}`;
   const lines = [
     "",
     "  ✅ Multi-Lignes est prêt.",
     "",
-    "  Ouvre ce lien (connexion automatique, rien à recopier) :",
+    "  Ouvre ce lien pour connecter ton téléphone (valable 10 minutes, une seule fois) :",
     `     ${link("localhost")}`,
   ];
-  const lan = lanAddresses();
+  const lan = ["0.0.0.0", "::"].includes(config.host) ? lanAddresses() : [];
   if (lan.length) {
-    lines.push("", "  Depuis un autre appareil du même Wi-Fi :");
+    lines.push("", "  Depuis un autre appareil du même Wi-Fi (même lien, une seule fois) :");
     for (const ip of lan) lines.push(`     ${link(ip)}`);
   }
   lines.push(
     "",
-    `  Jeton d'accès : ${config.apiToken}`,
-    config.apiTokenFile ? `  (enregistré dans ${config.apiTokenFile})` : "  (défini par API_TOKEN dans .env)",
-    "  Garde ce lien pour toi : il donne accès à toutes les lignes.",
+    "  Besoin d'un nouveau lien ? Dans Termux, tape :  lignes",
     "  Laisse cette fenêtre ouverte ; Ctrl + C pour arrêter.",
     "",
   );
   console.log(lines.join("\n"));
-  logger.info(`Serveur à l'écoute sur le port ${port}`);
+  logger.info(`Serveur à l'écoute sur ${config.host}:${port}`);
 
   if (process.env.OPEN_BROWSER === "1") openInBrowser(link("localhost"));
 });

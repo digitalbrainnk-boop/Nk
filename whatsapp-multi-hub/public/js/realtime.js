@@ -34,6 +34,10 @@ export function createRealtime({ base, token, handlers }) {
         socket.timeout(5000).emit("session:select", { sessionId }, (err, res) => resolve(err ? null : res));
       });
     },
+    /** Au retour dans l'application : reconnexion immédiate si la connexion est tombée. */
+    ensureConnected() {
+      if (!socket.connected) socket.connect();
+    },
     close() {
       socket.removeAllListeners();
       socket.close();

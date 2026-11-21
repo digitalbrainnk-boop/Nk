@@ -24,10 +24,21 @@
         <img src="icons/icon.svg" alt="" width="28" height="28">
         <span>Multi-Lignes</span>
       </div>
-      <span class="conn" id="conn" data-state="offline" role="status">
-        <span class="conn-dot" aria-hidden="true"></span><span class="conn-label">Hors ligne</span>
-      </span>
+      <div class="topbar-right">
+        <span class="conn" id="conn" data-state="offline" role="status">
+          <span class="conn-dot" aria-hidden="true"></span><span class="conn-label">Hors ligne</span>
+        </span>
+        <button type="button" class="icon-btn" id="btn-lock-top" aria-label="Verrouiller l'application" hidden>
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        </button>
+      </div>
     </header>
+
+    <!-- Serveur injoignable (Termux fermé, téléphone en veille profonde…) -->
+    <div class="offline-banner" id="offline-banner" role="status" hidden>
+      <span class="spinner" aria-hidden="true"></span>
+      <span>Connexion au serveur perdue — reconnexion automatique… Si ça dure, ouvre Termux et tape <b>lignes</b>.</span>
+    </div>
 
     <!-- Sélecteur de ligne : une seule ligne affichée à la fois -->
     <nav class="line-tabs" id="line-tabs" role="tablist" aria-label="Choisir la ligne"></nav>
@@ -36,6 +47,12 @@
       <!-- Messages de la ligne active -->
       <section class="view view-messages" data-view="messages">
         <div class="chat-pane">
+          <div class="install-banner" id="install-banner" hidden>
+            <img src="icons/icon-192.png" alt="" width="40" height="40">
+            <div><strong>Installe Multi-Lignes</strong><small>Une icône sur ton écran d'accueil, en plein écran, avec notifications.</small></div>
+            <button type="button" class="btn btn-line btn-small" id="install-banner-btn">Installer</button>
+            <button type="button" class="icon-btn" id="install-banner-close" aria-label="Plus tard">✕</button>
+          </div>
           <div class="line-banner" id="line-banner" hidden></div>
           <div class="list-toolbar">
             <input type="search" id="chat-search" placeholder="Rechercher une discussion" aria-label="Rechercher une discussion">
@@ -129,8 +146,57 @@
       <section class="view view-settings" data-view="settings" hidden>
         <div class="page">
           <h2 class="page-title">Réglages</h2>
-          <form class="card" id="settings-form">
-            <h3>Connexion au serveur</h3>
+          <p class="settings-status" id="settings-status" role="status"></p>
+
+          <div class="card" id="card-security">
+            <h3>Sécurité</h3>
+            <div class="setting-row">
+              <div><strong>Code de verrouillage</strong><small id="lock-state">Désactivé : n'importe qui tenant ton téléphone déverrouillé peut ouvrir l'application.</small></div>
+              <button type="button" class="btn btn-line btn-small" id="btn-lock-toggle">Activer</button>
+            </div>
+            <div class="lock-options" id="lock-options" hidden>
+              <label class="field">
+                <span>Verrouiller automatiquement</span>
+                <select id="lock-delay">
+                  <option value="0">Dès que je quitte l'application</option>
+                  <option value="60000">Après 1 minute</option>
+                  <option value="300000">Après 5 minutes</option>
+                  <option value="900000">Après 15 minutes</option>
+                </select>
+              </label>
+              <div class="input-row">
+                <button type="button" class="btn btn-ghost btn-small" id="btn-lock-change">Changer le code</button>
+                <button type="button" class="btn btn-ghost btn-small" id="btn-lock-now">Verrouiller maintenant</button>
+              </div>
+            </div>
+            <div class="setting-row">
+              <div><strong>Déconnecter les autres appareils</strong><small>Change le jeton d'accès. Cet appareil reste connecté ; les autres devront utiliser un nouveau lien (« lignes » dans Termux).</small></div>
+              <button type="button" class="btn btn-ghost btn-small" id="btn-rotate">Changer</button>
+            </div>
+          </div>
+
+          <div class="card" id="card-notifs">
+            <h3>Notifications</h3>
+            <div class="setting-row">
+              <div><strong>Nouveaux messages</strong><small id="notif-state">Reçois une notification pour chaque nouveau message, même application fermée.</small></div>
+              <button type="button" class="btn btn-line btn-small" id="btn-notif-toggle">Activer</button>
+            </div>
+            <label class="check-row"><input type="checkbox" id="notif-preview" checked> Afficher le nom et le texte du message (sinon : « Nouveau message » seulement)</label>
+            <button type="button" class="btn btn-ghost btn-small" id="btn-notif-test" hidden>Envoyer une notification de test</button>
+          </div>
+
+          <div class="card">
+            <h3>Application</h3>
+            <button type="button" class="btn btn-line" id="btn-install" hidden>Installer sur l'écran d'accueil</button>
+            <p class="hint" id="install-help">Pas de bouton ? Dans Chrome : menu ⋮ → « Installer l'application » ou « Ajouter à l'écran d'accueil ».</p>
+            <p class="hint" id="install-ios" hidden>Sur iPhone : ouvre cette page dans Safari, bouton Partager → « Sur l'écran d'accueil ».</p>
+            <p class="hint">Le jeton est enregistré uniquement sur cet appareil. Les accusés de lecture ne sont jamais envoyés : consulter une discussion ici ne la marque pas comme lue sur WhatsApp.</p>
+            <button type="button" class="btn btn-ghost btn-ghost-danger" id="btn-forget">Oublier le jeton sur cet appareil</button>
+          </div>
+          <details class="card advanced" id="advanced-conn">
+            <summary>Connexion manuelle (avancé)</summary>
+            <p class="hint">Inutile en temps normal : dans Termux, la commande « lignes » ouvre l'application déjà connectée.</p>
+          <form id="settings-form" class="advanced-form">
             <label class="field">
               <span>Adresse du serveur</span>
               <input name="serverUrl" type="url" inputmode="url" placeholder="https://lignes.mondomaine.fr" autocomplete="off">
@@ -144,16 +210,8 @@
               </span>
             </label>
             <button type="submit" class="btn btn-primary">Enregistrer et se connecter</button>
-            <p class="settings-status" id="settings-status" role="status"></p>
           </form>
-
-          <div class="card">
-            <h3>Application</h3>
-            <button type="button" class="btn btn-line" id="btn-install" hidden>Installer sur l'écran d'accueil</button>
-            <p class="hint" id="install-ios" hidden>Sur iPhone : ouvre cette page dans Safari, bouton Partager → « Sur l'écran d'accueil ».</p>
-            <p class="hint">Le jeton est enregistré uniquement sur cet appareil. Les accusés de lecture ne sont jamais envoyés : consulter une discussion ici ne la marque pas comme lue sur WhatsApp.</p>
-            <button type="button" class="btn btn-ghost btn-ghost-danger" id="btn-forget">Oublier le jeton sur cet appareil</button>
-          </div>
+          </details>
         </div>
       </section>
     </main>
@@ -172,6 +230,23 @@
         <span>Réglages</span>
       </button>
     </nav>
+  </div>
+
+  <!-- Écran de verrouillage -->
+  <div class="lock" id="lock" hidden role="dialog" aria-modal="true" aria-labelledby="lock-title">
+    <div class="lock-card">
+      <img class="lock-logo" src="icons/icon.svg" alt="" width="72" height="72">
+      <h1 id="lock-title">Multi-Lignes</h1>
+      <p class="lock-msg" id="lock-msg">Entre ton code pour ouvrir l'application</p>
+      <div class="pin-dots" id="pin-dots" aria-hidden="true"></div>
+      <div class="keypad" id="keypad">
+        <button type="button" data-key="1">1</button><button type="button" data-key="2">2</button><button type="button" data-key="3">3</button>
+        <button type="button" data-key="4">4</button><button type="button" data-key="5">5</button><button type="button" data-key="6">6</button>
+        <button type="button" data-key="7">7</button><button type="button" data-key="8">8</button><button type="button" data-key="9">9</button>
+        <span></span><button type="button" data-key="0">0</button><button type="button" data-key="back" aria-label="Effacer">⌫</button>
+      </div>
+      <button type="button" class="lock-forgot" id="lock-forgot">Code oublié ?</button>
+    </div>
   </div>
 
   <!-- Visionneuse de photos -->

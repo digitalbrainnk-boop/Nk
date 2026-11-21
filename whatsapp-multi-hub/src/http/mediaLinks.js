@@ -5,10 +5,11 @@ import crypto from "node:crypto";
 
 const DAY = 24 * 60 * 60 * 1000;
 
-export function createMediaLinks(secret) {
-  const key = crypto.createHash("sha256").update(`media-links:${secret}`).digest();
+/** @param {() => string} getSecret relu à chaque fois : changer le jeton invalide les anciens liens */
+export function createMediaLinks(getSecret) {
+  const keyOf = (secret) => crypto.createHash("sha256").update(`media-links:${secret}`).digest();
   const sign = (sessionId, chatId, messageId, exp) =>
-    crypto.createHmac("sha256", key).update(`${sessionId}\n${chatId}\n${messageId}\n${exp}`).digest("base64url");
+    crypto.createHmac("sha256", keyOf(getSecret())).update(`${sessionId}\n${chatId}\n${messageId}\n${exp}`).digest("base64url");
 
   return {
     /** Adresse relative (à préfixer par l'adresse du serveur côté client). */

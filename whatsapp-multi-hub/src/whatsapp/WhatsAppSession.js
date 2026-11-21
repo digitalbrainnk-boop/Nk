@@ -572,7 +572,7 @@ export class WhatsAppSession extends EventEmitter {
           if (live && small) this.ensureMedia(chatId, message.id).catch(() => {});
         }
         if (isGroup) this.ensureGroupName(chatId);
-        if (!silent) this.emit("message", { chat, message });
+        if (!silent) this.emit("message", { chat, message, notify: type === "notify" });
       } catch (err) {
         this.log.warn({ err, id: raw?.key?.id }, "Message ignoré (format inattendu)");
       }

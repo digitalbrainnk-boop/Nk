@@ -4,9 +4,45 @@ import path from "node:path";
 import express from "express";
 import { Server as SocketServer } from "socket.io";
 import { createAuth } from "./http/auth.js";
+import { createLoginCodes } from "./http/loginCodes.js";
 import { createMediaLinks } from "./http/mediaLinks.js";
+import { authRouter, publicAuthRouter } from "./http/routes/auth.js";
+import { pushRouter } from "./http/routes/push.js";
 import { sessionsRouter } from "./http/routes/sessions.js";
+import { PushService } from "./push.js";
 import { attachRealtime } from "./realtime/socket.js";
+
+/**
+ * En-têtes de protection. La politique de contenu (CSP) n'autorise que les
+ * scripts de l'application elle-même : un texte malveillant reçu sur WhatsApp
+ * ne peut rien exécuter, et la page ne peut pas être intégrée par un autre site.
+ */
+function securityHeaders(req, res, next) {
+  const host = req.get("host") || "";
+  res.set({
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "no-referrer",
+    "X-Frame-Options": "DENY",
+    "Cross-Origin-Opener-Policy": "same-origin",
+    "Permissions-Policy": "camera=(self), microphone=(self), geolocation=(), payment=(), usb=(), interest-cohort=()",
+    "Content-Security-Policy": [
+      "default-src 'self'",
+      "script-src 'self'",
+      "style-src 'self' 'unsafe-inline'",
+      "img-src 'self' data: blob:",
+      "media-src 'self' blob:",
+      `connect-src 'self' ws://${host} wss://${host}`,
+      "font-src 'self'",
+      "worker-src 'self'",
+      "manifest-src 'self'",
+      "object-src 'none'",
+      "base-uri 'none'",
+      "form-action 'self'",
+      "frame-ancestors 'none'",
+    ].join("; "),
+  });
+  next();
+}
 
 function corsMiddleware(origins) {
   const allowAll = origins.includes("*");
@@ -45,29 +81,35 @@ function errorHandler(logger) {
   };
 }
 
-export function createApp({ config, manager, logger }) {
-  const auth = createAuth({ token: config.apiToken, logger });
-  const links = createMediaLinks(config.apiToken);
+export function createApp({ config, manager, logger, push: pushService }) {
+  // Le jeton est relu à chaque requête : il peut être changé depuis l'application.
+  const auth = createAuth({ getToken: () => config.apiToken, logger });
+  const links = createMediaLinks(() => config.apiToken);
+  const loginCodes = createLoginCodes();
+  const push = pushService ?? new PushService({ dataDir: config.dataDir, contact: config.pushContact, logger });
   const app = express();
   app.disable("x-powered-by");
   if (config.trustProxy) app.set("trust proxy", config.trustProxy);
-
-  app.use((req, res, next) => {
-    res.set("X-Content-Type-Options", "nosniff");
-    res.set("Referrer-Policy", "no-referrer");
-    next();
+  app.use(securityHeaders);
+  const server = http.createServer(app);
+  const io = new SocketServer(server, {
+    cors: { origin: config.corsOrigins.includes("*") ? true : config.corsOrigins },
+    maxHttpBufferSize: 1e5,
   });
 
   // --- API -------------------------------------------------------------------
   const api = express.Router();
   api.use(corsMiddleware(config.corsOrigins));
   api.use(express.json({ limit: "64kb" }));
-  api.get("/health", (req, res) => res.json({ ok: true, uptime: Math.round(process.uptime()), sessions: manager.sessions.size }));
-  api.use(auth.http);
   api.use((req, res, next) => {
     res.set("Cache-Control", "no-store");
     next();
   });
+  api.get("/health", (req, res) => res.json({ ok: true }));
+  api.use("/auth", publicAuthRouter({ config, auth, loginCodes }));
+  api.use(auth.http);
+  api.use("/auth", authRouter({ config, loginCodes, io, logger }));
+  api.use("/push", pushRouter(push));
   api.use("/sessions", sessionsRouter(manager, { links, config }));
   api.use((req, res) => res.status(404).json({ error: { code: "not_found", message: "Route inconnue." } }));
   api.use(errorHandler(logger));
@@ -115,12 +157,14 @@ export function createApp({ config, manager, logger }) {
     }),
   );
 
-  const server = http.createServer(app);
-  const io = new SocketServer(server, {
-    cors: { origin: config.corsOrigins.includes("*") ? true : config.corsOrigins },
-    maxHttpBufferSize: 1e5,
-  });
   attachRealtime(io, manager, { auth, logger, links });
 
-  return { app, server, io };
+  // Notification sur les téléphones abonnés à chaque nouveau message reçu.
+  manager.on("message:new", ({ sessionId, chat, message, notify }) => {
+    if (!notify || message.fromMe) return;
+    const session = manager.find(sessionId);
+    if (session) push.notifyMessage({ session, chat, message }).catch(() => {});
+  });
+
+  return { app, server, io, loginCodes, push };
 }

@@ -65,7 +65,9 @@ export function loadConfig(env = process.env, overrides = {}) {
 
   return {
     port: overrides.port ?? readInt(env, "PORT", 3100, { min: 0, max: 65535 }),
-    host: env.HOST || "0.0.0.0",
+    // Par défaut, seul l'appareil qui fait tourner le serveur peut l'ouvrir.
+    // HOST=0.0.0.0 pour l'ouvrir depuis le Wi-Fi (le jeton reste exigé).
+    host: env.HOST || "127.0.0.1",
     // Derrière un proxy (Nginx, Caddy, Cloudflare…) : ex. TRUST_PROXY=1 pour lire la vraie IP.
     trustProxy: parseTrustProxy(env.TRUST_PROXY),
     dataDir,
@@ -73,7 +75,8 @@ export function loadConfig(env = process.env, overrides = {}) {
     publicDir: path.join(ROOT_DIR, "public"),
     apiToken: auth.token,
     apiTokenSource: auth.source,
-    apiTokenFile: auth.file ?? null,
+    apiTokenFile: auth.file ?? path.join(dataDir, "api-token.txt"),
+    pushContact: env.PUSH_CONTACT || "mailto:multi-lignes@example.com",
     // Origines autorisées à appeler l'API depuis un autre domaine (app Capacitor, autre front…).
     corsOrigins: readList(env, "CORS_ORIGINS", ["capacitor://localhost", "http://localhost", "https://localhost"]),
     logLevel: env.LOG_LEVEL || "info",

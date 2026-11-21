@@ -86,7 +86,7 @@ export class SessionManager extends EventEmitter {
     });
     // Chaque événement repart étiqueté avec l'identifiant de SA ligne.
     session.on("update", (summary) => this.emit("session:update", summary));
-    session.on("message", ({ chat, message }) => this.emit("message:new", { sessionId: id, chat, message }));
+    session.on("message", ({ chat, message, notify = false }) => this.emit("message:new", { sessionId: id, chat, message, notify }));
     session.on("message-update", ({ chat, message }) => this.emit("message:update", { sessionId: id, chat, message }));
     session.on("chat-update", ({ chat }) => chat && this.emit("chat:update", { sessionId: id, chat }));
     session.on("chats-reset", () => this.emit("chats:reset", { sessionId: id }));

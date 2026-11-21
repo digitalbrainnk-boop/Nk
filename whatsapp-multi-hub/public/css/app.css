@@ -1497,3 +1497,285 @@ textarea:focus {
   border-color: rgb(255 255 255 / 0.4);
   color: #fff;
 }
+
+/* --- Sécurité, installation, connexion ------------------------------------------- */
+
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.offline-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  background: #fef3c7;
+  color: #78350f;
+  font-size: 13px;
+}
+
+@media (prefers-color-scheme: dark) {
+  .offline-banner {
+    background: #422006;
+    color: #fde68a;
+  }
+}
+
+.spinner {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.install-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 12px 0;
+  padding: 10px 6px 10px 12px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--line) 16%, var(--surface)), var(--surface));
+  box-shadow: var(--shadow);
+}
+
+.install-banner img {
+  border-radius: 10px;
+}
+
+.install-banner div {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+}
+
+.install-banner small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.setting-row > div {
+  display: grid;
+  gap: 2px;
+}
+
+.setting-row small {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.setting-row .btn {
+  flex: none;
+}
+
+.lock-options {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--surface-2);
+}
+
+.check-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 14px;
+}
+
+.check-row input {
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  accent-color: var(--line);
+}
+
+select {
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1.5px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 16px;
+}
+
+/* Écran de verrouillage */
+body.locked .app,
+body.locked .toasts {
+  visibility: hidden;
+}
+
+.lock {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: calc(env(safe-area-inset-top) + 24px) 24px calc(env(safe-area-inset-bottom) + 24px);
+  background:
+    radial-gradient(120% 80% at 50% 0%, color-mix(in srgb, var(--line) 55%, #0b141a) 0%, #0b141a 70%);
+  color: #fff;
+  animation: fade-in 0.25s ease-out;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+.lock-card {
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+  width: min(340px, 100%);
+}
+
+.lock-logo {
+  border-radius: 20px;
+  box-shadow: 0 12px 40px rgb(0 0 0 / 0.4);
+}
+
+.lock h1 {
+  margin: 0;
+  font-size: 24px;
+  letter-spacing: 0.2px;
+}
+
+.lock-msg {
+  min-height: 22px;
+  margin: 0;
+  color: rgb(255 255 255 / 0.8);
+  text-align: center;
+}
+
+.pin-dots {
+  display: flex;
+  gap: 16px;
+  margin: 8px 0 12px;
+}
+
+.pin-dots span {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgb(255 255 255 / 0.8);
+  border-radius: 50%;
+  transition: background 0.15s, transform 0.15s;
+}
+
+.pin-dots span.is-on {
+  background: #fff;
+  transform: scale(1.1);
+}
+
+.pin-dots.shake {
+  animation: shake 0.4s;
+}
+
+@keyframes shake {
+  20%,
+  60% {
+    transform: translateX(-10px);
+  }
+  40%,
+  80% {
+    transform: translateX(10px);
+  }
+}
+
+.keypad {
+  display: grid;
+  grid-template-columns: repeat(3, 76px);
+  gap: 16px 22px;
+}
+
+.keypad button {
+  width: 76px;
+  height: 76px;
+  border: 0;
+  border-radius: 50%;
+  background: rgb(255 255 255 / 0.12);
+  color: #fff;
+  font-size: 28px;
+  font-weight: 500;
+  transition: background 0.1s, transform 0.1s;
+}
+
+.keypad button:active {
+  background: rgb(255 255 255 / 0.3);
+  transform: scale(0.94);
+}
+
+.lock-forgot {
+  margin-top: 8px;
+  border: 0;
+  background: transparent;
+  color: rgb(255 255 255 / 0.75);
+  font-size: 14px;
+  text-decoration: underline;
+}
+
+.sheet[open] {
+  animation: sheet-up 0.22s ease-out;
+}
+
+@keyframes sheet-up {
+  from {
+    transform: translateY(40px);
+    opacity: 0;
+  }
+}
+
+.settings-status:empty {
+  display: none;
+}
+
+.page > .settings-status {
+  margin: 4px 0 4px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  color: var(--text);
+  font-size: 15px;
+}
+
+.page > .settings-status[data-type="error"] {
+  border-left: 4px solid var(--danger);
+}
+
+.page > .settings-status[data-type="ok"] {
+  border-left: 4px solid var(--ok);
+}
+
+.advanced summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.advanced-form {
+  display: grid;
+  gap: 14px;
+}
